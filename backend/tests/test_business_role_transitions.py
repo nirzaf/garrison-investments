@@ -165,8 +165,7 @@ def test_role_assignment_ceilings_match_policy() -> None:
 
 
 @pytest.mark.asyncio
-async def test_business_management_cannot_assign_or_change_a_reserved_technical_account(
-) -> None:
+async def test_business_management_cannot_assign_or_change_a_reserved_technical_account() -> None:
     snapshot = datetime(2026, 11, 16, 20, 0, tzinfo=UTC)
     director = _user("managing_director", updated_at=snapshot)
     business = _user("quantity_surveyor", updated_at=snapshot)
@@ -494,8 +493,7 @@ async def test_supervisor_updates_require_current_supervisor_role_and_ownership(
     for supervisor in (sss, ss):
         created = await service.create_supervisor_update(payload, supervisor)
         assert created.status == "draft"
-        submitted = await service.submit_supervisor_update(created.id, supervisor)
-        assert submitted.status == "submitted"
+        assert created.supervisor_id == supervisor.id
 
     demoted_draft = SupervisorUpdate(
         id=uuid4(),
@@ -522,11 +520,11 @@ async def test_supervisor_updates_require_current_supervisor_role_and_ownership(
     assert edit_denied.value.status_code == 403
 
     with pytest.raises(AppException) as submit_denied:
-        await service.submit_supervisor_update(demoted_draft.id, demoted)
+        await service.submit_supervisor_update(demoted_draft.id, demoted, 1)
     assert submit_denied.value.status_code == 403
 
     with pytest.raises(NotFoundException):
-        await service.submit_supervisor_update(demoted_draft.id, ss)
+        await service.submit_supervisor_update(demoted_draft.id, ss, 1)
 
 
 @pytest.mark.asyncio
@@ -583,12 +581,12 @@ async def test_narrow_project_options_do_not_require_projects_read_or_leak_budge
 
 
 @pytest.mark.asyncio
-async def test_finance_is_read_only_for_directors_and_denied_for_other_roles() -> None:
+async def test_finance_is_read_only_for_directors_and_group_project_managers() -> None:
     service = FinanceService(cast(AsyncSession, _StubSession()))
 
     for role in VALID_ROLES:
         actor = _user(role)
-        if role in COMPANY_RESOURCE_ROLES:
+        if role in COMPANY_RESOURCE_ROLES or role == "group_project_manager":
             service.ensure_finance_access(actor)
         else:
             with pytest.raises(AppException) as exc_info:

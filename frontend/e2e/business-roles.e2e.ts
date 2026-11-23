@@ -347,6 +347,141 @@ test('HR Manager cannot administer accounts while Managing Director sends expect
   }
 });
 
+test('site registration posts stock only after assigned engineer review and material issue requires both approvals', async ({
+  browser, page, request
+}) => {
+  const [director, supervisor, engineer, manager] = seedProjectAccounts(
+    'managing_director', 'site_supervisor', 'mep_project_manager', 'group_project_manager'
+  );
+  const directorPage = await browser.newPage();
+  const engineerPage = await browser.newPage();
+  const managerPage = await browser.newPage();
+  try {
+    const directorSession = await signIn(directorPage, director);
+    const directorHeaders = { Authorization: `Bearer ${directorSession.accessToken}` };
+    const locationResponse = await request.post('/api/v1/inventory/locations', {
+      headers: directorHeaders,
+      data: {
+        name: 'Site stockroom', code: `ST-${director.projectCode}`,
+        location_type: 'project_site', project_id: director.projectId
+      }
+    });
+    expect(locationResponse.status()).toBe(201);
+    const location = await locationResponse.json();
+
+    await signIn(page, supervisor);
+    await page.goto('/materials');
+    await page.getByRole('button', { name: 'Register received items' }).click();
+    await page.getByLabel('Registration project').selectOption(supervisor.projectId);
+    await page.getByLabel('Receipt location').selectOption(location.id);
+    await page.getByLabel('Item name', { exact: true }).fill(`Browser receipt ${director.projectCode}`);
+    await page.getByLabel('Item description').fill('Counted materials at the site stockroom');
+    await page.getByLabel('Received quantity').fill('3');
+    await page.getByLabel('Date received').fill('2026-10-01');
+    await page.getByRole('button', { name: 'Save registration draft' }).click();
+    const draft = page.locator('summary').filter({ hasText: `Browser receipt ${director.projectCode}` });
+    await draft.click();
+    const submit = page.getByRole('button', { name: 'Submit registration' });
+    await expect(submit).toBeDisabled();
+    const jpg = execFileSync(PYTHON_BIN,
+      ['-c', 'import sys; from tests.test_photos import jpeg_bytes; sys.stdout.buffer.write(jpeg_bytes())'],
+      { cwd: BACKEND_DIR }
+    );
+    await page.getByLabel('Item photographs').setInputFiles({
+      name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: jpg
+    });
+    await expect(page.getByRole('button', { name: 'receipt.jpg', exact: true })).toBeVisible();
+    await submit.click();
+    await expect(draft).toContainText('pending engineer');
+
+    const unconfirmed = await request.get('/api/v1/inventory/items', {
+      headers: directorHeaders, params: { search: director.projectCode }
+    });
+    expect(await unconfirmed.json()).toEqual([]);
+    await signIn(engineerPage, engineer);
+    await engineerPage.goto('/materials');
+    await engineerPage.locator('summary').filter({ hasText: `Browser receipt ${director.projectCode}` }).click();
+    await expect(engineerPage.getByRole('button', { name: 'receipt.jpg', exact: true })).toBeVisible();
+    await engineerPage.getByRole('button', { name: 'Confirm receipt', exact: true }).click();
+    await expect(engineerPage.locator('summary').filter({ hasText: `Browser receipt ${director.projectCode}` }))
+      .toContainText('approved');
+
+    const catalog = await request.get('/api/v1/inventory/items', {
+      headers: directorHeaders, params: { search: director.projectCode }
+    });
+    const [item] = await catalog.json();
+    await page.reload();
+    await page.getByLabel('Request project').selectOption(supervisor.projectId);
+    await page.getByLabel('Source location').selectOption(location.id);
+    await page.getByLabel('Item 1', { exact: true }).selectOption(item.id);
+    await page.getByLabel('Quantity 1', { exact: true }).fill('2');
+    await page.getByLabel('Required delivery date').fill('2026-11-30');
+    await page.getByLabel('Purpose and work scope').fill('Site test');
+    await page.getByLabel('Material description and specification').fill('Site fixture');
+    const submitted = page.waitForResponse((response) =>
+      response.url().endsWith('/inventory/requests') && response.request().method() === 'POST'
+    );
+    await page.getByRole('button', { name: 'Submit request', exact: true }).click();
+    const material = await (await submitted).json();
+    await expect(page.getByRole('article').filter({ hasText: material.request_number }))
+      .toContainText('pending_engineer');
+
+    await engineerPage.goto('/approvals?tab=workflow');
+    const verification = engineerPage.getByRole('article').filter({ hasText: `${material.request_number} · Technical verification` });
+    await verification.getByRole('button', { name: 'Verify', exact: true }).click();
+    await expect(verification).toHaveCount(0);
+
+    await signIn(managerPage, manager);
+    await managerPage.goto('/approvals?tab=workflow');
+    const managerApproval = managerPage.getByRole('article').filter({ hasText: `${material.request_number} · GPM approval` });
+    await managerApproval.getByRole('button', { name: 'Approve', exact: true }).click();
+    await expect(managerApproval).toHaveCount(0);
+
+    await directorPage.goto(`/materials?materialRequestId=${material.id}`);
+    const fulfillment = directorPage.getByRole('article').filter({ hasText: material.request_number });
+    await fulfillment.getByText('Request lines', { exact: true }).click();
+    const quantity = fulfillment.getByLabel(`Quantity for Browser receipt ${director.projectCode}`);
+    await quantity.fill('2');
+    await fulfillment.getByRole('button', { name: 'Reserve selected' }).click();
+    await expect(fulfillment).toContainText('2.000 reserved');
+    await quantity.fill('2');
+    await fulfillment.getByRole('button', { name: 'Issue selected' }).click();
+    await expect(fulfillment).toContainText('2.000 issued');
+  } finally {
+    await Promise.all([directorPage.close(), engineerPage.close(), managerPage.close()]);
+  }
+});
+
+test('Group Project Manager reads only assigned project balances', async ({ page, request }) => {
+  const assigned = seedAccount('managing_director');
+  const manager = seedAccount('group_project_manager', assigned.projectId);
+  const unassigned = seedAccount('managing_director');
+  const { accessToken } = await signIn(page, manager);
+  const headers = { Authorization: `Bearer ${accessToken}` };
+
+  await page.goto('/finance');
+  await expect(page.getByRole('heading', { name: 'Invoices and payments' })).toBeVisible();
+  const filter = page.getByRole('combobox', { name: 'Project filter', exact: true });
+  await filter.selectOption(manager.projectId);
+  await expect(page.getByText('Remaining budget', { exact: true })).toBeVisible();
+  await expect(filter.locator(`option[value="${unassigned.projectId}"]`)).toHaveCount(0);
+
+  const forbidden = await request.get(
+    `/api/v1/finance/projects/${unassigned.projectId}/budget-summary`,
+    { headers }
+  );
+  expect(forbidden.status()).toBe(403);
+  expect((await forbidden.json()).error_code).toBe('PROJECT_FORBIDDEN');
+
+  const project = await request.get(`/api/v1/projects/${manager.projectId}`, { headers });
+  expect(project.ok()).toBe(true);
+  const write = await request.patch(`/api/v1/projects/${manager.projectId}`, {
+    headers,
+    data: { expected_revision: (await project.json()).revision, budget_amount: '123456.78' }
+  });
+  expect(write.status()).toBe(403);
+});
+
 test('quantity_surveyor submits daily reports via report-options without reports:view or projects list', async ({
   browser
 }) => {
@@ -413,7 +548,7 @@ test('supervisors navigate to supervisor updates via report-options including mo
   browser
 }) => {
   const [director, seniorSupervisor, siteSupervisor] = seedProjectAccounts(
-    'managing_director', 'senior_site_supervisor', 'site_supervisor'
+    'managing_director', 'senior_site_supervisor', 'site_supervisor', 'mep_project_manager'
   );
 
   const setupContext = await browser.newContext();
@@ -458,8 +593,15 @@ test('supervisors navigate to supervisor updates via report-options including mo
     await projectSelect.selectOption(director.projectId);
 
     await mobilePage.getByLabel('Work location').fill('Tower A Level 2');
+    await mobilePage.getByLabel('Activity and work scope').fill('Check slab formwork.');
     await mobilePage.getByLabel('Progress notes').fill('Completed slab formwork check.');
+    await mobilePage.getByLabel('Remaining work').fill('Review the spacers.');
     await mobilePage.getByLabel('Required notes').fill('Rebar spacer inspection before pour.');
+    await mobilePage.getByLabel(/Drop photos here or tap to use camera/).setInputFiles({
+      name: 'slab.jpg', mimeType: 'image/jpeg',
+      buffer: readFileSync(new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url))
+    });
+    await expect(mobilePage.getByText('1 file saved.', { exact: true })).toBeVisible();
     await mobilePage.getByRole('button', { name: 'Submit update' }).click();
     await expect(mobilePage.getByText('Site update submitted.', { exact: true })).toBeVisible();
   } finally {
@@ -4732,4 +4874,44 @@ test('reviewed recovery opens the reset confirmation without requesting another 
   await page.goto('/password-reset#recovery=unrecognized');
   await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send reset code' })).toBeVisible();
+});
+
+test('site attendance remains unconfirmed until the assigned engineer and HR verify it', async ({ page, browser }) => {
+  const [supervisor, engineer, hr] = seedProjectAccounts('site_supervisor', 'mep_project_manager', 'hr_manager');
+  const worker: { id: string; code: string } = JSON.parse(execFileSync(
+    PYTHON_BIN, ['-m', 'tests.browser_fixtures', 'seed-site-worker', '--project-id', supervisor.projectId],
+    { cwd: BACKEND_DIR, encoding: 'utf8' }
+  ));
+
+  await signIn(page, supervisor);
+  await page.goto('/hr/site-attendance');
+  await page.getByLabel('Attendance project').selectOption(supervisor.projectId);
+  await page.getByLabel('Site worker').selectOption(worker.id);
+  await page.getByLabel('Worked hours').fill('8');
+  await page.getByLabel('Overtime hours').fill('1');
+  await page.getByRole('button', { name: 'Submit site attendance' }).click();
+  await expect(page.getByText(new RegExp(worker.code + '.*pending engineer'))).toBeVisible();
+  await expect(page.getByText('Present submitted: 1 · Present confirmed by HR: 0')).toBeVisible();
+
+  const engineerPage = await browser.newPage();
+  await signIn(engineerPage, engineer);
+  await engineerPage.goto('/hr/site-attendance');
+  await engineerPage.getByText(new RegExp(worker.code + '.*pending engineer')).click();
+  await engineerPage.getByRole('button', { name: 'Approve as Site Engineer' }).click();
+  await expect(engineerPage.getByText(new RegExp(worker.code + '.*pending hr'))).toBeVisible();
+  await engineerPage.close();
+
+  const hrPage = await browser.newPage();
+  await signIn(hrPage, hr);
+  await hrPage.goto('/hr/site-attendance');
+  await hrPage.getByText(new RegExp(worker.code + '.*pending hr')).click();
+  await hrPage.getByRole('button', { name: 'Verify attendance for HR' }).click();
+  await expect(hrPage.getByText(new RegExp(worker.code + '.*approved'))).toBeVisible();
+  await hrPage.close();
+
+  await page.reload();
+  await page.getByLabel('Attendance project').selectOption(supervisor.projectId);
+  await expect(page.getByText('Present submitted: 1 · Present confirmed by HR: 1')).toBeVisible();
+  await page.getByText(new RegExp(worker.code + '.*approved')).click();
+  await expect(page.getByText('Submission 1 · Site Engineer: approved · HR: approved')).toBeVisible();
 });

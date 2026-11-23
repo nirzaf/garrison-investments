@@ -1085,6 +1085,26 @@ class HrAttendanceEntry(HrManagerRecommendationMixin, TimestampMixin, Base):
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    site_submission_revision: Mapped[int | None] = mapped_column(Integer)
+
+
+class HrSiteAttendanceSubmission(TimestampMixin, Base):
+    __tablename__ = "hr_site_attendance_submissions"
+
+    entry_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_attendance_entries.id", ondelete="RESTRICT"), primary_key=True
+    )
+    submission_revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submitted_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    engineer_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    requirements: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    engineer_decision: Mapped[str | None] = mapped_column(String(20))
+    engineer_comments: Mapped[str | None] = mapped_column(Text)
+    engineer_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hr_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    hr_decision: Mapped[str | None] = mapped_column(String(20))
+    hr_comments: Mapped[str | None] = mapped_column(Text)
+    hr_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class HrAttendanceCorrection(TimestampMixin, Base):

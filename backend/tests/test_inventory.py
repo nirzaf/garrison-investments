@@ -1,7 +1,7 @@
 import asyncio
 from datetime import date
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -107,6 +107,38 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     return str(verify_response.json()["access_token"])
 
 
+def material_requirements() -> dict[str, str]:
+    return {
+        "required_date": date.today().isoformat(),
+        "urgency": "routine",
+        "purpose": "Site concrete pour",
+        "specification": "Specified grade of cement",
+    }
+
+
+async def material_inbox_item(client: httpx.AsyncClient, token: str, request_id: str) -> dict:
+    response = await client.get("/api/v1/approvals", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200, response.text
+    return next(item for item in response.json()["items"] if item["request_id"] == request_id)
+
+
+async def approve_material_stage(
+    client: httpx.AsyncClient,
+    token: str,
+    request_id: str,
+    step: int,
+    revision: int = 1,
+) -> None:
+    approval = await material_inbox_item(client, token, request_id)
+    assert (approval["step_order"], approval["submission_revision"]) == (step, revision)
+    response = await client.post(
+        f"/api/v1/approvals/{approval['id']}/approve",
+        json={"expected_submission_revision": revision, "comments": "Reviewed on site."},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+
+
 async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -114,16 +146,26 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
     policy = Settings(app_env="test", business_currency="LKR")
     monkeypatch.setattr("app.services.approval_service.get_settings", lambda: policy)
     store, store_password = await create_user("operations_director")
-    engineer, engineer_password = await create_user("quantity_surveyor")
+    engineer, engineer_password = await create_user("mep_project_manager")
     pm, pm_password = await create_user("group_project_manager")
-    requester, requester_password = await create_user("managing_director")
+    requester, requester_password = await create_user("site_supervisor")
+    processor, processor_password = await create_user("administrative_executive")
     project = await create_project(pm, engineer)
+    async with AsyncSessionLocal() as session:
+        session.add_all(
+            [
+                ProjectMember(project_id=project.id, user_id=requester.id),
+                ProjectMember(project_id=project.id, user_id=processor.id),
+            ]
+        )
+        await session.commit()
 
     async with create_test_client() as client:
         store_token = await login_for_token(client, store, store_password)
         engineer_token = await login_for_token(client, engineer, engineer_password)
         pm_token = await login_for_token(client, pm, pm_password)
         requester_token = await login_for_token(client, requester, requester_password)
+        processor_token = await login_for_token(client, processor, processor_password)
 
         location_response = await client.post(
             "/api/v1/inventory/locations",
@@ -263,6 +305,7 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             "project_id": str(project.id),
             "from_location_id": location["id"],
             "notes": "Site pour",
+            "requirements": material_requirements(),
             "lines": [{"item_id": item["id"], "quantity": "3"}],
         }
         for token in (engineer_token, pm_token):
@@ -279,41 +322,96 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         )
         assert request_response.status_code == 201
         material_request = request_response.json()
-        assert material_request["status"] == "requested"
+        assert material_request["status"] == "pending_engineer"
+        assert material_request["submission_revision"] == 1
+        request_id = material_request["id"]
+        direct_movement = await client.post(
+            "/api/v1/inventory/movements",
+            json={
+                "item_id": item["id"],
+                "movement_type": "issue",
+                "quantity": "1",
+                "from_location_id": location["id"],
+                "project_id": str(project.id),
+                "reference_type": "material_request",
+                "reference_id": request_id,
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+        assert direct_movement.status_code == 409, direct_movement.text
+        assert direct_movement.json()["error_code"] == "MATERIAL_REQUEST_WORKFLOW_REQUIRED"
+        for token in (store_token, processor_token):
+            blocked_reserve = await client.post(
+                f"/api/v1/inventory/requests/{request_id}/reserve",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert blocked_reserve.status_code == 409
+            assert blocked_reserve.json()["error_code"] == "MATERIAL_APPROVALS_REQUIRED"
+
+        technical = await material_inbox_item(client, engineer_token, request_id)
+        assert technical["amount"] is None and technical["currency"] is None
+        for token in (requester_token, pm_token, store_token):
+            bypass = await client.post(
+                f"/api/v1/approvals/{technical['id']}/approve",
+                json={"expected_submission_revision": 1},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert bypass.status_code == 403, bypass.text
+        stale = await client.post(
+            f"/api/v1/approvals/{technical['id']}/approve",
+            json={"expected_submission_revision": 2},
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["error_code"] == "SUBMISSION_REVISION_CONFLICT"
+        await approve_material_stage(client, engineer_token, request_id, 1)
 
         blocked_reserve = await client.post(
-            f"/api/v1/inventory/requests/{material_request['id']}/reserve",
+            f"/api/v1/inventory/requests/{request_id}/reserve",
             headers={"Authorization": f"Bearer {store_token}"},
         )
         assert blocked_reserve.status_code == 409
-
-        approvals = await client.get(
-            "/api/v1/approvals",
-            headers={"Authorization": f"Bearer {store_token}"},
-        )
-        assert approvals.status_code == 200
-        approval = next(
-            item
-            for item in approvals.json()["items"]
-            if item["request_id"] == material_request["id"]
-        )
-        assert approval["currency"] == "LKR"
-        manager_inbox = await client.get(
-            "/api/v1/approvals", headers={"Authorization": f"Bearer {pm_token}"}
-        )
-        assert all(item["id"] != approval["id"] for item in manager_inbox.json()["items"])
-        manager_decision = await client.post(
-            f"/api/v1/approvals/{approval['id']}/approve",
-            json={"comments": "This role has no inventory approval grant."},
+        manager = await material_inbox_item(client, pm_token, request_id)
+        assert manager["currency"] == "LKR"
+        returned = await client.post(
+            f"/api/v1/approvals/{manager['id']}/return",
+            json={"comments": "Confirm the delivery date.", "expected_submission_revision": 1},
             headers={"Authorization": f"Bearer {pm_token}"},
         )
-        assert manager_decision.status_code == 403
-        approved = await client.post(
-            f"/api/v1/approvals/{approval['id']}/approve",
-            json={"comments": "Approved for site work."},
-            headers={"Authorization": f"Bearer {store_token}"},
+        assert returned.status_code == 200, returned.text
+
+        corrected = await client.post(
+            f"/api/v1/inventory/requests/{request_id}/resubmit",
+            json={**request_payload, "notes": "Confirmed delivery", "expected_revision": 3},
+            headers={"Authorization": f"Bearer {requester_token}"},
         )
-        assert approved.status_code == 200
+        assert corrected.status_code == 200, corrected.text
+        assert corrected.json()["submission_revision"] == 2
+        assert corrected.json()["status"] == "pending_engineer"
+        retired = await client.post(
+            f"/api/v1/approvals/{manager['id']}/approve",
+            json={"expected_submission_revision": 1},
+            headers={"Authorization": f"Bearer {pm_token}"},
+        )
+        assert retired.status_code == 409
+        await approve_material_stage(client, engineer_token, request_id, 1, 2)
+        await approve_material_stage(client, pm_token, request_id, 2, 2)
+
+        history = await client.get(
+            f"/api/v1/inventory/requests/{request_id}/submissions",
+            headers={"Authorization": f"Bearer {requester_token}"},
+        )
+        assert history.status_code == 200, history.text
+        assert [row["requirements"]["notes"] for row in history.json()["submissions"]] == [
+            "Confirmed delivery",
+            "Site pour",
+        ]
+        assert [row["status"] for row in history.json()["decisions"]] == [
+            "approved",
+            "approved",
+            "approved",
+            "returned",
+        ]
 
         reserved = await client.post(
             f"/api/v1/inventory/requests/{material_request['id']}/reserve",
@@ -321,14 +419,17 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         )
         assert reserved.status_code == 200
         assert reserved.json()["status"] == "reserved"
+        assert reserved.json()["submission_revision"] == 2
         assert reserved.json()["lines"][0]["reserved_quantity"] == "3.000"
 
         issued = await client.post(
             f"/api/v1/inventory/requests/{material_request['id']}/issue",
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {processor_token}"},
         )
-        assert issued.status_code == 200
+        assert issued.status_code == 200, issued.text
         assert issued.json()["status"] == "issued"
+        assert issued.json()["submission_revision"] == 2
+        assert issued.json()["revision"] == reserved.json()["revision"] + 1
 
         for path, filters, total in (
             ("items", {"search": item["item_code"]}, 1),
@@ -375,14 +476,16 @@ async def test_reserve_request_concurrency() -> None:
     import asyncio
 
     ops_director, ops_director_password = await create_user("operations_director")
-    qs, _ = await create_user("quantity_surveyor")
-    group_pm, _ = await create_user("group_project_manager")
+    qs, engineer_password = await create_user("mep_project_manager")
+    group_pm, pm_password = await create_user("group_project_manager")
     requester, requester_password = await create_user("managing_director")
     project = await create_project(group_pm, qs)
 
     async with create_test_client() as client:
         ops_director_token = await login_for_token(client, ops_director, ops_director_password)
         requester_token = await login_for_token(client, requester, requester_password)
+        engineer_token = await login_for_token(client, qs, engineer_password)
+        pm_token = await login_for_token(client, group_pm, pm_password)
 
         location_response = await client.post(
             "/api/v1/inventory/locations",
@@ -451,6 +554,7 @@ async def test_reserve_request_concurrency() -> None:
                 "project_id": str(project.id),
                 "from_location_id": location["id"],
                 "notes": "Site pour",
+                "requirements": material_requirements(),
                 "lines": [{"item_id": item["id"], "quantity": "5"}],
             },
             headers={"Authorization": f"Bearer {requester_token}"},
@@ -458,20 +562,20 @@ async def test_reserve_request_concurrency() -> None:
         assert request_response.status_code == 201, request_response.text
         material_request = request_response.json()
 
-        approvals = await client.get(
-            "/api/v1/approvals",
-            headers={"Authorization": f"Bearer {ops_director_token}"},
+        request_id = material_request["id"]
+        technical = await material_inbox_item(client, engineer_token, request_id)
+        decisions = await asyncio.gather(
+            *[
+                client.post(
+                    f"/api/v1/approvals/{technical['id']}/approve",
+                    json={"expected_submission_revision": 1},
+                    headers={"Authorization": f"Bearer {engineer_token}"},
+                )
+                for _ in range(2)
+            ]
         )
-        approval = next(
-            item
-            for item in approvals.json()["items"]
-            if item["request_id"] == material_request["id"]
-        )
-        await client.post(
-            f"/api/v1/approvals/{approval['id']}/approve",
-            json={"comments": "Approved for site work."},
-            headers={"Authorization": f"Bearer {ops_director_token}"},
-        )
+        assert sorted(response.status_code for response in decisions) == [200, 409]
+        await approve_material_stage(client, pm_token, request_id, 2)
 
         async def make_reserve_request():
             async with create_test_client() as new_client:
@@ -516,9 +620,7 @@ async def test_request_project_lookup_and_write_share_active_role_and_membership
     pm, engineer = users_by_role["group_project_manager"][0], users_by_role["quantity_surveyor"][0]
     assigned = await create_project(pm, engineer)
     other_site_supervisor, _ = await create_user("site_supervisor")
-    other = await create_project(
-        users_by_role["managing_director"][0], other_site_supervisor
-    )
+    other = await create_project(users_by_role["managing_director"][0], other_site_supervisor)
     inactive = await create_project(pm, engineer)
     prefix = f"REQ-{uuid4().hex[:8]}"
     async with AsyncSessionLocal() as session:
@@ -594,10 +696,11 @@ async def test_request_project_lookup_and_write_share_active_role_and_membership
                     json={
                         "project_id": str(project_id),
                         "from_location_id": str(uuid4()),
+                        "requirements": material_requirements(),
                         "lines": [{"item_id": str(uuid4()), "quantity": "1.000"}],
                     },
                 )
-                if role not in company_creators:
+                if role not in company_creators | {"site_supervisor", "senior_site_supervisor"}:
                     assert result.status_code == 403
                 else:
                     assert result.status_code == 404
@@ -607,3 +710,177 @@ async def test_request_project_lookup_and_write_share_active_role_and_membership
                         else "Eligible request project"
                     )
                     assert expected in result.json()["detail"]
+
+
+async def test_registration_requires_evidence_and_confirms_one_receipt() -> None:
+    await skip_if_database_unavailable()
+    from sqlalchemy import func, select
+
+    from app.models.inventory import InventoryAsset, InventoryLocationStock, InventoryMovement
+    from tests.test_photos import jpeg_bytes
+
+    pm, _ = await create_user("group_project_manager")
+    engineer, engineer_password = await create_user("mep_project_manager")
+    outsider, outsider_password = await create_user("mep_project_manager")
+    supervisor, supervisor_password = await create_user("senior_site_supervisor")
+    director, director_password = await create_user("operations_director")
+    surveyor, surveyor_password = await create_user("quantity_surveyor")
+    project = await create_project(pm, engineer)
+    async with AsyncSessionLocal() as session:
+        location = StorageLocation(
+            project_id=project.id,
+            name="Registration stockroom",
+            code=f"REG-{uuid4().hex[:6]}",
+            location_type="project_site",
+        )
+        session.add_all(
+            [
+                location,
+                ProjectMember(project_id=project.id, user_id=supervisor.id),
+                ProjectMember(project_id=project.id, user_id=surveyor.id),
+            ]
+        )
+        await session.commit()
+
+    draft = {
+        "project_id": str(project.id),
+        "location_id": str(location.id),
+        "name": "Site equipment",
+        "description": "Inspected equipment",
+        "category": "equipment",
+        "unit": "Nos",
+        "quantity": "1",
+        "condition": "new",
+        "received_date": date.today().isoformat(),
+        "serial_number": "REG-TEST-1",
+    }
+    path = "/api/v1/inventory/registrations"
+    async with create_test_client() as client:
+        owner_token = await login_for_token(client, supervisor, supervisor_password)
+        owner = {"Authorization": f"Bearer {owner_token}"}
+        reviewer_token = await login_for_token(client, engineer, engineer_password)
+        reviewer = {"Authorization": f"Bearer {reviewer_token}"}
+        denied = {
+            "Authorization": f"Bearer {await login_for_token(client, outsider, outsider_password)}"
+        }
+        operations = {
+            "Authorization": f"Bearer {await login_for_token(client, director, director_password)}"
+        }
+        qs = {
+            "Authorization": f"Bearer {await login_for_token(client, surveyor, surveyor_password)}"
+        }
+        created = await client.post(path, json=draft, headers=owner)
+        assert created.status_code == 201, created.text
+        first = f"{path}/{created.json()['id']}"
+        stage1 = {"expected_submission_revision": 1}
+        filters = {"registration_id": created.json()["id"]}
+        assert (await client.get(path, headers=qs, params=filters)).json()["items"] == []
+        missing = await client.post(f"{first}/submit", json=stage1, headers=owner)
+        assert missing.status_code == 422
+        assert missing.json()["error_code"] == "REGISTRATION_PHOTO_REQUIRED"
+
+        async def upload_and_submit(row: dict, revision: int) -> None:
+            uploaded = await client.post(
+                "/api/v1/photos/upload",
+                data={"entity_type": "inventory_registration", "entity_id": row["id"]},
+                files={"files": ("equipment.jpg", jpeg_bytes(), "image/jpeg")},
+                headers=owner,
+            )
+            assert uploaded.status_code == 201, uploaded.text
+            submitted = await client.post(
+                f"{path}/{row['id']}/submit",
+                json={"expected_submission_revision": revision},
+                headers=owner,
+            )
+            assert submitted.status_code == 200, submitted.text
+            assert submitted.json()["movement_id"] is None
+            assert submitted.json()["evidence_ids"] == [uploaded.json()[0]["id"]]
+            hidden = await client.get(
+                f"/api/v1/photos/{uploaded.json()[0]['id']}/download", headers=denied
+            )
+            assert hidden.status_code == 404
+            locked = await client.delete(
+                f"/api/v1/photos/{uploaded.json()[0]['id']}", headers=owner
+            )
+            assert locked.status_code == 409
+
+        await upload_and_submit(created.json(), 1)
+        scoped = await client.get(path, headers=qs, params=filters)
+        assert scoped.status_code == 200, scoped.text
+        assert [row["id"] for row in scoped.json()["items"]] == [created.json()["id"]]
+        assert (await client.get(path, headers=denied, params=filters)).json()["items"] == []
+        for headers, expected in ((owner, 403), (denied, 404), (operations, 403), (qs, 403)):
+            forbidden = await client.post(
+                f"{first}/decision", json={**stage1, "decision": "approved"}, headers=headers
+            )
+            assert forbidden.status_code == expected, forbidden.text
+        returned = await client.post(
+            f"{first}/decision",
+            json={**stage1, "decision": "returned", "comments": "Check model identification."},
+            headers=reviewer,
+        )
+        assert returned.status_code == 200, returned.text
+        assert returned.json()["movement_id"] is None
+
+        corrected = await client.post(
+            f"{first}/correction",
+            json={**draft, **stage1, "model_number": "Model A"},
+            headers=owner,
+        )
+        assert corrected.status_code == 201, corrected.text
+        correction = corrected.json()
+        assert correction["previous_id"] == created.json()["id"]
+        assert correction["submission_revision"] == 2
+        await upload_and_submit(correction, 2)
+
+        async with AsyncSessionLocal() as session:
+            assert (
+                await session.scalar(
+                    select(func.count(InventoryMovement.id)).where(
+                        InventoryMovement.reference_type == "inventory_registration"
+                    )
+                )
+                == 0
+            )
+
+        decisions = await asyncio.gather(
+            *[
+                client.post(
+                    f"{path}/{correction['id']}/decision",
+                    json={"decision": "approved", "expected_submission_revision": 2},
+                    headers=reviewer,
+                )
+                for _ in range(2)
+            ]
+        )
+        assert sorted(response.status_code for response in decisions) == [200, 409], [
+            response.text for response in decisions
+        ]
+        approved = next(response.json() for response in decisions if response.status_code == 200)
+        assert approved["confirmed_item_id"] and approved["movement_id"]
+        history = await client.get(f"{path}/{correction['id']}/history", headers=owner)
+        assert [entry["status"] for entry in history.json()] == ["approved", "returned"]
+
+    async with AsyncSessionLocal() as session:
+        assert (
+            await session.scalar(
+                select(func.count(InventoryMovement.id)).where(
+                    InventoryMovement.reference_type == "inventory_registration",
+                    InventoryMovement.reference_id == UUID(correction["id"]),
+                )
+            )
+            == 1
+        )
+        item_id = UUID(approved["confirmed_item_id"])
+        assert await session.scalar(
+            select(InventoryLocationStock.on_hand_qty).where(
+                InventoryLocationStock.item_id == item_id,
+                InventoryLocationStock.location_id == location.id,
+            )
+        ) == Decimal("1")
+        assert (
+            await session.scalar(
+                select(func.count(InventoryAsset.id)).where(InventoryAsset.item_id == item_id)
+            )
+            == 1
+        )

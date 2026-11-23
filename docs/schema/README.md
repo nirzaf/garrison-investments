@@ -36,7 +36,8 @@ A dash in the default column means the database has no server default. Applicati
 | Table | Purpose |
 | --- | --- |
 | [`daily_reports`](daily_reports.md) | Engineer-authored daily site reports, with workflow status, referenced updates, and approval metadata. |
-| [`supervisor_updates`](supervisor_updates.md) | Supervisor site updates with attendance, overtime, progress, and verification metadata. |
+| [`supervisor_updates`](supervisor_updates.md) | Supervisor drafts and submitted progress with attendance, overtime and verification metadata. |
+| [`supervisor_update_submissions`](supervisor_updates.md#submitted-progress) | Versioned progress requirements, photographs, and separate QS and engineer review records. |
 | [`report_manpower`](report_manpower.md) | Trade-level manpower counts and overtime for a daily report. |
 | [`report_equipment`](report_equipment.md) | Equipment quantities and usage hours recorded in a daily report. |
 | [`report_material_consumption`](report_material_consumption.md) | Material usage recorded in a daily report, optionally linked to a bill of quantities item. |
@@ -62,6 +63,8 @@ A dash in the default column means the database has no server default. Applicati
 | [`inventory_movements`](inventory_movements.md) | Stock and asset movement history, with references to the source operation where available. |
 | [`material_requests`](material_requests.md) | Project material requests, including the source storage location and estimated cost. |
 | [`material_request_lines`](material_request_lines.md) | Requested, reserved, and issued quantities for each material request line. |
+| [`material_request_submissions`](material_requests.md#submitted-requirements) | Submitted requirements and their approval revision. |
+| [`inventory_registrations`](inventory_movements.md#site-inventory-registration-receipts) | Supervisor submissions, evidence, engineer decisions, corrections and confirmed receipt links. |
 
 ## Finance and suppliers
 
@@ -95,7 +98,7 @@ indexes and soft-delete columns. The initial schema is defined in
 | Core organization & employee master | `hr_departments`, `hr_positions`, `hr_employees`, `hr_employee_private` (Fernet-encrypted sensitive fields), `hr_employment_history` (employment change history), `hr_employment_periods` (separation and rehire periods), `hr_access_requests` (HR request, separate HR review and director fulfillment), `hr_project_assignment_requests` (pending requests only change membership after authorized approval) |
 | Recruitment & onboarding | `hr_requisitions`, `hr_candidates`, `hr_applications`, `hr_interviews`, `hr_offers`, `hr_onboarding_cases`, `hr_onboarding_tasks` |
 | HR documents vault & compliance | `hr_documents` (categories: ordinary, confidential, medical, identity, compensation, disciplinary), `hr_document_versions` |
-| Time, attendance & leave | `hr_work_calendars`, `hr_holidays`, `hr_shift_assignments`, `hr_attendance_entries`, `hr_attendance_corrections`, `hr_timesheets`, `hr_overtime_requests`, `hr_leave_types`, `hr_leave_policies`, `hr_leave_ledger`, `hr_leave_requests` |
+| Time, attendance & leave | `hr_work_calendars`, `hr_holidays`, `hr_shift_assignments`, `hr_attendance_entries`, `hr_attendance_corrections`, [`hr_site_attendance_submissions`](hr.md#site-attendance-submission-history), `hr_timesheets`, `hr_overtime_requests`, `hr_leave_types`, `hr_leave_policies`, `hr_leave_ledger`, `hr_leave_requests` |
 | Policies, letters, requests & offboarding | `hr_policy_documents`, `hr_policy_acknowledgements`, `hr_letter_templates`, `hr_issued_letters`, `hr_hr_requests`, `hr_offboarding_cases`, `hr_clearance_steps`, `hr_offboarding_custody`, `hr_separation_settlements` |
 | P2 governance & policy-gated modules | `hr_goals`, `hr_review_cycles`, `hr_reviews`, `hr_performance_events`, `hr_training_courses`, `hr_training_enrollments`, `hr_certifications`, `hr_training_completions`, `hr_training_requirements`, `hr_benefit_types`, `hr_employee_benefits`, `hr_reimbursement_claims`, `hr_compensation_terms`, `hr_payroll_policies` (dual-approval gate), `hr_payroll_periods`, `hr_payroll_runs`, `hr_payroll_lines`, `hr_payslip_publications`, `hr_payroll_exports`, `hr_payroll_settlement_events`, `hr_cases` (encrypted restricted case details) |
 

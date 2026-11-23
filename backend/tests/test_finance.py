@@ -164,6 +164,7 @@ async def test_finance_access_is_read_only_for_the_ten_role_catalogue() -> None:
         "senior_site_supervisor",
         "site_supervisor",
         "hr_manager",
+        "hr_executive_reader",
         "administrative_executive",
     )
     users_by_role = {role: await create_user(role) for role in roles}
@@ -171,6 +172,8 @@ async def test_finance_access_is_read_only_for_the_ten_role_catalogue() -> None:
     invoice = await add_invoice(
         project, Decimal("300.00"), status="approved", supplier_id=supplier.id
     )
+    other_project, _ = await create_project_and_supplier(users_by_role["managing_director"][0])
+    other_invoice = await add_invoice(other_project, Decimal("900.00"), status="approved")
     async with AsyncSessionLocal() as session:
         session.add(
             ProjectMember(
@@ -214,13 +217,13 @@ async def test_finance_access_is_read_only_for_the_ten_role_catalogue() -> None:
         for role, (user, password) in users_by_role.items():
             token = await login_for_token(client, user, password)
             headers = {"Authorization": f"Bearer {token}"}
-            can_read_finance = role in {"managing_director", "operations_director"}
+            director = role in {"managing_director", "operations_director"}
+            can_read_finance = director or role == "group_project_manager"
 
             for path in (
                 "/api/v1/finance/invoices",
                 f"/api/v1/finance/invoices/{invoice.id}",
                 f"/api/v1/finance/projects/{project.id}/budget-summary",
-                "/api/v1/finance/supplier-options",
             ):
                 response = await client.get(path, headers=headers)
                 assert response.status_code == (200 if can_read_finance else 403), (
@@ -230,6 +233,19 @@ async def test_finance_access_is_read_only_for_the_ten_role_catalogue() -> None:
                 )
                 if can_read_finance and path.endswith(str(invoice.id)):
                     assert response.json()["allowed_actions"] == []
+
+            if role == "group_project_manager":
+                listed = await client.get("/api/v1/finance/invoices", headers=headers)
+                assert [item["id"] for item in listed.json()["items"]] == [str(invoice.id)]
+                for path in (
+                    f"/api/v1/finance/invoices/{other_invoice.id}",
+                    f"/api/v1/finance/projects/{other_project.id}/budget-summary",
+                    f"/api/v1/finance/invoices?project_id={other_project.id}",
+                    "/api/v1/finance/policy/reconciliation",
+                    "/api/v1/finance/supplier-options",
+                ):
+                    denied = await client.get(path, headers=headers)
+                    assert denied.status_code == 403, (path, denied.text)
 
             create = await client.post("/api/v1/finance/invoices", json=payload, headers=headers)
             update = await client.patch(

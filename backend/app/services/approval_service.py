@@ -12,8 +12,9 @@ from app.models.approval import Approval
 from app.models.daily_report import DailyReport
 from app.models.document import Document
 from app.models.finance import Invoice
-from app.models.inventory import MaterialRequest
+from app.models.inventory import MaterialRequest, MaterialRequestSubmission
 from app.models.notification import Notification
+from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.approval_repository import ApprovalRepository
@@ -34,10 +35,13 @@ from app.utils.links import (
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_DOCUMENTS_MANAGE,
+    PERMISSION_FINANCIAL_VIEW,
     PERMISSION_INVENTORY_MANAGE,
     PERMISSION_REPORTS_APPROVE,
     PERMISSION_REPORTS_SUBMIT,
     REPORT_APPROVER_ROLES,
+    ROLE_GROUP_PROJECT_MANAGER,
+    ROLE_MEP_PROJECT_MANAGER,
     ensure_permission,
     has_permission,
     roles_with_permission,
@@ -47,6 +51,8 @@ from app.utils.security import utc_now
 APPROVAL_PENDING_STATUSES = {"pending", "delegated", "escalated"}
 ENTITY_BACKED_REQUEST_TYPES = {"material_request", "invoice", "daily_report", "document"}
 OPERATING_CURRENCY_APPROVAL_TYPES = {"material_request", "invoice"}
+MATERIAL_STAGE_ROLES = {1: ROLE_MEP_PROJECT_MANAGER, 2: ROLE_GROUP_PROJECT_MANAGER}
+MATERIAL_STAGE_STATES = {1: "pending_engineer", 2: "pending_gpm"}
 APPROVAL_REMINDER_TITLE = "Approval reminder"
 APPROVAL_ESCALATION_TITLE = "Approval escalated"
 
@@ -77,6 +83,8 @@ class ApprovalService:
         *,
         commit: bool = True,
         internal: bool = False,
+        material_submission: MaterialRequestSubmission | None = None,
+        step_order: int = 1,
     ) -> Approval:
         if payload.request_type in ENTITY_BACKED_REQUEST_TYPES and not internal:
             raise AppException(
@@ -95,12 +103,26 @@ class ApprovalService:
                 status_code=409,
                 error_code="APPROVAL_ALREADY_PENDING",
             )
-        approver = await self._resolve_approver(payload, actor)
-        escalation_user = await self._first_active_scoped_approver(
-            payload.project_id,
-            set(DELEGATION_ELIGIBLE_ROLES.get(payload.request_type, frozenset())),
-            excluded_user_ids={actor.id, approver.id},
-        )
+        if material_submission is not None:
+            approver_id = (
+                material_submission.engineer_id
+                if step_order == 1
+                else material_submission.manager_id
+            )
+            approver = await self.require_project_reviewer(
+                payload.project_id,
+                MATERIAL_STAGE_ROLES[step_order],
+                approver_id=approver_id,
+                excluded_user_ids={material_submission.submitted_by, actor.id},
+            )
+            escalation_user = None
+        else:
+            approver = await self._resolve_approver(payload, actor)
+            escalation_user = await self._first_active_scoped_approver(
+                payload.project_id,
+                set(DELEGATION_ELIGIBLE_ROLES.get(payload.request_type, frozenset())),
+                excluded_user_ids={actor.id, approver.id},
+            )
         now = utc_now()
         try:
             approval = await self.approvals.add(
@@ -108,8 +130,14 @@ class ApprovalService:
                     request_type=payload.request_type,
                     request_id=payload.request_id,
                     project_id=payload.project_id,
-                    submitter_id=actor.id,
+                    submitter_id=(
+                        material_submission.submitted_by if material_submission else actor.id
+                    ),
                     approver_id=approver.id,
+                    submission_revision=(
+                        material_submission.submission_revision if material_submission else None
+                    ),
+                    step_order=step_order,
                     escalation_user_id=escalation_user.id if escalation_user else None,
                     status="pending",
                     amount=payload.amount,
@@ -173,7 +201,9 @@ class ApprovalService:
         request_types = None
         if box == "inbox":
             request_types = {"daily_report"}
-            if has_permission(actor, PERMISSION_INVENTORY_MANAGE):
+            if has_permission(actor, PERMISSION_INVENTORY_MANAGE) or (
+                actor.role in MATERIAL_STAGE_ROLES.values()
+            ):
                 request_types.add("material_request")
             if has_permission(actor, PERMISSION_DOCUMENTS_MANAGE):
                 request_types.add("document")
@@ -235,7 +265,7 @@ class ApprovalService:
                     select(MaterialRequest.id).where(
                         MaterialRequest.id.in_(material_ids),
                         MaterialRequest.deleted_at.is_(None),
-                        MaterialRequest.status == "requested",
+                        MaterialRequest.status.in_(["requested", *MATERIAL_STAGE_STATES.values()]),
                     )
                 )
             )
@@ -251,8 +281,14 @@ class ApprovalService:
                 )
             )
         responses = []
+        can_view_financial = has_permission(actor, PERMISSION_FINANCIAL_VIEW)
         for approval in approvals:
             response = ApprovalResponse.model_validate(approval)
+            if not can_view_financial or (
+                project_ids is not None and approval.project_id not in project_ids
+            ):
+                response.amount = None
+                response.currency = None
             if approval.status in APPROVAL_PENDING_STATUSES and approval.request_type not in {
                 "daily_report",
                 "document",
@@ -268,17 +304,34 @@ class ApprovalService:
                 if eligible:
                     if self._can_act(approval, actor, project_ids=project_ids):
                         response.allowed_actions.extend(["approve", "reject", "delegate"])
+                        if approval.submission_revision is not None:
+                            response.allowed_actions.append("return")
             responses.append(response)
         return responses
 
-    async def approve(self, approval_id: UUID, actor: User, comments: str | None) -> Approval:
+    async def approve(
+        self,
+        approval_id: UUID,
+        actor: User,
+        comments: str | None,
+        expected_submission_revision: int | None = None,
+    ) -> Approval:
         approval = await self._get_actionable(approval_id, actor)
+        self._check_submission_revision(approval, expected_submission_revision)
         approval.status = "approved"
+        if approval.submission_revision is not None:
+            approval.decided_by = actor.id
         approval.decision_comments = comments
         approval.decided_at = utc_now()
         await self._apply_entity_decision(approval, actor, "approved", comments)
         await self._notify_submitter(
-            approval, "Approval completed", f"{approval.title} was approved."
+            approval,
+            "Approval completed",
+            (
+                f"{approval.title} passed technical verification and is awaiting GPM approval."
+                if approval.submission_revision is not None and approval.step_order == 1
+                else f"{approval.title} was approved."
+            ),
         )
         await self.audit.record(
             action="approvals.approved",
@@ -290,7 +343,15 @@ class ApprovalService:
         await self.session.commit()
         return approval
 
-    async def reject(self, approval_id: UUID, actor: User, comments: str | None) -> Approval:
+    async def reject(
+        self,
+        approval_id: UUID,
+        actor: User,
+        comments: str | None,
+        expected_submission_revision: int | None = None,
+        *,
+        return_for_correction: bool = False,
+    ) -> Approval:
         if not comments or not comments.strip():
             raise AppException(
                 "Rejection reason is required.",
@@ -298,15 +359,25 @@ class ApprovalService:
                 error_code="REJECTION_REASON_REQUIRED",
             )
         approval = await self._get_actionable(approval_id, actor)
-        approval.status = "rejected"
+        self._check_submission_revision(approval, expected_submission_revision)
+        if return_for_correction and approval.submission_revision is None:
+            raise AppException(
+                "Return is only available for a material submission.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
+        decision = "returned" if return_for_correction else "rejected"
+        approval.status = decision
+        if approval.submission_revision is not None:
+            approval.decided_by = actor.id
         approval.decision_comments = comments.strip()
         approval.decided_at = utc_now()
-        await self._apply_entity_decision(approval, actor, "rejected", comments.strip())
+        await self._apply_entity_decision(approval, actor, decision, comments.strip())
         await self._notify_submitter(
-            approval, "Approval rejected", f"{approval.title} was rejected."
+            approval, f"Approval {decision}", f"{approval.title} was {decision}: {comments.strip()}"
         )
         await self.audit.record(
-            action="approvals.rejected",
+            action=f"approvals.{decision}",
             user_id=actor.id,
             entity_type=approval.request_type,
             entity_id=approval.request_id,
@@ -375,8 +446,10 @@ class ApprovalService:
         actor: User,
         delegated_to_id: UUID,
         reason: str,
+        expected_submission_revision: int | None = None,
     ) -> Approval:
         approval = await self._get_actionable(approval_id, actor)
+        self._check_submission_revision(approval, expected_submission_revision)
         delegated_to = await self.users.get_by_id(delegated_to_id)
         if not delegated_to or not delegated_to.is_active:
             raise NotFoundException("Delegated approver")
@@ -443,7 +516,7 @@ class ApprovalService:
                 error_code="APPROVAL_FORBIDDEN",
             )
         await self._ensure_entity_actionable(approval, actor)
-        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, frozenset())
+        eligible = self._decision_roles(approval)
         query = select(User).where(
             User.role.in_(eligible),
             User.is_active.is_(True),
@@ -531,7 +604,7 @@ class ApprovalService:
             if approval.status not in {"pending", "delegated"}:
                 continue
             if approval.request_type == "material_request" and (
-                await self._material_request_status(approval.request_id) != "requested"
+                not await self._material_stage_is_open(approval)
             ):
                 continue
             recipient_id = approval.delegated_to_id or approval.approver_id
@@ -699,9 +772,7 @@ class ApprovalService:
                 )
             elif approval.request_type == "document":
                 await self.session.scalar(
-                    select(Document.id)
-                    .where(Document.id == approval.request_id)
-                    .with_for_update()
+                    select(Document.id).where(Document.id == approval.request_id).with_for_update()
                 )
             approval = await self.approvals.get_by_id(approval_id, for_update=True)
         if not approval:
@@ -752,15 +823,81 @@ class ApprovalService:
             )
         if approval.request_type != "material_request":
             return
-        status = await self._material_request_status(approval.request_id)
-        if status is None:
-            raise NotFoundException("Material request")
-        if status != "requested":
+        if not await self._material_stage_is_open(approval):
             raise AppException(
                 "Only requested material requests can be decided.",
                 status_code=409,
                 error_code="REQUEST_STATUS_INVALID",
             )
+
+    @staticmethod
+    def _check_submission_revision(approval: Approval, expected: int | None) -> None:
+        if approval.submission_revision is not None and approval.submission_revision != expected:
+            raise AppException(
+                "Refresh the submission before making a decision.",
+                status_code=409,
+                error_code="SUBMISSION_REVISION_CONFLICT",
+            )
+
+    @staticmethod
+    def _decision_roles(approval: Approval) -> frozenset[str]:
+        if approval.submission_revision is not None:
+            role = MATERIAL_STAGE_ROLES.get(approval.step_order)
+            return frozenset({role}) if role else frozenset()
+        return DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, frozenset())
+
+    async def _material_stage_is_open(self, approval: Approval) -> bool:
+        if approval.submission_revision is None:
+            return await self._material_request_status(approval.request_id) == "requested"
+        return bool(
+            await self.session.scalar(
+                select(MaterialRequest.id)
+                .join(Project, Project.id == MaterialRequest.project_id)
+                .where(
+                    MaterialRequest.id == approval.request_id,
+                    MaterialRequest.deleted_at.is_(None),
+                    MaterialRequest.submission_revision == approval.submission_revision,
+                    MaterialRequest.status == MATERIAL_STAGE_STATES.get(approval.step_order),
+                    Project.status == "active",
+                    Project.deleted_at.is_(None),
+                )
+            )
+        )
+
+    async def require_project_reviewer(
+        self,
+        project_id: UUID | None,
+        role: str,
+        *,
+        excluded_user_ids: set[UUID],
+        approver_id: UUID | None = None,
+    ) -> User:
+        query = (
+            select(User)
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.deleted_at.is_(None),
+                User.role == role,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                User.id.not_in(excluded_user_ids),
+            )
+        )
+        if approver_id is not None:
+            query = query.where(User.id == approver_id)
+        reviewer = await self.session.scalar(
+            query.order_by(ProjectMember.assigned_at, User.id)
+            .limit(1)
+            .with_for_update(read=True, of=[User, ProjectMember])
+        )
+        if reviewer is not None:
+            return reviewer
+        raise AppException(
+            "An active project member must be assigned for this review stage.",
+            status_code=409,
+            error_code="APPROVER_NOT_CONFIGURED",
+        )
 
     async def _resolve_approver(self, payload: ApprovalCreateRequest, actor: User) -> User:
         eligible_roles = set(DELEGATION_ELIGIBLE_ROLES.get(payload.request_type, frozenset()))
@@ -862,12 +999,12 @@ class ApprovalService:
         if (
             recipient is None
             or recipient.id == approval.submitter_id
-            or recipient.role not in DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, ())
-            or not has_permission(recipient, permission)
+            or recipient.role not in self._decision_roles(approval)
+            or (approval.submission_revision is None and not has_permission(recipient, permission))
         ):
             return False
         if approval.request_type == "material_request":
-            if await self._material_request_status(approval.request_id) != "requested":
+            if not await self._material_stage_is_open(approval):
                 return False
         elif approval.request_type == "daily_report":
             report = await self.session.scalar(
@@ -933,7 +1070,7 @@ class ApprovalService:
                 status_code=403,
                 error_code="DELEGATION_TO_SUBMITTER_FORBIDDEN",
             )
-        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, frozenset())
+        eligible = self._decision_roles(approval)
         if delegate.role not in eligible:
             raise AppException(
                 "This user cannot approve this request type.",
@@ -967,7 +1104,10 @@ class ApprovalService:
     def _can_view(self, approval: Approval, actor: User) -> bool:
         if actor.id == approval.submitter_id:
             return True
-        if not self._has_request_type_permission(approval.request_type, actor):
+        if approval.submission_revision is not None:
+            if actor.role not in self._decision_roles(approval):
+                return False
+        elif not self._has_request_type_permission(approval.request_type, actor):
             return False
         return actor.id in {
             approval.submitter_id,
@@ -980,11 +1120,17 @@ class ApprovalService:
         return approval.request_type == "invoice" and actor.id == approval.submitter_id
 
     def _can_act(self, approval: Approval, actor: User, *, project_ids: list[UUID] | None) -> bool:
-        roles = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, frozenset())
+        roles = self._decision_roles(approval)
         return (
             actor.id in {approval.approver_id, approval.delegated_to_id}
             and actor.role in roles
-            and self._has_request_type_permission(approval.request_type, actor)
+            and (
+                (approval.submission_revision is not None and actor.id != approval.submitter_id)
+                or (
+                    approval.submission_revision is None
+                    and self._has_request_type_permission(approval.request_type, actor)
+                )
+            )
             and not self._self_invoice(approval, actor)
             and (actor.role in COMPANY_RESOURCE_ROLES or approval.project_id in (project_ids or []))
         )
@@ -1016,6 +1162,9 @@ class ApprovalService:
             )
             if request is None:
                 raise NotFoundException("Material request")
+            if approval.submission_revision is not None:
+                await self._apply_material_submission_decision(request, approval, actor, decision)
+                return
             if request.status != "requested":
                 raise AppException(
                     "Only requested material requests can be decided.",
@@ -1062,6 +1211,78 @@ class ApprovalService:
                 entity_id=approval.request_id,
                 new_values={"decision": decision, "approval_id": str(approval.id)},
                 comments=comments,
+            )
+
+    async def _apply_material_submission_decision(
+        self, request: MaterialRequest, approval: Approval, actor: User, decision: str
+    ) -> None:
+        submission = await self.session.get(
+            MaterialRequestSubmission, (request.id, approval.submission_revision)
+        )
+        if submission is None or not await self._material_stage_is_open(approval):
+            raise AppException(
+                "The material submission is no longer at this review stage.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
+        await self.require_project_reviewer(
+            request.project_id,
+            MATERIAL_STAGE_ROLES[approval.step_order],
+            approver_id=actor.id,
+            excluded_user_ids={submission.submitted_by},
+        )
+        request.revision += 1
+        if decision != "approved":
+            request.status = decision
+            return
+        if approval.step_order == 1:
+            request.status = MATERIAL_STAGE_STATES[2]
+            await self.create_approval(
+                ApprovalCreateRequest(
+                    request_type="material_request",
+                    request_id=request.id,
+                    project_id=request.project_id,
+                    title=f"{request.request_number} · GPM approval",
+                    amount=request.total_estimated_cost,
+                ),
+                actor,
+                commit=False,
+                internal=True,
+                material_submission=submission,
+                step_order=2,
+            )
+            return
+        engineer_decision = await self.session.scalar(
+            select(Approval.id).where(
+                Approval.request_type == "material_request",
+                Approval.request_id == request.id,
+                Approval.submission_revision == request.submission_revision,
+                Approval.step_order == 1,
+                Approval.status == "approved",
+                Approval.decided_by.is_not(None),
+                Approval.decided_by != actor.id,
+                Approval.deleted_at.is_(None),
+            )
+        )
+        if engineer_decision is None:
+            raise AppException(
+                "Engineer verification is required before manager approval.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
+        request.status = "approved"
+        if submission.processor_id is not None:
+            await self.notifications.create(
+                user_id=submission.processor_id,
+                title="Material request ready for fulfillment",
+                body=append_link(
+                    f"{request.request_number} is ready for fulfillment.",
+                    label="Open material request",
+                    url=material_request_url(request.id),
+                ),
+                notification_type="inventory",
+                reference_type="material_request",
+                reference_id=request.id,
             )
 
     async def _notify_submitter(self, approval: Approval, title: str, body: str) -> None:

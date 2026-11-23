@@ -8,8 +8,11 @@ import {
   fulfillMaterialRequest,
   listItemStock,
   listRequestProjects,
+  materialSubmissionHistory,
+  resubmitMaterialRequest,
   type InventoryItemRecord,
   type MaterialQuantityCommand,
+  type MaterialRequestCreatePayload,
   type MaterialRequestRecord,
   type RequestProjectOption,
   type StorageLocationRecord
@@ -18,28 +21,55 @@ import { useDebouncedSearch } from '../../useDebouncedSearch';
 
 const newLine = () => ({ key: crypto.randomUUID(), item_id: '', quantity: '' });
 
+type MaterialCorrection = {
+  request: MaterialRequestRecord;
+  snapshot?: MaterialRequestCreatePayload;
+};
+
 export function MaterialRequestForm({
   items,
   locations,
+  correction,
   onSuccess
 }: {
   items: InventoryItemRecord[];
   locations: StorageLocationRecord[];
+  correction?: MaterialCorrection;
   onSuccess: () => void;
 }) {
+  const snapshot = correction?.snapshot;
   const [search, setSearch] = useState('');
   const [project, setProject] = useState<RequestProjectOption>();
-  const [locationId, setLocationId] = useState('');
-  const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState(() => [newLine()]);
+  const projectId = correction?.request.project_id ?? project?.id;
+  const [locationId, setLocationId] = useState(correction?.request.from_location_id ?? '');
+  const [notes, setNotes] = useState(snapshot?.notes ?? correction?.request.notes ?? '');
+  const [requirements, setRequirements] = useState<MaterialRequestCreatePayload['requirements']>(
+    snapshot?.requirements ?? { required_date: '', urgency: 'routine', purpose: '', specification: '' }
+  );
+  const [evidence, setEvidence] = useState(
+    snapshot?.requirements.supporting_document_ids?.join(', ') ?? ''
+  );
+  const [lines, setLines] = useState(() =>
+    correction?.request.lines.map((line) => ({
+      key: line.id, item_id: line.item_id, quantity: String(line.quantity)
+    })) ?? [newLine()]
+  );
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
   const term = useDebouncedSearch(search);
   const projects = useQuery({
     queryKey: ['inventory-request-projects', term],
-    queryFn: () => listRequestProjects(term || undefined)
+    queryFn: () => listRequestProjects(term || undefined),
+    enabled: !correction
   });
-  const create = useMutation({ mutationFn: createMaterialRequest });
+  const create = useMutation({
+    mutationFn: (payload: MaterialRequestCreatePayload) =>
+      correction
+        ? resubmitMaterialRequest(correction.request.id, {
+            ...payload, expected_revision: correction.request.revision
+          })
+        : createMaterialRequest(payload)
+  });
   const options = projects.data?.items ?? [];
 
   return (
@@ -47,7 +77,7 @@ export function MaterialRequestForm({
       className="space-y-3 rounded-lg border border-theme-border bg-theme-card p-4"
       onSubmit={async (event) => {
         event.preventDefault();
-        if (!project || !locationId || pending.current) return;
+        if (!projectId || !locationId || pending.current) return;
         if (new Set(lines.map((line) => line.item_id)).size !== lines.length) {
           setError('Select each inventory item once.');
           return;
@@ -56,9 +86,13 @@ export function MaterialRequestForm({
         setError(null);
         try {
           await create.mutateAsync({
-            project_id: project.id,
+            project_id: projectId,
             from_location_id: locationId,
             notes,
+            requirements: {
+              ...requirements,
+              supporting_document_ids: evidence.split(',').map((id) => id.trim()).filter(Boolean)
+            },
             lines: lines.map(({ item_id, quantity }) => ({ item_id, quantity }))
           });
           setNotes('');
@@ -71,7 +105,10 @@ export function MaterialRequestForm({
         }
       }}
     >
-      <h3 className="font-semibold">Material request</h3>
+      <h3 className="font-semibold">
+        {correction ? 'Correct material request' : 'Material request'}
+      </h3>
+      {!correction && <>
       <label className="block text-sm">
         Search eligible projects
         <input
@@ -107,6 +144,7 @@ export function MaterialRequestForm({
         <p role="alert">{formatApiError(projects.error, 'Unable to load eligible projects.')}</p>
       )}
       {projects.data?.total === 0 && <p>No eligible projects match your search.</p>}
+      </>}
       <label className="block text-sm">
         Source location
         <select
@@ -119,7 +157,7 @@ export function MaterialRequestForm({
           {locations
             .filter(
               (location) =>
-                location.is_active && (!location.project_id || location.project_id === project?.id)
+                location.is_active && (!location.project_id || location.project_id === projectId)
             )
             .map((location) => (
               <option key={location.id} value={location.id}>
@@ -133,6 +171,7 @@ export function MaterialRequestForm({
           <label className="text-sm">
             Item {index + 1}
             <select
+              aria-label={`Item ${index + 1}`}
               className="form-field"
               required
               value={line.item_id}
@@ -198,11 +237,131 @@ export function MaterialRequestForm({
           onChange={(event) => setNotes(event.target.value)}
         />
       </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm">
+          Required delivery date
+          <input className="form-field" type="date" required value={requirements.required_date}
+            onChange={(event) => setRequirements({ ...requirements, required_date: event.target.value })} />
+        </label>
+        <label className="text-sm">
+          Urgency
+          <select className="form-field" value={requirements.urgency}
+            onChange={(event) => setRequirements({
+              ...requirements, urgency: event.target.value as typeof requirements.urgency
+            })}>
+            <option value="routine">Routine</option>
+            <option value="urgent">Urgent</option>
+            <option value="critical">Critical</option>
+          </select>
+        </label>
+      </div>
+      <label className="block text-sm">
+        Purpose and work scope
+        <textarea className="form-field" required maxLength={2000} value={requirements.purpose}
+          onChange={(event) => setRequirements({ ...requirements, purpose: event.target.value })} />
+      </label>
+      <label className="block text-sm">
+        Material description and specification
+        <textarea className="form-field" required maxLength={2000} value={requirements.specification}
+          onChange={(event) => setRequirements({ ...requirements, specification: event.target.value })} />
+      </label>
+      <label className="block text-sm">
+        Known stock availability (optional)
+        <input className="form-field" maxLength={1000} value={requirements.stock_availability ?? ''}
+          onChange={(event) => setRequirements({ ...requirements, stock_availability: event.target.value })} />
+      </label>
+      <label className="block text-sm">
+        Supporting project document IDs (optional, comma-separated)
+        <input className="form-field" value={evidence} onChange={(event) => setEvidence(event.target.value)} />
+      </label>
       {error && <p role="alert">{error}</p>}
-      <button className="form-button" type="submit" disabled={!project || create.isPending}>
-        {create.isPending ? 'Creating…' : 'Create request'}
+      <button className="form-button" type="submit" disabled={!projectId || create.isPending}>
+        {create.isPending ? 'Submitting…' : correction ? 'Resubmit request' : 'Submit request'}
       </button>
     </form>
+  );
+}
+
+export function MaterialRequestReview({
+  request,
+  items,
+  locations,
+  userId,
+  canManage,
+  canSubmit,
+  isAssignedProcessorRole,
+  onSuccess
+}: {
+  request: MaterialRequestRecord;
+  items: InventoryItemRecord[];
+  locations: StorageLocationRecord[];
+  userId?: string;
+  canManage: boolean;
+  canSubmit: boolean;
+  isAssignedProcessorRole: boolean;
+  onSuccess: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const history = useQuery({
+    queryKey: ['material-submissions', request.id, request.revision],
+    queryFn: () => materialSubmissionHistory(request.id),
+    enabled: expanded || isAssignedProcessorRole
+  });
+  const recent = history.data?.submissions[0];
+  const canCorrect = canSubmit && (canManage || request.requester_id === userId) &&
+    (['returned', 'rejected'].includes(request.status) ||
+      (request.submission_revision == null && ['requested', 'approved'].includes(request.status)));
+  const canFulfill = request.submission_revision != null &&
+    (canManage || (isAssignedProcessorRole && recent?.processor_id === userId));
+
+  return (
+    <div className="mt-2 space-y-2">
+      {request.submission_revision == null && (
+        <p>Legacy request. Technical verification and GPM approval are required before fulfillment.</p>
+      )}
+      <details open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-brand-600">Submission and decision history</summary>
+        {history.isPending && expanded && <p role="status">Loading history…</p>}
+        {history.isError && (
+          <p role="alert">{formatApiError(history.error, 'Unable to load submission history.')}</p>
+        )}
+        {history.data?.submissions.map((submission) => (
+          <section className="my-2 border-l border-theme-border pl-3" key={submission.submission_revision}>
+            <h4 className="font-medium">Submission {submission.submission_revision}</h4>
+            <p>Required {submission.requirements.requirements.required_date} · {submission.requirements.requirements.urgency}</p>
+            <p>{submission.requirements.requirements.purpose}</p>
+            <p>{submission.requirements.requirements.specification}</p>
+            <ul>
+              {submission.requirements.lines.map((line) => (
+                <li key={line.item_id}>{line.name} · {line.quantity} {line.unit}</li>
+              ))}
+              {history.data?.decisions.filter(
+                (decision) => decision.submission_revision === submission.submission_revision
+              ).map((decision) => (
+                <li key={decision.id}>
+                  {decision.step_order === 1 ? 'Site Engineer' : 'Group Project Manager'} · {decision.status}
+                  {decision.decision_comments && ` · ${decision.decision_comments}`}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        {canCorrect && !editing && history.isSuccess && (
+          <button className="form-button" type="button" onClick={() => setEditing(true)}>
+            Correct and resubmit
+          </button>
+        )}
+        {editing && canCorrect && (
+          <MaterialRequestForm
+            items={items} locations={locations}
+            correction={{ request, snapshot: recent?.requirements }}
+            onSuccess={() => { setEditing(false); onSuccess(); }}
+          />
+        )}
+      </details>
+      <MaterialFulfillment request={request} items={items} canManage={canFulfill} onSuccess={onSuccess} />
+    </div>
   );
 }
 
@@ -217,7 +376,7 @@ function RequestLineAvailability({ itemId, locationId }: { itemId: string; locat
   return <span>{balance?.available_qty ?? '0'} available at source</span>;
 }
 
-export function MaterialFulfillment({
+function MaterialFulfillment({
   request,
   items,
   canManage,

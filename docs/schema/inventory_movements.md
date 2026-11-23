@@ -20,6 +20,7 @@ For imported movements, `import_batch_id` and `import_row_index` identify the or
 | `project_id` | `uuid` | Yes | — |
 | `reference_type` | `varchar(40)` | Yes | — |
 | `reference_id` | `uuid` | Yes | — |
+| `registration_id` | `uuid` | Yes | — |
 | `handled_by` | `uuid` | Yes | — |
 | `notes` | `text` | Yes | — |
 | `created_at` | `timestamptz` | No | `now()` |
@@ -53,3 +54,13 @@ For imported movements, `import_batch_id` and `import_row_index` identify the or
 | `idx_inventory_movements_item` | `btree` | `item_id, created_at` | No | — |
 | `idx_inventory_movements_project` | `btree` | `project_id` | No | — |
 | `uq_movements_import_row` | `btree` | `import_batch_id, import_row_index` | Yes | `(import_batch_id IS NOT NULL)` |
+
+## Site inventory registration receipts
+
+For an engineer-approved registration, `registration_id` is a unique,
+restrictive foreign key to `inventory_registrations.id`. Approval records the
+movement, stock delta and catalogue or asset links in one transaction.
+Historical movements retain their existing generic references with a null
+`registration_id`. Registration corrections link each new version to its
+predecessor and keep prior evidence and decisions.
+[Migration 103](../../backend/alembic/versions/202605310103_inventory_registration.py)

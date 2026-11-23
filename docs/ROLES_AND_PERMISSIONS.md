@@ -89,15 +89,15 @@ Rollback: revert the BOQ route/service and matching frontend/API contract change
 | `audit:view` | ✓ | ✓ | | | | | | | | |
 | `dashboard:company` | ✓ | ✓ | | | | | | ✓ | ✓ | |
 | `dashboard:scoped` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | | ✓ |
+| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | | | ✓ |
 | `reports:submit` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | |
-| `reports:approve` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | | |
+| `reports:approve` | ✓ | ✓ | ✓ | ✓ | | | | | | |
 | `inventory:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | |
 | `inventory:manage` | ✓ | ✓ | | | | | | | | |
 | `suppliers:manage` | ✓ | ✓ | | ✓ | ✓ | | | | ✓ | |
 | `documents:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | `documents:manage` | ✓ | ✓ | | | | | | | | |
-| `financial:view` | ✓ | ✓ | | | | | | | | |
+| `financial:view` | ✓ | ✓ | ✓ | | | | | | | |
 
 MD = Managing Director; OD = Operations Director; Group PM = Group Project Manager; MEP PM = MEP Project Manager; QS =
 Quantity Surveyor. The grant sets are explicit: a permission does not imply another
@@ -141,12 +141,22 @@ current portal role. [Permission definitions and grants](../backend/app/utils/pe
 - Imports require `users:manage` and the permission for that import domain.
   Project and priced BOQ imports require director scope. Queued imports revalidate
   the submitting account before writes.
-- `financial:view` grants read access to protected financial fields; it does not
-  grant invoice, payment, or other finance mutations. Financial writes without an
-  explicit matrix permission remain unavailable.
-- Inventory management is granted only to MD and OD. That grant is required to
-  create, reserve, issue or cancel material requests. Other inventory viewers
-  receive scoped reads and can use the scoped request-project lookup.
+- Managing Director and Operations Director have company-wide financial read
+  access. Group Project Manager can read budgets, priced BOQ, material-request
+  costs, invoices and financial summaries for assigned projects. Company-wide
+  catalogue costing and finance reconciliation are director-only. Budget edits
+  and priced BOQ changes require a director. Invoice and payment writes remain
+  unavailable under the current role policy.
+- HR Manager retains existing HR permissions, including attendance review.
+  Site-report reading and approval are outside the HR Manager grant.
+- Managing Director and Operations Director retain general inventory management.
+  Both supervisor roles can create and correct their own material requests and
+  register inventory on assigned projects. The assigned MEP Project Manager
+  verifies a submitted material request, and the assigned Group Project Manager
+  then approves it. Directors and assigned Administrative Executives can
+  process approved requests within their scope. Directors retain cancellation
+  authority. Assigned Quantity Surveyors can read submitted registrations.
+  General catalogue and stock permissions remain separate.
   [Inventory routes](../backend/app/api/v1/inventory.py) · [Inventory service](../backend/app/services/inventory_service.py)
 - Company dashboard access does not imply company-wide project, report, document,
   audit, or financial access. Those paths enforce their own permission and scope.
@@ -157,9 +167,14 @@ current portal role. [Permission definitions and grants](../backend/app/utils/pe
   and MEP Project Managers, and Quantity Surveyor. The two supervisor roles
   author supervisor updates. Assigned-project scope applies outside the two
   director roles. Daily-report decisions are available to eligible directors,
-  Group and MEP Project Managers, and HR Manager. The service rejects a
+  Group and MEP Project Managers. The service rejects a
   self-approval and requires project membership for non-director decisions.
   [Role eligibility](../backend/app/utils/permissions.py) · [Report service](../backend/app/services/report_service.py) · [Supervisor service](../backend/app/services/reporting_service.py)
+- Assigned Quantity Surveyors review applicable area and quantity evidence and
+  assigned MEP Project Managers confirm technical progress. The assigned engineer
+  reviews staged inventory and site attendance. An independent HR Manager verifies
+  attendance after the engineer. Site attendance access does not grant access to
+  other employees’ personnel records or change payroll policy.
 - Approval visibility and action eligibility differ. Normal self-approval and
   former global override powers are denied. Each owning workflow service applies its
   own transition and scope checks.

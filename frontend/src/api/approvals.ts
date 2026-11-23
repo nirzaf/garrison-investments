@@ -27,16 +27,21 @@ export async function getGenericApproval(id: string) {
   return data;
 }
 
-export async function approveGenericApproval(id: string, comments?: string) {
+export async function approveGenericApproval(
+  id: string, comments?: string, expectedSubmissionRevision?: number | null
+) {
   const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/approve`, {
-    comments
+    comments, expected_submission_revision: expectedSubmissionRevision
   });
   return data;
 }
 
-export async function rejectGenericApproval(id: string, comments: string) {
-  const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/reject`, {
-    comments
+export async function rejectGenericApproval(
+  id: string, comments: string, expectedSubmissionRevision?: number | null, returnForCorrection = false
+) {
+  const action = returnForCorrection ? 'return' : 'reject';
+  const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/${action}`, {
+    comments, expected_submission_revision: expectedSubmissionRevision
   });
   return data;
 }
@@ -54,7 +59,7 @@ export async function listDelegationCandidates(
 
 export async function delegateGenericApproval(
   id: string,
-  payload: { delegated_to_id: string; reason: string }
+  payload: { delegated_to_id: string; reason: string; expected_submission_revision?: number | null }
 ) {
   const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/delegate`, payload);
   return data;

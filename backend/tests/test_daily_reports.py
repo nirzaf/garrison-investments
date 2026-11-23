@@ -90,21 +90,31 @@ def project_payload() -> dict:
     }
 
 
-async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
+async def setup_project_team(
+    client: httpx.AsyncClient,
+    *,
+    confirm_progress: bool = True,
+    quantities: bool = False,
+    supervisor_role: str = "site_supervisor",
+) -> dict[str, str]:
+    from tests.test_photos import jpeg_bytes
+
     op_email, op_password = await create_user("operations_director")
     engineer_email, engineer_password = await create_user("quantity_surveyor")
-    supervisor_email, supervisor_password = await create_user("site_supervisor")
+    supervisor_email, supervisor_password = await create_user(supervisor_role)
+    reviewer_email, reviewer_password = await create_user("mep_project_manager")
     manager_email, manager_password = await create_user("group_project_manager")
     non_submitter_email, non_submitter_password = await create_user("administrative_executive")
     op_token = await login_for_token(client, op_email, op_password)
     engineer_token = await login_for_token(client, engineer_email, engineer_password)
     supervisor_token = await login_for_token(client, supervisor_email, supervisor_password)
+    progress_reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
     manager_token = await login_for_token(client, manager_email, manager_password)
     non_submitter_token = await login_for_token(client, non_submitter_email, non_submitter_password)
     project = (
         await client.post(
             "/api/v1/projects",
-            json=project_payload(),
+            json={**project_payload(), "status": "active"},
             headers={"Authorization": f"Bearer {op_token}"},
         )
     ).json()
@@ -141,6 +151,14 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
         json={"user_id": manager["id"], "role_in_project": "group_project_manager"},
         headers={"Authorization": f"Bearer {op_token}"},
     )
+    reviewer_headers = {"Authorization": f"Bearer {progress_reviewer_token}"}
+    reviewer = (await client.get("/api/v1/auth/me", headers=reviewer_headers)).json()
+    assigned = await client.post(
+        f"/api/v1/projects/{project['id']}/members",
+        json={"user_id": reviewer["id"], "role_in_project": "mep_project_manager"},
+        headers={"Authorization": f"Bearer {op_token}"},
+    )
+    assert assigned.is_success, assigned.text
     supervisor_update = (
         await client.post(
             "/api/v1/supervisor-updates",
@@ -151,16 +169,36 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
                 "work_location": "Zone A",
                 "attendance_count": 8,
                 "overtime_hours": "1",
+                "activity_scope": "Civil works in Zone A",
+                "remaining_work": "Inspect and backfill",
                 "progress_notes": "Completed excavation.",
                 "required_notes": "No incidents.",
+                **({"completed_quantity": "25.000", "quantity_unit": "m3"} if quantities else {}),
             },
             headers={"Authorization": f"Bearer {supervisor_token}"},
         )
     ).json()
-    await client.post(
-        f"/api/v1/supervisor-updates/{supervisor_update['id']}/submit",
-        headers={"Authorization": f"Bearer {supervisor_token}"},
-    )
+    if confirm_progress:
+        supervisor_headers = {"Authorization": f"Bearer {supervisor_token}"}
+        uploaded = await client.post(
+            "/api/v1/photos/upload",
+            data={"entity_type": "supervisor_update", "entity_id": supervisor_update["id"]},
+            files={"files": ("progress.jpg", jpeg_bytes(), "image/jpeg")},
+            headers=supervisor_headers,
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        submitted = await client.post(
+            f"/api/v1/supervisor-updates/{supervisor_update['id']}/submit",
+            json={"expected_revision": supervisor_update["revision"]},
+            headers=supervisor_headers,
+        )
+        assert submitted.status_code == 200, submitted.text
+        decision = await client.post(
+            f"/api/v1/supervisor-updates/{supervisor_update['id']}/review",
+            json={"expected_submission_revision": 1, "stage": "engineer", "decision": "approved"},
+            headers=reviewer_headers,
+        )
+        assert decision.status_code == 200, decision.text
     return {
         "project_id": project["id"],
         "project_code": project["code"],
@@ -169,6 +207,7 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
         "non_submitter_token": non_submitter_token,
         "op_token": op_token,
         "supervisor_token": supervisor_token,
+        "progress_reviewer_token": progress_reviewer_token,
         "supervisor_update_id": supervisor_update["id"],
     }
 
@@ -308,8 +347,7 @@ async def test_engineer_can_save_and_submit_daily_report() -> None:
 
         assert updates_response.status_code == 200
         assert any(
-            update["id"] == setup["supervisor_update_id"]
-            for update in updates_response.json()
+            update["id"] == setup["supervisor_update_id"] for update in updates_response.json()
         )
 
 
@@ -513,9 +551,7 @@ async def test_report_approval_consumes_matching_inventory_stock() -> None:
 
     async with create_test_client() as client:
         setup = await setup_project_team(client)
-        stock = await setup_report_consumption_stock(
-            client, setup["project_id"], setup["op_token"]
-        )
+        stock = await setup_report_consumption_stock(client, setup["project_id"], setup["op_token"])
         direct_movement = await client.post(
             "/api/v1/inventory/movements",
             json={

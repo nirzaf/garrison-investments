@@ -820,6 +820,24 @@ authorized HR Managers once per business date when a review is approaching or
 overdue. The notice contains no employee details. Recording a probation
 decision remains a manual action.
 
+## Site attendance
+
+In **Site attendance**, an assigned supervisor can record daily attendance for
+an active worker with an eligible roster allocation or effective project shift.
+The worker picker exposes the worker name and employee code. It does not grant
+access to the HR employee directory. A submitted entry shows the worker,
+attendance date and status, arrival and departure when recorded, worked hours,
+overtime, and any exception notes.
+
+The assigned Site Engineer reviews the current submission before an independent
+HR Manager can verify it. Each reviewer can return it with an explanation.
+A correction creates a new version with a fresh review sequence. The site view
+shows submitted and HR-confirmed manpower counts separately. Ordinary HR
+attendance entry and import paths cannot skip the checks for a site worker.
+Payroll preparation admits site attendance only after the current version passes
+both checks and the existing period controls. Payroll activation is governed
+separately. [Site attendance service](../backend/app/services/hr_site_attendance_service.py)
+
 ## Workforce roster
 
 In **HR & Workforce → Attendance → Workforce roster**, search for an employee

@@ -12,7 +12,7 @@ from app.models.daily_report import (
     ReportMaterialConsumption,
 )
 from app.models.project_member import ProjectMember
-from app.models.supervisor_update import SupervisorUpdate
+from app.models.supervisor_update import SupervisorUpdate, SupervisorUpdateSubmission
 from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 from app.repositories.daily_report_repository import DailyReportRepository
@@ -495,29 +495,54 @@ class ReportService:
                 status_code=422,
                 error_code="SUPERVISOR_UPDATE_PROJECT_MISMATCH",
             )
-        for supervisor_update in updates:
-            if supervisor_update.status == "verified":
-                if supervisor_update.verified_report_id == report.id:
-                    continue
+        for update in updates:
+            if update.status == "verified" and update.verified_report_id == report.id:
+                continue
+            if update.verified_report_id is not None:
                 raise AppException(
-                    "This supervisor update is already verified for a different or unknown report.",
+                    "This update is already retained on another report.",
                     status_code=409,
-                    error_code=(
-                        "SUPERVISOR_UPDATE_VERIFICATION_UNRESOLVED"
-                        if supervisor_update.verified_report_id is None
-                        else "SUPERVISOR_UPDATE_ALREADY_VERIFIED"
-                    ),
+                    error_code="SUPERVISOR_UPDATE_ALREADY_VERIFIED",
                 )
-            if supervisor_update.status != "submitted":
+            submission = (
+                await self.session.get(
+                    SupervisorUpdateSubmission, (update.id, update.submission_revision)
+                )
+                if update.submission_revision is not None
+                else None
+            )
+            if (
+                update.status != "verified"
+                or submission is None
+                or submission.engineer_decision != "approved"
+                or submission.engineer_decided_at is None
+                or update.verified_by != submission.engineer_id
+                or (
+                    submission.qs_id is not None
+                    and (submission.qs_decision != "approved" or submission.qs_decided_at is None)
+                )
+            ):
+                error_code = (
+                    "SUPERVISOR_UPDATE_VERIFICATION_UNRESOLVED"
+                    if update.status == "verified" and submission is None
+                    else "SUPERVISOR_UPDATE_NOT_CONFIRMED"
+                )
                 raise AppException(
-                    "Supervisor update must be submitted before verification.",
+                    "Select site progress with all required independent checks complete.",
                     status_code=409,
-                    error_code="SUPERVISOR_UPDATE_NOT_SUBMITTED",
+                    error_code=error_code,
                 )
-            supervisor_update.status = "verified"
-            supervisor_update.verified_by = actor.id
-            supervisor_update.verified_at = utc_now()
-            supervisor_update.verified_report_id = report.id
+            update.verified_report_id = report.id
+            await self.audit.record(
+                action="reports.supervisor_evidence_linked",
+                user_id=actor.id,
+                entity_type="daily_reports",
+                entity_id=report.id,
+                new_values={
+                    "supervisor_update_id": str(update.id),
+                    "submission_revision": update.submission_revision,
+                },
+            )
 
     async def _ensure_project_member(self, project_id: UUID, actor: User):
         project = await self.projects.get_by_id(project_id)
@@ -531,10 +556,7 @@ class ReportService:
         return project
 
     async def _ensure_report_access(self, report: DailyReport, actor: User) -> None:
-        if (
-            report.engineer_id == actor.id
-            and has_permission(actor, PERMISSION_REPORTS_SUBMIT)
-        ):
+        if report.engineer_id == actor.id and has_permission(actor, PERMISSION_REPORTS_SUBMIT):
             await self._ensure_project_member(report.project_id, actor)
             return
         if actor.role in COMPANY_WIDE_ROLES:

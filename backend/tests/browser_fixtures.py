@@ -104,20 +104,25 @@ async def seed_accounts(
                     await session.flush()
                 if role == "site_supervisor":
                     session.add(ProjectMember(project_id=project.id, user_id=user.id))
-                if role == "group_project_manager" and joining:
+                if joining and (
+                    role == "group_project_manager"
+                    or (shared_project and role == "mep_project_manager")
+                ):
                     session.add(
                         ProjectMember(
                             project_id=project.id,
                             user_id=user.id,
-                            role_in_project="group_project_manager",
+                            role_in_project=role,
                         )
                     )
-                accounts.append({
-                    "email": email,
-                    "password": password,
-                    "projectId": str(project.id),
-                    "projectCode": project.code,
-                })
+                accounts.append(
+                    {
+                        "email": email,
+                        "password": password,
+                        "projectId": str(project.id),
+                        "projectCode": project.code,
+                    }
+                )
                 if shared_project:
                     project_id = project.id
             await session.commit()
@@ -251,6 +256,53 @@ async def seed_delegation() -> None:
             }
         )
     )
+
+
+async def seed_site_worker(project_id: UUID) -> None:
+    from datetime import time
+
+    from app.database import AsyncSessionLocal
+    from app.models.hr import HrEmployee, HrShiftAssignment, HrWorkCalendar
+    from app.utils.security import utc_now
+    from app.utils.time import business_today
+
+    day = business_today()
+    code = uuid4().hex[:10]
+    async with AsyncSessionLocal() as session:
+        employee = HrEmployee(
+            employee_code=f"SITE-{code}",
+            first_name="Browser",
+            last_name="Site Worker",
+            full_name="Browser Site Worker",
+            employment_status="active",
+            join_date=day,
+        )
+        calendar = HrWorkCalendar(
+            code=f"SITE-{code}",
+            name="Browser site hours",
+            project_id=project_id,
+            timezone="Asia/Qatar",
+            status="published",
+            published_at=utc_now(),
+            effective_from=day,
+            effective_to=day,
+        )
+        session.add_all([employee, calendar])
+        await session.flush()
+        session.add(
+            HrShiftAssignment(
+                employee_id=employee.id,
+                calendar_id=calendar.id,
+                project_id=project_id,
+                shift_name="Site",
+                effective_from=day,
+                effective_to=day,
+                start_time=time(7),
+                end_time=time(16),
+            )
+        )
+        await session.commit()
+        print(json.dumps({"id": str(employee.id), "code": employee.employee_code}))
 
 
 async def seed_analytics_finance(project_id: UUID) -> None:
@@ -461,15 +513,17 @@ async def seed_legacy_leave(employee_id: UUID, reviewer_id: UUID) -> None:
             )
             session.add(request)
             await session.flush()
-            session.add(HrLeaveLedger(
-                employee_id=employee_id,
-                leave_type_id=leave_type.id,
-                entry_type="taken",
-                days_delta=Decimal("-2.00"),
-                leave_year=2036,
-                reference_request_id=request.id,
-                reason="Synthetic legacy fixture",
-            ))
+            session.add(
+                HrLeaveLedger(
+                    employee_id=employee_id,
+                    leave_type_id=leave_type.id,
+                    entry_type="taken",
+                    days_delta=Decimal("-2.00"),
+                    leave_year=2036,
+                    reference_request_id=request.id,
+                    reason="Synthetic legacy fixture",
+                )
+            )
             await session.commit()
             print(json.dumps({"request_id": str(request.id)}))
     finally:
@@ -488,6 +542,7 @@ if __name__ == "__main__":
             "seed-supervisor",
             "seed-delegation",
             "seed-analytics-finance",
+            "seed-site-worker",
             "seed-employee-payslip",
             "seed-legacy-leave",
             "serve",
@@ -507,6 +562,8 @@ if __name__ == "__main__":
         parser.error("expire-login requires --challenge-id")
     if args.command == "seed-analytics-finance" and args.project_id is None:
         parser.error("seed-analytics-finance requires --project-id")
+    if args.command == "seed-site-worker" and args.project_id is None:
+        parser.error("seed-site-worker requires --project-id")
     roles = args.role or ["managing_director"]
     if args.command == "seed-group":
         if len(roles) < 2:
@@ -554,6 +611,8 @@ if __name__ == "__main__":
         if not (args.employee_id and args.maker_id and args.reviewer_id):
             parser.error("seed-employee-payslip needs employee, maker and reviewer IDs")
         asyncio.run(seed_employee_payslip(args.employee_id, args.maker_id, args.reviewer_id))
+    elif args.command == "seed-site-worker":
+        asyncio.run(seed_site_worker(args.project_id))
     elif args.command == "seed-analytics-finance":
         asyncio.run(seed_analytics_finance(args.project_id))
     else:

@@ -61,8 +61,9 @@ async def create_approval(
             status_code=403,
             error_code="APPROVAL_TYPE_FORBIDDEN",
         )
-    approval = await ApprovalService(session).create_approval(payload, current_user)
-    return ApprovalResponse.model_validate(approval)
+    service = ApprovalService(session)
+    approval = await service.create_approval(payload, current_user)
+    return (await service.describe_approvals([approval], current_user))[0]
 
 
 @router.get("/{approval_id}", response_model=ApprovalResponse)
@@ -83,8 +84,11 @@ async def approve(
     current_user: CurrentUser,
     session: DbSession,
 ) -> ApprovalResponse:
-    approval = await ApprovalService(session).approve(approval_id, current_user, payload.comments)
-    return ApprovalResponse.model_validate(approval)
+    service = ApprovalService(session)
+    approval = await service.approve(
+        approval_id, current_user, payload.comments, payload.expected_submission_revision
+    )
+    return (await service.describe_approvals([approval], current_user))[0]
 
 
 @router.post("/{approval_id}/reject", response_model=ApprovalResponse)
@@ -94,8 +98,29 @@ async def reject(
     current_user: CurrentUser,
     session: DbSession,
 ) -> ApprovalResponse:
-    approval = await ApprovalService(session).reject(approval_id, current_user, payload.comments)
-    return ApprovalResponse.model_validate(approval)
+    service = ApprovalService(session)
+    approval = await service.reject(
+        approval_id, current_user, payload.comments, payload.expected_submission_revision
+    )
+    return (await service.describe_approvals([approval], current_user))[0]
+
+
+@router.post("/{approval_id}/return", response_model=ApprovalResponse)
+async def return_for_correction(
+    approval_id: UUID,
+    payload: ApprovalDecisionRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> ApprovalResponse:
+    service = ApprovalService(session)
+    approval = await service.reject(
+        approval_id,
+        current_user,
+        payload.comments,
+        payload.expected_submission_revision,
+        return_for_correction=True,
+    )
+    return (await service.describe_approvals([approval], current_user))[0]
 
 
 @router.get("/{approval_id}/delegates", response_model=ApprovalDelegateListResponse)
@@ -123,13 +148,15 @@ async def delegate(
     current_user: CurrentUser,
     session: DbSession,
 ) -> ApprovalResponse:
-    approval = await ApprovalService(session).delegate(
+    service = ApprovalService(session)
+    approval = await service.delegate(
         approval_id,
         current_user,
         payload.delegated_to_id,
         payload.reason,
+        payload.expected_submission_revision,
     )
-    return ApprovalResponse.model_validate(approval)
+    return (await service.describe_approvals([approval], current_user))[0]
 
 
 @router.post("/{approval_id}/override", response_model=ApprovalResponse)
@@ -139,10 +166,11 @@ async def override(
     current_user: CurrentUser,
     session: DbSession,
 ) -> ApprovalResponse:
-    approval = await ApprovalService(session).override(
+    service = ApprovalService(session)
+    approval = await service.override(
         approval_id,
         current_user,
         payload.decision,
         payload.reason,
     )
-    return ApprovalResponse.model_validate(approval)
+    return (await service.describe_approvals([approval], current_user))[0]

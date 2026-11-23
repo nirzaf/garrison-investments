@@ -266,23 +266,22 @@ async def test_analytics_summary_and_exports_respect_project_scope() -> None:
             ]
             data = summary.json()
             assert [(row["project_id"], row["invoice_total"]) for row in data["projects"]] == [
-                (str(assigned.id), None)
+                (str(assigned.id), "123.00")
             ]
             assert [
                 (row["item_name"], row["issued_quantity"], row["consumed_quantity"])
                 for row in data["material_usage"]
             ] == [(shared_name, "2.500", "1.000")]
-            assert xlsx_rows(progress.content)[1:] == [[assigned.name, "25.00", "0"]]
+            assert xlsx_rows(progress.content)[1:] == [[assigned.name, "25.00", "0", "123.00", "0"]]
             assert xlsx_rows(material.content)[1:] == [[shared_name, "2.500", "1.000"]]
             assert pdf.content.startswith(b"%PDF-")
             text = pdf_text(pdf.content)
-            for allowed in (assigned.name, shared_name, "2.500"):
+            for allowed in (assigned.name, shared_name, "2.500", "123.00"):
                 assert allowed in text
             for forbidden in (
                 unassigned.name,
                 removed.name,
                 other_name,
-                "123.00",
                 "789.00",
                 "31.000",
             ):

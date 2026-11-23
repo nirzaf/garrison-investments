@@ -263,3 +263,13 @@ JSONB field. It contains the opaque document reference, version,
 effective-from date, external approval reference and synthetic worked
 calculation examples. New payroll snapshots copy the selected record
 into the existing encrypted snapshot. Existing policy rows need no backfill.
+
+## Site attendance submission history
+
+`hr_attendance_entries.site_submission_revision` points to the current version
+in `hr_site_attendance_submissions`, keyed by `(entry_id, submission_revision)`.
+Each version keeps submitted hours and notes, the supervisor and assigned
+engineer, both review decisions, comments, decision times and the HR actor.
+Preexisting HR attendance has a null site submission revision. Site corrections
+advance the version and clear the current approval while older decisions remain.
+[Migration 105](../../backend/alembic/versions/202605310105_site_attendance_review.py)

@@ -213,7 +213,7 @@ export function HRTimePanel({
               ` · Manager recommendation: ${entry.manager_recommendation}`}
           </p>
           {entry.review_note && <p>{entry.review_note}</p>}
-          {canReview && entry.status === 'submitted' && (
+          {canReview && entry.status === 'submitted' && entry.source !== 'site' && (
             <div className="flex flex-wrap items-end gap-2">
               <button
                 className={hrButtonClass}

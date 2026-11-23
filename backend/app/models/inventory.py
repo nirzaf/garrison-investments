@@ -1,7 +1,19 @@
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -149,6 +161,7 @@ class MaterialRequest(TimestampMixin, SoftDeleteMixin, Base):
         String(30), nullable=False, server_default=text("'requested'")
     )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    submission_revision: Mapped[int | None] = mapped_column(Integer)
     total_estimated_cost: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,
@@ -160,6 +173,57 @@ class MaterialRequest(TimestampMixin, SoftDeleteMixin, Base):
         back_populates="request",
         cascade="all, delete-orphan",
         lazy="selectin",
+        primaryjoin="and_(MaterialRequest.id == MaterialRequestLine.request_id, "
+        "MaterialRequestLine.deleted_at.is_(None))",
+    )
+
+
+class MaterialRequestSubmission(TimestampMixin, Base):
+    __tablename__ = "material_request_submissions"
+
+    request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("material_requests.id", ondelete="RESTRICT"), primary_key=True
+    )
+    submission_revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    submitted_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    engineer_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    manager_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    processor_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    requirements: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class InventoryRegistration(TimestampMixin, Base):
+    __tablename__ = "inventory_registrations"
+
+    id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="RESTRICT"))
+    location_id: Mapped[UUID] = mapped_column(
+        ForeignKey("storage_locations.id", ondelete="RESTRICT")
+    )
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    root_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("inventory_registrations.id", ondelete="RESTRICT")
+    )
+    previous_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("inventory_registrations.id", ondelete="RESTRICT"), unique=True
+    )
+    submission_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'draft'"))
+    requirements: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'")
+    )
+    reviewer_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_comments: Mapped[str | None] = mapped_column(Text)
+    confirmed_item_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("inventory_items.id", ondelete="RESTRICT")
+    )
+    movement_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("inventory_movements.id", ondelete="RESTRICT"), unique=True
     )
 
 
@@ -235,6 +299,9 @@ class InventoryMovement(TimestampMixin, SoftDeleteMixin, Base):
     )
     reference_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     reference_id: Mapped[UUID | None] = mapped_column(PostgresUUID(as_uuid=True), nullable=True)
+    registration_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("inventory_registrations.id", ondelete="RESTRICT"), unique=True
+    )
     handled_by: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

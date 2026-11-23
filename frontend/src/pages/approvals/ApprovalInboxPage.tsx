@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
 import { AlertTriangle, Check, Forward, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import {
   approveGenericApproval,
@@ -278,7 +278,9 @@ export function ApprovalInboxPage() {
     setError(null);
     setNotice(null);
     try {
-      await approveGenericApproval(approval.id, commentsByApproval[approval.id]);
+      await approveGenericApproval(
+        approval.id, commentsByApproval[approval.id], approval.submission_revision
+      );
       setNotice('Approval completed.');
       await loadReports();
     } catch (cause) {
@@ -286,7 +288,7 @@ export function ApprovalInboxPage() {
     }
   }
 
-  async function rejectWorkflow(approval: ApprovalRecord) {
+  async function rejectWorkflow(approval: ApprovalRecord, returnForCorrection = false) {
     setError(null);
     setNotice(null);
     const comments = commentsByApproval[approval.id]?.trim();
@@ -295,8 +297,10 @@ export function ApprovalInboxPage() {
       return;
     }
     try {
-      await rejectGenericApproval(approval.id, comments);
-      setNotice('Approval rejected.');
+      await rejectGenericApproval(
+        approval.id, comments, approval.submission_revision, returnForCorrection
+      );
+      setNotice(returnForCorrection ? 'Submission returned for correction.' : 'Approval rejected.');
       await loadReports();
     } catch (cause) {
       await showDecisionError(cause, 'Unable to reject the workflow item.');
@@ -314,7 +318,8 @@ export function ApprovalInboxPage() {
     try {
       await delegateGenericApproval(approval.id, {
         delegated_to_id: payload.delegated_to_id.trim(),
-        reason: payload.reason.trim()
+        reason: payload.reason.trim(),
+        expected_submission_revision: approval.submission_revision
       });
       setNotice('Approval delegated.');
       await loadReports();
@@ -474,6 +479,14 @@ export function ApprovalInboxPage() {
                       {approval.request_type} - due {new Date(approval.due_at).toLocaleString()}
                     </p>
                   </div>
+                  {approval.submission_revision != null && (
+                    <Link
+                      className="text-brand-600 underline"
+                      to={`/materials?materialRequestId=${approval.request_id}`}
+                    >
+                      View submission {approval.submission_revision}
+                    </Link>
+                  )}
                   {approval.amount ? (
                     <p className="text-sm font-medium text-theme-text-secondary">
                       {labelledAmount(approval.amount, approval.currency)}
@@ -619,6 +632,18 @@ export function ApprovalInboxPage() {
                   </div>
                 )}
                 <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  {approval.allowed_actions?.includes('return') && (
+                    <button
+                      className="form-button"
+                      disabled={isEntityPending(`approval:${approval.id}`)}
+                      onClick={() =>
+                        void runAction(`approval:${approval.id}`, () => rejectWorkflow(approval, true))
+                      }
+                      type="button"
+                    >
+                      Return for correction
+                    </button>
+                  )}
                   {approval.allowed_actions?.includes('reject') && (
                     <button
                       className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
@@ -642,7 +667,9 @@ export function ApprovalInboxPage() {
                       type="button"
                     >
                       <Check className="h-4 w-4" />
-                      Approve
+                      {approval.submission_revision != null && approval.step_order === 1
+                        ? 'Verify'
+                        : 'Approve'}
                     </button>
                   )}
                 </div>

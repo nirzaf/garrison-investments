@@ -66,19 +66,11 @@ test('site supervisors can read price-safe stock but cannot run inventory comman
       headers,
       data: { item_id: randomUUID(), movement_type: 'receive', quantity: '1', to_location_id: randomUUID() }
     }),
-    request.post('/api/v1/inventory/requests', {
-      headers,
-      data: {
-        project_id: account.projectId,
-        from_location_id: randomUUID(),
-        lines: [{ item_id: randomUUID(), quantity: '1' }]
-      }
-    }),
     request.post(`/api/v1/inventory/requests/${randomUUID()}/reserve`, { headers }),
     request.post(`/api/v1/inventory/requests/${randomUUID()}/issue`, { headers })
   ];
   const responses = await Promise.all(requests);
-  expect(responses.map((response) => response.status())).toEqual([403, 403, 403, 403, 403, 403]);
+  expect(responses.map((response) => response.status())).toEqual([403, 403, 403, 403, 403]);
 
   await page.goto('/materials');
   await expect(page.getByRole('button', { name: 'Add item', exact: true })).toHaveCount(0);

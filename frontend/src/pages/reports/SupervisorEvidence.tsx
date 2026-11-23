@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { formatApiError } from '../../api/errors';
 import { getPhotoDownloadUrl, listPhotos } from '../../api/photos';
 import {
   listReportSupervisorUpdates,
+  listSupervisorSubmissionHistory,
   type SupervisorUpdateRecord
 } from '../../api/supervisorUpdates';
 
@@ -50,18 +51,60 @@ function EvidenceFiles({ updateId }: { updateId: string }) {
   );
 }
 
-export function SupervisorUpdateDetails({ update }: { update: SupervisorUpdateRecord }) {
+export function SupervisorSubmissionHistory({ updateId }: { updateId: string }) {
+  const history = useQuery({
+    queryKey: ['site-progress-submissions', updateId],
+    queryFn: () => listSupervisorSubmissionHistory(updateId)
+  });
+  if (history.isPending) return <p role="status">Loading submitted revisions…</p>;
+  if (history.isError) {
+    return <p role="alert">{formatApiError(history.error, 'Unable to load submitted revisions.')}</p>;
+  }
+  return history.data.map((row) => (
+    <section key={row.submission_revision} className="my-2 border-l border-theme-border pl-3">
+      <h4 className="font-medium">Submission {row.submission_revision}</h4>
+      <p>{row.requirements.activity_scope}</p>
+      <p>{row.requirements.progress_notes}</p>
+      <p>Remaining work — {row.requirements.remaining_work}</p>
+      <p>QS — {row.qs_decision ?? (row.qs_id ? 'Pending' : 'Not required')}</p>
+      {row.qs_comments && <p>{row.qs_comments}</p>}
+      <p>Site Engineer — {row.engineer_decision ?? 'Pending'}</p>
+      {row.engineer_comments && <p>{row.engineer_comments}</p>}
+    </section>
+  ));
+}
+
+export function SupervisorUpdateDetails({ update, children }: {
+  update: SupervisorUpdateRecord;
+  children?: ReactNode;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const statusLabels: Record<string, string> = {
+    draft: 'Draft',
+    submitted: 'Legacy submission awaiting correction',
+    pending_qs: 'Pending QS verification',
+    pending_engineer: 'Pending Site Engineer confirmation',
+    returned: 'Returned for correction',
+    rejected: 'Rejected',
+    verified: 'Confirmed'
+  };
   return (
     <details
       className="rounded-md border border-theme-border p-3 text-sm"
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary className="cursor-pointer font-medium">
-        {update.update_date} · {update.work_location} · {update.status}
+        {update.update_date} · {update.work_location} · {statusLabels[update.status] ?? update.status}
       </summary>
       <div className="mt-3 space-y-2">
+        {update.activity_scope && <p>Scope — {update.activity_scope}</p>}
         <p className="whitespace-pre-wrap">{update.progress_notes}</p>
+        {update.remaining_work && <p>Remaining work — {update.remaining_work}</p>}
+        {update.completed_area && <p>Completed area — {update.completed_area}</p>}
+        {update.completed_quantity != null && (
+          <p>Completed quantity — {update.completed_quantity} {update.quantity_unit}</p>
+        )}
+        {update.progress_percentage != null && <p>Reported progress — {update.progress_percentage}%</p>}
         <p>
           {update.attendance_count} attendance · {update.overtime_hours} overtime hours
         </p>
@@ -76,6 +119,10 @@ export function SupervisorUpdateDetails({ update }: { update: SupervisorUpdateRe
         )}
         {update.verified_report_id && <p>Linked report {update.verified_report_id}</p>}
         {expanded && <EvidenceFiles updateId={update.id} />}
+        {expanded && update.submission_revision != null && (
+          <SupervisorSubmissionHistory updateId={update.id} />
+        )}
+        {children}
       </div>
     </details>
   );

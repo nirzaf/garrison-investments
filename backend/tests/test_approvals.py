@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.approval import Approval
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
@@ -16,6 +17,7 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.approvals import ApprovalCreateRequest
 from app.services.approval_service import ApprovalService
+from app.utils.security import utc_now
 from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
@@ -187,3 +189,57 @@ async def test_material_request_approval_falls_back_only_to_company_director() -
         "Open approval: https://portal.example.com/approvals?tab=workflow&approvalId="
         f"{approval.id}"
     )
+
+
+async def test_approval_amounts_follow_financial_permission_and_current_project_scope() -> None:
+    await skip_if_database_unavailable()
+    manager, manager_password = await create_user("group_project_manager")
+    engineer, engineer_password = await create_user("mep_project_manager")
+    assigned = await create_project(manager, engineer)
+    director, _ = await create_user("managing_director")
+    other = await create_project(director, engineer)
+    now = utc_now()
+
+    async with AsyncSessionLocal() as session:
+        records = [
+            Approval(
+                request_type="material_request",
+                request_id=uuid4(),
+                project_id=project_id,
+                submitter_id=user_id,
+                status="cancelled",
+                title="Historical material request",
+                amount=Decimal("50.00"),
+                currency="LKR",
+                submitted_at=now,
+                due_at=now + timedelta(days=1),
+            )
+            for user_id, project_id in (
+                (manager.id, assigned.id),
+                (manager.id, other.id),
+                (engineer.id, assigned.id),
+            )
+        ]
+        session.add_all(records)
+        await session.commit()
+        ids = [str(record.id) for record in records]
+
+    async with create_test_client() as client:
+        for user, password, visible_ids in (
+            (manager, manager_password, ids[:2]),
+            (engineer, engineer_password, ids[2:]),
+        ):
+            token = await login_for_token(client, user, password)
+            headers = {"Authorization": f"Bearer {token}"}
+            outbox = await client.get(
+                "/api/v1/approvals", params={"box": "outbox"}, headers=headers
+            )
+            assert outbox.status_code == 200
+            rows = {row["id"]: row for row in outbox.json()["items"]}
+            assert set(rows) == set(visible_ids)
+            for record_id in visible_ids:
+                expected = ("50.00", "LKR") if record_id == ids[0] else (None, None)
+                detail = await client.get(f"/api/v1/approvals/{record_id}", headers=headers)
+                assert detail.status_code == 200
+                for row in (rows[record_id], detail.json()):
+                    assert (row["amount"], row["currency"]) == expected

@@ -239,6 +239,7 @@ export function UserManagementPage() {
               value={form.email}
             />
             <select
+              aria-label="Role for new user"
               className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, role: event.target.value })}
               required

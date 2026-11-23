@@ -19,6 +19,14 @@ An engineer’s report submission verifies an eligible update and binds it to th
 | `attendance_count` | `integer` | No | — |
 | `overtime_hours` | `numeric(5, 2)` | No | `0` |
 | `progress_notes` | `text` | No | — |
+| `activity_scope` | `text` | Yes | — |
+| `remaining_work` | `text` | Yes | — |
+| `completed_area` | `varchar(255)` | Yes | — |
+| `completed_quantity` | `numeric(14, 3)` | Yes | — |
+| `quantity_unit` | `varchar(30)` | Yes | — |
+| `progress_percentage` | `numeric(5, 2)` | Yes | — |
+| `revision` | `integer` | No | `1` |
+| `submission_revision` | `integer` | Yes | — |
 | `delay_notes` | `text` | Yes | — |
 | `required_notes` | `text` | No | — |
 | `attachment_refs` | `jsonb` | No | — |
@@ -37,7 +45,7 @@ An engineer’s report submission verifies an eligible update and binds it to th
 | Constraint | Rule |
 | --- | --- |
 | `pk_supervisor_updates` | `PRIMARY KEY (id)` |
-| `ck_supervisor_updates_ck_supervisor_updates_status_valid` | `CHECK ((status IN ('draft', 'submitted', 'verified', 'rejected')))` |
+| `ck_supervisor_updates_status_valid` | `CHECK (status IN ('draft', 'submitted', 'pending_qs', 'pending_engineer', 'returned', 'verified', 'rejected'))` |
 | `ck_supervisor_updates_day_type_valid` | `CHECK ((day_type IN ('weekday', 'friday', 'public_holiday')))` |
 
 ## Foreign keys
@@ -57,3 +65,12 @@ An engineer’s report submission verifies an eligible update and binds it to th
 | `idx_supervisor_updates_supervisor` | `btree` | `supervisor_id` | No | `(deleted_at IS NULL)` |
 | `ix_supervisor_updates_verified_report_id` | `btree` | `verified_report_id` | No | — |
 | `uq_supervisor_update_draft_owner` | `btree` | `project_id, update_date, supervisor_id` | Yes | `((deleted_at IS NULL) AND (status IN ('draft', 'submitted')))` |
+
+## Submitted progress
+
+`supervisor_update_submissions` is keyed by `(update_id, submission_revision)`.
+It stores the submitted fields, photo IDs, assigned engineer and optional QS,
+and their independent decisions, comments and timestamps. The parent
+`revision` changes on edits and decisions. Older verified links and timestamps
+are retained without assigning a current submission revision.
+[Migration 104](../../backend/alembic/versions/202605310104_supervisor_progress_reviews.py)

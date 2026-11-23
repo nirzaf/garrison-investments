@@ -20,6 +20,7 @@ from app.models.hr import (
     HrLeaveType,
     HrOvertimeRequest,
     HrPayrollPeriod,
+    HrSiteAttendanceSubmission,
     HrTimesheet,
 )
 from app.models.user import User
@@ -135,15 +136,32 @@ async def reconcile_payroll_time_inputs(
             None,
         )
 
-    attendance = await session.scalars(
-        select(HrAttendanceEntry).where(
+    attendance = await session.execute(
+        select(HrAttendanceEntry, HrSiteAttendanceSubmission)
+        .outerjoin(
+            HrSiteAttendanceSubmission,
+            (HrSiteAttendanceSubmission.entry_id == HrAttendanceEntry.id)
+            & (
+                HrSiteAttendanceSubmission.submission_revision
+                == HrAttendanceEntry.site_submission_revision
+            ),
+        )
+        .where(
             HrAttendanceEntry.employee_id.in_(roster),
             HrAttendanceEntry.work_date.between(start, end),
             HrAttendanceEntry.status != "historical",
         )
     )
-    for entry in attendance:
-        if entry.status != "approved":
+    for entry, site_review in attendance:
+        site_pending = entry.source == "site" and (
+            site_review is None
+            or site_review.engineer_decision != "approved"
+            or site_review.engineer_decided_at is None
+            or site_review.hr_decision != "approved"
+            or site_review.hr_decided_at is None
+            or site_review.hr_id != entry.approved_by_id
+        )
+        if entry.status != "approved" or site_pending:
             issues.append(
                 PayrollTimeInputIssue(
                     employee_id=entry.employee_id, record_id=entry.id, code="pending_attendance"
@@ -464,8 +482,11 @@ async def reconcile_payroll_leave_inputs(
 
 
 async def _record_input_review(
-    session: AsyncSession, source: str, result: PayrollTimeInputPreview | PayrollLeaveInputPreview,
-    actor: User, expected_csv_sha256: str | None,
+    session: AsyncSession,
+    source: str,
+    result: PayrollTimeInputPreview | PayrollLeaveInputPreview,
+    actor: User,
+    expected_csv_sha256: str | None,
 ) -> None:
     if expected_csv_sha256 is not None and result.csv_sha256 != expected_csv_sha256:
         raise AppException(

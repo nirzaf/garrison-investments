@@ -189,7 +189,7 @@ function ProjectOverview({
         <ProjectEditor
           project={project}
           canSave={canEdit}
-          canEditFinancial={canViewFinancial}
+          canEditFinancial={canAddBoqItem}
           onClose={() => setEditing(false)}
           refresh={refresh}
         />

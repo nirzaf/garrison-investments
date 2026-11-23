@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 test('a supervisor resumes a saved draft and submits the latest changes', async ({ page }) => {
-  const account: { email: string; password: string; projectId: string } = JSON.parse(
+  const [account]: { email: string; password: string; projectId: string }[] = JSON.parse(
     execFileSync(
       env.BROWSER_TEST_PYTHON ?? 'python',
-      ['-m', 'tests.browser_fixtures', 'seed-supervisor'],
+      ['-m', 'tests.browser_fixtures', 'seed-group',
+        '--role', 'site_supervisor', '--role', 'mep_project_manager'],
       { cwd: fileURLToPath(new URL('../../backend/', import.meta.url)), encoding: 'utf8' }
     )
   );
@@ -33,7 +34,9 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
     .getByRole('combobox', { name: 'Project', exact: true })
     .selectOption(account.projectId);
   await page.getByLabel('Work location').fill('North wing');
+  await page.getByLabel('Activity and work scope').fill('Check handrail fasteners.');
   await page.getByLabel('Progress notes').fill('Completed initial inspection.');
+  await page.getByLabel('Remaining work').fill('Confirm fastener placement.');
   await page.getByLabel('Required notes').fill('Check handrails.');
   await page.getByRole('button', { name: 'Save draft' }).click();
   await expect(page.getByText('Draft saved.', { exact: true })).toBeVisible();
@@ -66,7 +69,7 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
   await page.reload();
   await expect(page.getByLabel('Update date')).toHaveValue('2026-11-13');
   await expect(record).toHaveCount(1);
-  await expect(record.getByText('submitted', { exact: true })).toBeVisible();
+  await expect(record.getByText('pending_engineer', { exact: true })).toBeVisible();
   await expect(
     record.getByText('Verified the handrails after the final inspection.')
   ).toBeVisible();

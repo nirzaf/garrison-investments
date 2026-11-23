@@ -27,7 +27,10 @@ test('a managing director creates a user, changes their role, and sees the audit
   const email = director.email.replace('browser-', 'role-');
   await page.getByPlaceholder('Full name', { exact: true }).fill('Role Test User');
   await page.getByPlaceholder('Email', { exact: true }).fill(email);
-  await page.locator('form select').first().selectOption('quantity_surveyor');
+  const role = page.getByRole('combobox', { name: 'Role for new user', exact: true });
+  await expect(role).toBeVisible();
+  await expect(role.getByRole('option', { name: 'Quantity Surveyor', exact: true })).toHaveCount(1);
+  await role.selectOption('quantity_surveyor');
   await page.getByPlaceholder('Employee code').fill(email.split('@')[0]);
   await page.getByPlaceholder('Phone').fill('+97455550123');
   await page.getByPlaceholder('Temporary password').fill('BrowserFixture42!');

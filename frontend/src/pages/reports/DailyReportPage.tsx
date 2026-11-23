@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Check, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { getBrowserSession } from '../../api/browserSession';
 import { sameScope, type OfflineScope } from '../../api/offlineDb';
@@ -506,13 +506,15 @@ export function DailyReportPage() {
     }
     let active = true;
     void Promise.all([
-      listSupervisorUpdates({ project_id: form.project_id, status: 'submitted' }),
+      listSupervisorUpdates({ project_id: form.project_id, status: 'verified' }),
       savedReportId ? listReportSupervisorUpdates(savedReportId) : Promise.resolve([]),
       loadReports(form.project_id)
     ])
       .then(([submitted, linked]) => {
         if (!active) return;
-        const updates = new Map(submitted.items.map((update) => [update.id, update]));
+        const updates = new Map(submitted.items.filter((update) =>
+          update.submission_revision != null && (!update.verified_report_id || update.verified_report_id === savedReportId)
+        ).map((update) => [update.id, update]));
         for (const update of linked) {
           if (update.project_id === form.project_id) updates.set(update.id, update);
         }
@@ -1203,9 +1205,14 @@ export function DailyReportPage() {
 
           <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <SectionHeader title="Supervisor Updates" />
+            {user?.role === 'quantity_surveyor' && (
+              <Link className="text-brand-600 underline" to="/reports/supervisor-update">
+                Review assigned site progress
+              </Link>
+            )}
             {supervisorUpdates.length === 0 ? (
               <p className="text-sm text-theme-text-muted">
-                {t('No submitted supervisor updates found.')}
+                {t('No confirmed supervisor updates found.')}
               </p>
             ) : (
               <div className="grid gap-2">
@@ -1216,7 +1223,7 @@ export function DailyReportPage() {
                   >
                     <input
                       checked={form.supervisor_update_ids.includes(update.id)}
-                      disabled={update.status === 'verified'}
+                      disabled={Boolean(update.verified_report_id)}
                       className="mt-1"
                       onChange={(event) => {
                         const selected = event.target.checked
@@ -1233,7 +1240,7 @@ export function DailyReportPage() {
                       <span className="line-clamp-2 text-theme-text-muted">
                         {update.progress_notes}
                       </span>
-                      {update.status === 'verified' && (
+                      {update.verified_report_id && (
                         <span className="block text-theme-text-muted">
                           Verified evidence retained on this report
                         </span>

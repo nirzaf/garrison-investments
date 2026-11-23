@@ -3495,3 +3495,79 @@ class HrSummaryReportResponse(BaseModel):
     separated_employees: int
     by_department: dict[str, int]
     by_employment_status: dict[str, int]
+
+
+class SiteAttendanceCreateRequest(BaseModel):
+    employee_id: UUID
+    project_id: UUID
+    work_date: date
+    attendance_status: Literal["present", "absent", "on_leave", "off_day"]
+    check_in_at: datetime | None = None
+    check_out_at: datetime | None = None
+    worked_hours: Decimal = Field(ge=0, le=24, decimal_places=2)
+    overtime_hours: Decimal = Field(default=Decimal("0"), ge=0, le=24, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_site_hours(self) -> Self:
+        if self.overtime_hours > self.worked_hours:
+            raise ValueError("Overtime must fit within the recorded worked hours.")
+        if self.attendance_status != "present" and (
+            self.worked_hours or self.check_in_at is not None or self.check_out_at is not None
+        ):
+            raise ValueError("Arrival times and worked hours are for present workers only.")
+        return self
+
+
+class SiteAttendanceCorrectionRequest(SiteAttendanceCreateRequest):
+    expected_revision: int = Field(ge=1)
+
+
+class SiteAttendanceDecisionRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    stage: Literal["engineer", "hr"]
+    decision: Literal["approved", "returned", "rejected"]
+    comments: str | None = Field(default=None, max_length=2000)
+
+
+class SiteAttendanceWorker(BaseModel):
+    id: UUID
+    employee_code: str
+    full_name: str
+
+
+class SiteAttendanceWorkerPage(BaseModel):
+    items: list[SiteAttendanceWorker]
+    total: int
+
+
+class SiteAttendanceSubmissionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    submission_revision: int
+    submitted_by: UUID
+    engineer_id: UUID
+    requirements: SiteAttendanceCreateRequest
+    engineer_decision: str | None
+    engineer_comments: str | None
+    engineer_decided_at: datetime | None
+    hr_id: UUID | None
+    hr_decision: str | None
+    hr_comments: str | None
+    hr_decided_at: datetime | None
+    created_at: datetime
+
+
+class SiteAttendanceResponse(BaseModel):
+    id: UUID
+    record_revision: int
+    worker: SiteAttendanceWorker
+    stage: Literal["pending_engineer", "pending_hr", "approved", "returned", "rejected"]
+    submission: SiteAttendanceSubmissionResponse
+
+
+class SiteAttendancePageResponse(BaseModel):
+    items: list[SiteAttendanceResponse]
+    total: int
+    submitted_present: int
+    confirmed_present: int

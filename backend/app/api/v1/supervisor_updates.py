@@ -6,8 +6,11 @@ from fastapi import APIRouter, Query, status
 from app.api.dependencies import CurrentUser, DbSession
 from app.schemas.supervisor_updates import (
     SupervisorUpdateCreateRequest,
+    SupervisorUpdateDecisionRequest,
     SupervisorUpdateListResponse,
     SupervisorUpdateResponse,
+    SupervisorUpdateSubmissionResponse,
+    SupervisorUpdateSubmitRequest,
 )
 from app.services.reporting_service import ReportingService
 
@@ -22,6 +25,8 @@ async def list_supervisor_updates(
     status: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
+    review_only: bool = False,
+    update_id: UUID | None = None,
 ) -> SupervisorUpdateListResponse:
     service = ReportingService(session)
     updates, total = await service.list_supervisor_updates(
@@ -30,6 +35,8 @@ async def list_supervisor_updates(
         status=status,
         limit=limit,
         offset=offset,
+        review_only=review_only,
+        update_id=update_id,
     )
     return SupervisorUpdateListResponse(
         items=await service.describe_updates(updates),
@@ -50,11 +57,35 @@ async def create_supervisor_update(
 @router.post("/{update_id}/submit", response_model=SupervisorUpdateResponse)
 async def submit_supervisor_update(
     update_id: UUID,
+    payload: SupervisorUpdateSubmitRequest,
     current_user: CurrentUser,
     session: DbSession,
 ) -> SupervisorUpdateResponse:
-    update = await ReportingService(session).submit_supervisor_update(update_id, current_user)
-    return SupervisorUpdateResponse.model_validate(update)
+    service = ReportingService(session)
+    update = await service.submit_supervisor_update(
+        update_id, current_user, payload.expected_revision
+    )
+    return (await service.describe_updates([update]))[0]
+
+
+@router.post("/{update_id}/review", response_model=SupervisorUpdateResponse)
+async def review_supervisor_update(
+    update_id: UUID,
+    payload: SupervisorUpdateDecisionRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> SupervisorUpdateResponse:
+    service = ReportingService(session)
+    update = await service.review_supervisor_update(update_id, payload, current_user)
+    return (await service.describe_updates([update]))[0]
+
+
+@router.get("/{update_id}/submissions", response_model=list[SupervisorUpdateSubmissionResponse])
+async def supervisor_submission_history(
+    update_id: UUID, current_user: CurrentUser, session: DbSession
+) -> list[SupervisorUpdateSubmissionResponse]:
+    history = await ReportingService(session).supervisor_submission_history(update_id, current_user)
+    return [SupervisorUpdateSubmissionResponse.model_validate(row) for row in history]
 
 
 @router.put("/{update_id}", response_model=SupervisorUpdateResponse)

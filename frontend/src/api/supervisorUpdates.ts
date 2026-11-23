@@ -4,7 +4,7 @@ import type { components } from './schema';
 
 export type AttachmentRef = components['schemas']['AttachmentRef'];
 
-export type SupervisorUpdatePayload = components['schemas']['SupervisorUpdateCreateRequest'];
+export type SupervisorUpdatePayload = components['schemas']['SupervisorUpdateCreateRequest-Input'];
 
 export type SupervisorUpdateRecord = components['schemas']['SupervisorUpdateResponse'];
 
@@ -15,6 +15,8 @@ export async function listSupervisorUpdates(params: {
   status?: string;
   limit?: number;
   offset?: number;
+  review_only?: boolean;
+  update_id?: string;
 }): Promise<SupervisorUpdateListResponse> {
   const response = await apiClient.get<SupervisorUpdateListResponse>('/supervisor-updates', {
     params
@@ -58,12 +60,30 @@ export async function updateSupervisorUpdate(
 
 export async function submitSupervisorUpdate(
   updateId: string,
+  expectedRevision: number,
   scope?: OfflineScope
 ): Promise<SupervisorUpdateRecord> {
   const response = await apiClient.post<SupervisorUpdateRecord>(
     `/supervisor-updates/${updateId}/submit`,
-    undefined,
+    { expected_revision: expectedRevision },
     sessionRequestConfig(scope)
   );
   return response.data;
+}
+
+export async function reviewSupervisorUpdate(
+  updateId: string,
+  decision: components['schemas']['SupervisorUpdateDecisionRequest']
+) {
+  const { data } = await apiClient.post<SupervisorUpdateRecord>(
+    `/supervisor-updates/${updateId}/review`, decision
+  );
+  return data;
+}
+
+export async function listSupervisorSubmissionHistory(updateId: string) {
+  const { data } = await apiClient.get<components['schemas']['SupervisorUpdateSubmissionResponse'][]>(
+    `/supervisor-updates/${updateId}/submissions`
+  );
+  return data;
 }

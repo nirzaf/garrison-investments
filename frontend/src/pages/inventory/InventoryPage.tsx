@@ -29,7 +29,8 @@ import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 import { useBusinessPolicy } from '../../api/businessPolicy';
 import { businessDate } from '../../businessDate';
-import { MaterialFulfillment, MaterialRequestForm } from './MaterialRequestControls';
+import { InventoryRegistrationPanel } from './InventoryRegistrationPanel';
+import { MaterialRequestForm, MaterialRequestReview } from './MaterialRequestControls';
 
 const inventoryPageSize = 20;
 const movementPageSize = 8;
@@ -56,7 +57,8 @@ export function InventoryPage() {
   const materialRequestRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageInventory = user?.permissions?.includes('inventory:manage') ?? false;
   const { data: businessPolicy } = useBusinessPolicy();
-  const canCreateMaterialRequest = user?.permissions?.includes('inventory:manage') ?? false;
+  const canCreateMaterialRequest = canManageInventory ||
+    user?.role === 'site_supervisor' || user?.role === 'senior_site_supervisor';
   const locations = useQuery({ queryKey: ['inventory-locations'], queryFn: listLocations });
   const suppliers = useQuery({
     queryKey: ['suppliers'],
@@ -220,6 +222,12 @@ export function InventoryPage() {
           {`${lowStock.data?.length ?? 0} low stock`}
         </StatusBadge>
       </div>
+
+      <InventoryRegistrationPanel
+        items={items.data ?? []}
+        locations={locations.data ?? []}
+        refreshStock={refreshInventory}
+      />
 
       {canManageInventory ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -662,10 +670,14 @@ export function InventoryPage() {
                       {request.status}
                     </StatusBadge>
                   </div>
-                  <MaterialFulfillment
+                  <MaterialRequestReview
                     request={request}
                     items={items.data ?? []}
+                    locations={locations.data ?? []}
+                    userId={user?.id}
                     canManage={canManageInventory && !cancelRequestMutation.isPending}
+                    canSubmit={canCreateMaterialRequest}
+                    isAssignedProcessorRole={user?.role === 'administrative_executive'}
                     onSuccess={refreshInventory}
                   />
                   {canManageInventory &&

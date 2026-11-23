@@ -14,9 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.daily_report import DailyReport
+from app.models.inventory import InventoryRegistration
 from app.models.photo import Photo
 from app.models.project import Project
-from app.models.supervisor_update import SupervisorUpdate
+from app.models.supervisor_update import SupervisorUpdate, SupervisorUpdateSubmission
 from app.models.user import User
 from app.repositories.daily_report_repository import DailyReportRepository
 from app.repositories.photo_repository import PhotoRepository
@@ -42,6 +43,8 @@ from app.utils.security import utc_now
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
 MAX_REPORT_PHOTOS = 5
+UPLOAD_OWNER_TYPES = {"daily_report", "supervisor_update", "inventory_registration"}
+type PhotoOwner = DailyReport | SupervisorUpdate | InventoryRegistration
 PHOTO_RECOVERY_DAYS = 30
 SIGNED_URL_SECONDS = 300
 ALLOWED_MAGIC = {
@@ -379,6 +382,19 @@ class PhotoService:
                 status_code=409,
                 error_code="PHOTO_DELETE_LOCKED",
             )
+        if isinstance(owner, SupervisorUpdate) and await self.session.scalar(
+            select(SupervisorUpdateSubmission.update_id)
+            .where(
+                SupervisorUpdateSubmission.update_id == owner.id,
+                SupervisorUpdateSubmission.evidence_ids.contains([str(photo.id)]),
+            )
+            .limit(1)
+        ):
+            raise AppException(
+                "Submitted photo evidence must be retained.",
+                status_code=409,
+                error_code="PHOTO_RETAINED_EVIDENCE",
+            )
         reason = self._evidence_reason(owner, actor, reason)
         photo.deleted_at = utc_now()
         if isinstance(owner, DailyReport):
@@ -439,7 +455,7 @@ class PhotoService:
         return photo
 
     def _evidence_reason(
-        self, owner: DailyReport | SupervisorUpdate | None, actor: User, reason: str | None
+        self, owner: PhotoOwner | None, actor: User, reason: str | None
     ) -> str | None:
         reason = reason.strip() if reason else None
         return reason
@@ -454,8 +470,8 @@ class PhotoService:
 
     async def _lock_owner(
         self, entity_type: str, entity_id: UUID, actor: User
-    ) -> DailyReport | SupervisorUpdate | None:
-        owner: DailyReport | SupervisorUpdate | None = None
+    ) -> PhotoOwner | None:
+        owner: PhotoOwner | None = None
         if entity_type == "daily_report":
             owner = await DailyReportRepository(self.session).lock_by_id(entity_id)
             if owner is None:
@@ -466,6 +482,14 @@ class PhotoService:
             )
             if owner is None:
                 raise NotFoundException("Supervisor update")
+        elif entity_type == "inventory_registration":
+            owner = await self.session.scalar(
+                select(InventoryRegistration)
+                .where(InventoryRegistration.id == entity_id)
+                .with_for_update()
+            )
+            if owner is None:
+                raise NotFoundException("Inventory registration")
         elif entity_type == "project":
             project = await self.session.scalar(
                 select(Project.id)
@@ -477,9 +501,7 @@ class PhotoService:
         await ensure_entity_access(self.session, entity_type, entity_id, actor)
         return owner
 
-    async def _ensure_author(
-        self, owner: DailyReport | SupervisorUpdate | None, actor: User
-    ) -> None:
+    async def _ensure_author(self, owner: PhotoOwner | None, actor: User) -> None:
         if isinstance(owner, DailyReport):
             owns_draft = (
                 actor.role in OFFICIAL_REPORT_AUTHOR_ROLES
@@ -492,6 +514,8 @@ class PhotoService:
                 and has_permission(actor, PERMISSION_REPORTS_SUBMIT)
                 and owner.supervisor_id == actor.id
             )
+        elif isinstance(owner, InventoryRegistration):
+            owns_draft = actor.role in SUPERVISOR_ROLES and owner.created_by == actor.id
         else:
             owns_draft = False
         if not owns_draft or owner is None:
@@ -504,11 +528,11 @@ class PhotoService:
         entity_id: UUID,
         kind: str,
         actor: User,
-    ) -> DailyReport | SupervisorUpdate | None:
+    ) -> PhotoOwner | None:
         owner = await self._lock_owner(entity_type, entity_id, actor)
-        if entity_type not in {"daily_report", "supervisor_update"}:
+        if entity_type not in UPLOAD_OWNER_TYPES:
             raise AppException(
-                "This file owner type is not available through report uploads.",
+                "This file owner type does not accept evidence uploads.",
                 status_code=403,
                 error_code="PHOTO_OWNER_FORBIDDEN",
             )
@@ -532,10 +556,14 @@ class PhotoService:
         )
 
     async def _ensure_photo_capacity(self, entity_type: str, entity_id: UUID, kind: str) -> None:
-        if kind != "photo" or entity_type not in {"daily_report", "supervisor_update"}:
+        if kind != "photo" or entity_type not in UPLOAD_OWNER_TYPES:
             return
         if await self.photos.count_photos(entity_type, entity_id) >= MAX_REPORT_PHOTOS:
-            owner_label = "report" if entity_type == "daily_report" else "site update"
+            owner_label = {
+                "daily_report": "report",
+                "supervisor_update": "site update",
+                "inventory_registration": "registration",
+            }[entity_type]
             raise AppException(
                 f"This {owner_label} already has {MAX_REPORT_PHOTOS} active photos.",
                 status_code=409,
@@ -543,7 +571,7 @@ class PhotoService:
             )
 
     def _validate_entity_type(self, entity_type: str) -> None:
-        if entity_type not in {"daily_report", "project", "supervisor_update", "document"}:
+        if entity_type not in UPLOAD_OWNER_TYPES | {"project", "document"}:
             raise AppException(
                 "Invalid file owner.",
                 status_code=422,

@@ -17,7 +17,7 @@ export type MovementRecord = components['schemas']['MovementResponse'];
 export type MovementCreatePayload = components['schemas']['MovementCreateRequest'];
 
 export type MaterialRequestRecord = components['schemas']['MaterialRequestResponse'];
-export type MaterialRequestCreatePayload = components['schemas']['MaterialRequestCreateRequest'];
+export type MaterialRequestCreatePayload = components['schemas']['MaterialRequestSubmitRequest'];
 export type MaterialQuantityCommand = components['schemas']['MaterialQuantityCommand'];
 export type RequestProjectOption = components['schemas']['RequestProjectOption'];
 
@@ -146,6 +146,22 @@ export async function createMaterialRequest(payload: MaterialRequestCreatePayloa
   return data;
 }
 
+export async function resubmitMaterialRequest(
+  requestId: string, payload: components['schemas']['MaterialRequestResubmitRequest']
+) {
+  const { data } = await apiClient.post<MaterialRequestRecord>(
+    `/inventory/requests/${requestId}/resubmit`, payload
+  );
+  return data;
+}
+
+export async function materialSubmissionHistory(requestId: string) {
+  const { data } = await apiClient.get<components['schemas']['MaterialSubmissionHistoryResponse']>(
+    `/inventory/requests/${requestId}/submissions`
+  );
+  return data;
+}
+
 export async function listRequestProjects(search?: string) {
   const { data } = await apiClient.get<components['schemas']['RequestProjectOptions']>(
     '/inventory/request-projects',
@@ -185,6 +201,56 @@ export async function issueMaterialRequest(requestId: string) {
 export async function cancelMaterialRequest(requestId: string) {
   const { data } = await apiClient.post<MaterialRequestRecord>(
     `/inventory/requests/${requestId}/cancel`
+  );
+  return data;
+}
+
+export type InventoryRegistration = components['schemas']['InventoryRegistrationResponse'];
+export type InventoryRegistrationDraft = components['schemas']['InventoryRegistrationCreateRequest-Input'];
+
+export async function listInventoryRegistrations(params: {
+  registration_id?: string;
+  offset: number;
+  limit: number;
+}) {
+  const { data } = await apiClient.get<components['schemas']['InventoryRegistrationPageResponse']>(
+    '/inventory/registrations', { params }
+  );
+  return data;
+}
+
+export async function listInventoryRegistrationHistory(id: string) {
+  const { data } = await apiClient.get<InventoryRegistration[]>(
+    `/inventory/registrations/${id}/history`
+  );
+  return data;
+}
+
+export async function createInventoryRegistration(
+  draft: InventoryRegistrationDraft,
+  previous?: InventoryRegistration
+) {
+  const path = previous ? `/inventory/registrations/${previous.id}/correction` : '/inventory/registrations';
+  const { data } = await apiClient.post<InventoryRegistration>(
+    path, { ...draft, ...(previous ? { expected_submission_revision: previous.submission_revision } : {}) }
+  );
+  return data;
+}
+
+export async function submitInventoryRegistration(record: InventoryRegistration) {
+  const { data } = await apiClient.post<InventoryRegistration>(
+    `/inventory/registrations/${record.id}/submit`,
+    { expected_submission_revision: record.submission_revision }
+  );
+  return data;
+}
+
+export async function decideInventoryRegistration(
+  record: InventoryRegistration, decision: 'approved' | 'rejected' | 'returned', comments: string
+) {
+  const { data } = await apiClient.post<InventoryRegistration>(
+    `/inventory/registrations/${record.id}/decision`,
+    { expected_submission_revision: record.submission_revision, decision, comments }
   );
   return data;
 }

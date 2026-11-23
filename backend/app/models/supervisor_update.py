@@ -62,3 +62,30 @@ class SupervisorUpdate(TimestampMixin, SoftDeleteMixin, Base):
         index=True,
     )
     verification_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    submission_revision: Mapped[int | None] = mapped_column(Integer)
+    activity_scope: Mapped[str | None] = mapped_column(Text)
+    remaining_work: Mapped[str | None] = mapped_column(Text)
+    completed_area: Mapped[str | None] = mapped_column(String(255))
+    completed_quantity: Mapped[Decimal | None] = mapped_column(Numeric(14, 3))
+    quantity_unit: Mapped[str | None] = mapped_column(String(30))
+    progress_percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+
+
+class SupervisorUpdateSubmission(TimestampMixin, Base):
+    __tablename__ = "supervisor_update_submissions"
+
+    update_id: Mapped[UUID] = mapped_column(
+        ForeignKey("supervisor_updates.id", ondelete="RESTRICT"), primary_key=True
+    )
+    submission_revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirements: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    engineer_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    qs_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    qs_decision: Mapped[str | None] = mapped_column(String(20))
+    qs_comments: Mapped[str | None] = mapped_column(Text)
+    qs_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    engineer_decision: Mapped[str | None] = mapped_column(String(20))
+    engineer_comments: Mapped[str | None] = mapped_column(Text)
+    engineer_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

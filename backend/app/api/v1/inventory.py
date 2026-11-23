@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Response, status
 
-from app.api.dependencies import DbSession, require_permission
+from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.models.inventory import InventoryItem, InventoryLocationStock, MaterialRequest
 from app.models.user import User
 from app.schemas.inventory import (
@@ -11,24 +11,38 @@ from app.schemas.inventory import (
     AssetResponse,
     InventoryItemCreateRequest,
     InventoryItemResponse,
+    InventoryRegistrationCorrectionRequest,
+    InventoryRegistrationCreateRequest,
+    InventoryRegistrationDecisionRequest,
+    InventoryRegistrationPageResponse,
+    InventoryRegistrationResponse,
+    InventoryRegistrationSubmitRequest,
     LocationCreateRequest,
     LocationResponse,
     MaterialQuantityCommand,
-    MaterialRequestCreateRequest,
     MaterialRequestResponse,
+    MaterialRequestResubmitRequest,
+    MaterialRequestSubmitRequest,
+    MaterialSubmissionHistoryResponse,
+    MaterialSubmissionResponse,
     MovementCreateRequest,
     MovementResponse,
     RequestProjectOption,
     RequestProjectOptions,
     StockResponse,
 )
+from app.services.approval_service import ApprovalService
 from app.services.idempotency import validate_key
+from app.services.inventory_registration_service import InventoryRegistrationService
 from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException
 from app.utils.permissions import (
+    COMPANY_RESOURCE_ROLES,
     PERMISSION_FINANCIAL_VIEW,
     PERMISSION_INVENTORY_MANAGE,
     PERMISSION_INVENTORY_VIEW,
+    ROLE_ADMINISTRATIVE_EXECUTIVE,
+    ensure_permission,
     has_permission,
 )
 
@@ -36,6 +50,15 @@ router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
 CanViewInventory = Annotated[User, Depends(require_permission(PERMISSION_INVENTORY_VIEW))]
 CanManageInventory = Annotated[User, Depends(require_permission(PERMISSION_INVENTORY_MANAGE))]
+
+
+def require_material_processor(actor: CurrentUser) -> User:
+    if actor.role != ROLE_ADMINISTRATIVE_EXECUTIVE:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
+    return actor
+
+
+CanProcessMaterial = Annotated[User, Depends(require_material_processor)]
 
 PAGINATION_HEADERS: dict[int | str, dict[str, Any]] = {
     200: {"headers": {"X-Total-Count": {"schema": {"type": "integer", "minimum": 0}}}}
@@ -57,7 +80,9 @@ def stock_response(stock: InventoryLocationStock) -> StockResponse:
 def item_response(item: InventoryItem, actor: User) -> InventoryItemResponse:
     """Mask unit_cost on the response only — never on the persistent ORM instance."""
     response = InventoryItemResponse.model_validate(item)
-    if not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+    if actor.role not in COMPANY_RESOURCE_ROLES or not has_permission(
+        actor, PERMISSION_FINANCIAL_VIEW
+    ):
         response.unit_cost = None
     return response
 
@@ -222,12 +247,40 @@ async def list_material_requests(
     "/requests", response_model=MaterialRequestResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_material_request(
-    payload: MaterialRequestCreateRequest,
-    current_user: CanManageInventory,
+    payload: MaterialRequestSubmitRequest,
+    current_user: CanViewInventory,
     session: DbSession,
 ) -> MaterialRequestResponse:
     request = await InventoryService(session).create_material_request(payload, current_user)
     return material_request_response(request, current_user)
+
+
+@router.post("/requests/{request_id}/resubmit", response_model=MaterialRequestResponse)
+async def resubmit_material_request(
+    request_id: UUID,
+    payload: MaterialRequestResubmitRequest,
+    current_user: CanViewInventory,
+    session: DbSession,
+) -> MaterialRequestResponse:
+    request = await InventoryService(session).resubmit_material_request(
+        request_id, payload, current_user
+    )
+    return material_request_response(request, current_user)
+
+
+@router.get("/requests/{request_id}/submissions", response_model=MaterialSubmissionHistoryResponse)
+async def material_submission_history(
+    request_id: UUID,
+    current_user: CanViewInventory,
+    session: DbSession,
+) -> MaterialSubmissionHistoryResponse:
+    submissions, decisions = await InventoryService(session).material_submission_history(
+        request_id, current_user
+    )
+    return MaterialSubmissionHistoryResponse(
+        submissions=[MaterialSubmissionResponse.model_validate(row) for row in submissions],
+        decisions=await ApprovalService(session).describe_approvals(decisions, current_user),
+    )
 
 
 @router.get("/request-projects", response_model=RequestProjectOptions)
@@ -249,7 +302,7 @@ async def list_material_request_projects(
 @router.post("/requests/{request_id}/reserve", response_model=MaterialRequestResponse)
 async def reserve_material_request(
     request_id: UUID,
-    current_user: CanManageInventory,
+    current_user: CanProcessMaterial,
     session: DbSession,
     command: MaterialQuantityCommand | None = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
@@ -267,7 +320,7 @@ async def reserve_material_request(
 @router.post("/requests/{request_id}/issue", response_model=MaterialRequestResponse)
 async def issue_material_request(
     request_id: UUID,
-    current_user: CanManageInventory,
+    current_user: CanProcessMaterial,
     session: DbSession,
     command: MaterialQuantityCommand | None = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
@@ -301,3 +354,85 @@ async def cancel_material_request(
 ) -> MaterialRequestResponse:
     request = await InventoryService(session).cancel_request(request_id, current_user)
     return material_request_response(request, current_user)
+
+
+@router.get("/registrations", response_model=InventoryRegistrationPageResponse)
+async def list_inventory_registrations(
+    actor: CanViewInventory,
+    session: DbSession,
+    registration_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> InventoryRegistrationPageResponse:
+    rows, total = await InventoryRegistrationService(session).list_registrations(
+        actor, limit=limit, offset=offset, registration_id=registration_id
+    )
+    return InventoryRegistrationPageResponse(
+        items=[InventoryRegistrationResponse.model_validate(row) for row in rows],
+        total=total,
+    )
+
+
+@router.get(
+    "/registrations/{registration_id}/history", response_model=list[InventoryRegistrationResponse]
+)
+async def inventory_registration_history(
+    registration_id: UUID, actor: CanViewInventory, session: DbSession
+) -> list[InventoryRegistrationResponse]:
+    rows = await InventoryRegistrationService(session).history(registration_id, actor)
+    return [InventoryRegistrationResponse.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/registrations",
+    response_model=InventoryRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_inventory_registration(
+    payload: InventoryRegistrationCreateRequest, actor: CanViewInventory, session: DbSession
+) -> InventoryRegistrationResponse:
+    row = await InventoryRegistrationService(session).create(payload, actor)
+    return InventoryRegistrationResponse.model_validate(row)
+
+
+@router.post(
+    "/registrations/{registration_id}/submit", response_model=InventoryRegistrationResponse
+)
+async def submit_inventory_registration(
+    registration_id: UUID,
+    payload: InventoryRegistrationSubmitRequest,
+    actor: CanViewInventory,
+    session: DbSession,
+) -> InventoryRegistrationResponse:
+    row = await InventoryRegistrationService(session).submit(
+        registration_id, payload.expected_submission_revision, actor
+    )
+    return InventoryRegistrationResponse.model_validate(row)
+
+
+@router.post(
+    "/registrations/{registration_id}/decision", response_model=InventoryRegistrationResponse
+)
+async def decide_inventory_registration(
+    registration_id: UUID,
+    payload: InventoryRegistrationDecisionRequest,
+    actor: CanViewInventory,
+    session: DbSession,
+) -> InventoryRegistrationResponse:
+    row = await InventoryRegistrationService(session).decide(registration_id, payload, actor)
+    return InventoryRegistrationResponse.model_validate(row)
+
+
+@router.post(
+    "/registrations/{registration_id}/correction",
+    response_model=InventoryRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def correct_inventory_registration(
+    registration_id: UUID,
+    payload: InventoryRegistrationCorrectionRequest,
+    actor: CanViewInventory,
+    session: DbSession,
+) -> InventoryRegistrationResponse:
+    row = await InventoryRegistrationService(session).correct(registration_id, payload, actor)
+    return InventoryRegistrationResponse.model_validate(row)

@@ -85,6 +85,7 @@ const cases: RoleCase[] = [
       'Reports',
       'Supervisor updates',
       'Materials',
+      'Finance',
       'Documents',
       'Photos',
       'Users'
@@ -93,8 +94,7 @@ const cases: RoleCase[] = [
     feature: 'Projects',
     heading: 'Projects',
     action: 'New project',
-    canAct: false,
-    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
+    canAct: false
   },
   {
     role: 'mep_project_manager',
@@ -153,9 +153,6 @@ const cases: RoleCase[] = [
     role: 'hr_manager',
     label: 'HR Manager',
     links: [
-      'Reports',
-      'Supervisor updates',
-      'Photos',
       'Analytics',
       'Launch readiness',
       'Users',
@@ -163,12 +160,12 @@ const cases: RoleCase[] = [
       'Employee relations',
       'HR & Workforce'
     ],
-    inbox: true,
+    inbox: false,
     feature: 'Users',
     heading: 'Users',
     action: 'Create user',
     canAct: false,
-    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
+    denied: { route: '/reports/daily', api: '/api/v1/reports' }
   },
   {
     role: 'hr_executive_reader',

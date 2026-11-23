@@ -197,6 +197,9 @@ async def test_dashboard_separates_company_aggregates_from_report_details(monkey
         recent_scopes.append(scope)
         return ["R-1: submitted"]
 
+    async def site_operations(_scope):
+        return None
+
     monkeypatch.setattr(service, "_visible_project_ids", visible_project_ids)
     monkeypatch.setattr(service, "_count_projects", count)
     monkeypatch.setattr(service, "_count_reports", count)
@@ -204,14 +207,15 @@ async def test_dashboard_separates_company_aggregates_from_report_details(monkey
     monkeypatch.setattr(service, "_count_notifications", count_notifications)
     monkeypatch.setattr(service, "_assigned_project_ids", assigned_project_ids)
     monkeypatch.setattr(service, "_recent_activity", recent_activity)
+    monkeypatch.setattr(service, "_site_operations", site_operations)
 
     hr_summary = await service.summary(User(role="hr_manager"))
     ae_summary = await service.summary(User(role="administrative_executive"))
     director_summary = await service.summary(User(role="managing_director"))
 
     assert hr_summary.active_projects == 7  # company aggregate is permitted by D09
-    assert hr_summary.recent_activity == ["R-1: submitted"]
+    assert hr_summary.recent_activity == []
     assert ae_summary.active_projects == 7
     assert ae_summary.recent_activity == []  # AE has no reports:view grant
     assert director_summary.recent_activity == ["R-1: submitted"]
-    assert recent_scopes == [[assigned_project], None]
+    assert recent_scopes == [None]

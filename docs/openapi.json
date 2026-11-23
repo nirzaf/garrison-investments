@@ -1155,6 +1155,18 @@
               }
             ],
             "title": "Comments"
+          },
+          "expected_submission_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Submission Revision"
           }
         },
         "title": "ApprovalDecisionRequest",
@@ -1212,6 +1224,18 @@
             "format": "uuid",
             "title": "Delegated To Id",
             "type": "string"
+          },
+          "expected_submission_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Submission Revision"
           },
           "reason": {
             "maxLength": 2000,
@@ -1323,6 +1347,18 @@
               }
             ],
             "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
           },
           "decision_comments": {
             "anyOf": [
@@ -1443,6 +1479,17 @@
           "step_order": {
             "title": "Step Order",
             "type": "integer"
+          },
+          "submission_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Revision"
           },
           "submitted_at": {
             "format": "date-time",
@@ -6430,6 +6477,16 @@
             },
             "title": "Recent Activity",
             "type": "array"
+          },
+          "site_operations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SiteOperationsSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "unread_notifications": {
             "title": "Unread Notifications",
@@ -12881,6 +12938,743 @@
         "title": "InventoryItemResponse",
         "type": "object"
       },
+      "InventoryRegistrationCorrectionRequest": {
+        "properties": {
+          "brand": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "catalog_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Item Id"
+          },
+          "category": {
+            "enum": [
+              "material",
+              "tool",
+              "equipment"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "condition": {
+            "enum": [
+              "new",
+              "used"
+            ],
+            "title": "Condition",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_submission_revision": {
+            "minimum": 1.0,
+            "title": "Expected Submission Revision",
+            "type": "integer"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "model_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Number"
+          },
+          "name": {
+            "maxLength": 180,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "received_date": {
+            "format": "date",
+            "title": "Received Date",
+            "type": "string"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "unit": {
+            "enum": [
+              "Nos",
+              "KG",
+              "TON",
+              "SQM",
+              "bag",
+              "m",
+              "m2"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "location_id",
+          "name",
+          "description",
+          "category",
+          "unit",
+          "quantity",
+          "condition",
+          "received_date",
+          "expected_submission_revision"
+        ],
+        "title": "InventoryRegistrationCorrectionRequest",
+        "type": "object"
+      },
+      "InventoryRegistrationCreateRequest-Input": {
+        "properties": {
+          "brand": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "catalog_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Item Id"
+          },
+          "category": {
+            "enum": [
+              "material",
+              "tool",
+              "equipment"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "condition": {
+            "enum": [
+              "new",
+              "used"
+            ],
+            "title": "Condition",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "model_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Number"
+          },
+          "name": {
+            "maxLength": 180,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "received_date": {
+            "format": "date",
+            "title": "Received Date",
+            "type": "string"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "unit": {
+            "enum": [
+              "Nos",
+              "KG",
+              "TON",
+              "SQM",
+              "bag",
+              "m",
+              "m2"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "location_id",
+          "name",
+          "description",
+          "category",
+          "unit",
+          "quantity",
+          "condition",
+          "received_date"
+        ],
+        "title": "InventoryRegistrationCreateRequest",
+        "type": "object"
+      },
+      "InventoryRegistrationCreateRequest-Output": {
+        "properties": {
+          "brand": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "catalog_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Item Id"
+          },
+          "category": {
+            "enum": [
+              "material",
+              "tool",
+              "equipment"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "condition": {
+            "enum": [
+              "new",
+              "used"
+            ],
+            "title": "Condition",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "model_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Number"
+          },
+          "name": {
+            "maxLength": 180,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "string"
+          },
+          "received_date": {
+            "format": "date",
+            "title": "Received Date",
+            "type": "string"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "unit": {
+            "enum": [
+              "Nos",
+              "KG",
+              "TON",
+              "SQM",
+              "bag",
+              "m",
+              "m2"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "location_id",
+          "name",
+          "description",
+          "category",
+          "unit",
+          "quantity",
+          "condition",
+          "received_date"
+        ],
+        "title": "InventoryRegistrationCreateRequest",
+        "type": "object"
+      },
+      "InventoryRegistrationDecisionRequest": {
+        "properties": {
+          "comments": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected",
+              "returned"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_submission_revision": {
+            "minimum": 1.0,
+            "title": "Expected Submission Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_submission_revision",
+          "decision"
+        ],
+        "title": "InventoryRegistrationDecisionRequest",
+        "type": "object"
+      },
+      "InventoryRegistrationPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryRegistrationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "InventoryRegistrationPageResponse",
+        "type": "object"
+      },
+      "InventoryRegistrationResponse": {
+        "properties": {
+          "confirmed_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Item Id"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decision_comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Comments"
+          },
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "movement_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movement Id"
+          },
+          "previous_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Id"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/InventoryRegistrationCreateRequest-Output"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "root_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submission_revision": {
+            "title": "Submission Revision",
+            "type": "integer"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "location_id",
+          "created_by",
+          "root_id",
+          "previous_id",
+          "submission_revision",
+          "requirements",
+          "status",
+          "evidence_ids",
+          "reviewer_id",
+          "submitted_at",
+          "decided_at",
+          "decision_comments",
+          "confirmed_item_id",
+          "movement_id"
+        ],
+        "title": "InventoryRegistrationResponse",
+        "type": "object"
+      },
+      "InventoryRegistrationSubmitRequest": {
+        "properties": {
+          "expected_submission_revision": {
+            "minimum": 1.0,
+            "title": "Expected Submission Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_submission_revision"
+        ],
+        "title": "InventoryRegistrationSubmitRequest",
+        "type": "object"
+      },
       "InvoiceAttachmentUrlResponse": {
         "properties": {
           "expires_in_seconds": {
@@ -16031,47 +16825,6 @@
         "title": "MaterialQuantityLine",
         "type": "object"
       },
-      "MaterialRequestCreateRequest": {
-        "properties": {
-          "from_location_id": {
-            "format": "uuid",
-            "title": "From Location Id",
-            "type": "string"
-          },
-          "lines": {
-            "items": {
-              "$ref": "#/components/schemas/MaterialRequestLineCreate"
-            },
-            "maxItems": 100,
-            "minItems": 1,
-            "title": "Lines",
-            "type": "array"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "project_id": {
-            "format": "uuid",
-            "title": "Project Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "project_id",
-          "from_location_id",
-          "lines"
-        ],
-        "title": "MaterialRequestCreateRequest",
-        "type": "object"
-      },
       "MaterialRequestLineCreate": {
         "properties": {
           "item_id": {
@@ -16212,6 +16965,17 @@
             "title": "Status",
             "type": "string"
           },
+          "submission_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Revision"
+          },
           "total_estimated_cost": {
             "anyOf": [
               {
@@ -16237,6 +17001,320 @@
           "lines"
         ],
         "title": "MaterialRequestResponse",
+        "type": "object"
+      },
+      "MaterialRequestResubmitRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "from_location_id": {
+            "format": "uuid",
+            "title": "From Location Id",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialRequestLineCreate"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/MaterialSubmissionRequirements"
+          }
+        },
+        "required": [
+          "project_id",
+          "from_location_id",
+          "lines",
+          "requirements",
+          "expected_revision"
+        ],
+        "title": "MaterialRequestResubmitRequest",
+        "type": "object"
+      },
+      "MaterialRequestSubmitRequest": {
+        "properties": {
+          "from_location_id": {
+            "format": "uuid",
+            "title": "From Location Id",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialRequestLineCreate"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/MaterialSubmissionRequirements"
+          }
+        },
+        "required": [
+          "project_id",
+          "from_location_id",
+          "lines",
+          "requirements"
+        ],
+        "title": "MaterialRequestSubmitRequest",
+        "type": "object"
+      },
+      "MaterialSubmissionHistoryResponse": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalResponse"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "submissions": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialSubmissionResponse"
+            },
+            "title": "Submissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "submissions",
+          "decisions"
+        ],
+        "title": "MaterialSubmissionHistoryResponse",
+        "type": "object"
+      },
+      "MaterialSubmissionLine": {
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "quantity",
+          "name",
+          "unit"
+        ],
+        "title": "MaterialSubmissionLine",
+        "type": "object"
+      },
+      "MaterialSubmissionRequirements": {
+        "properties": {
+          "purpose": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "required_date": {
+            "format": "date",
+            "title": "Required Date",
+            "type": "string"
+          },
+          "specification": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Specification",
+            "type": "string"
+          },
+          "stock_availability": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock Availability"
+          },
+          "supporting_document_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Supporting Document Ids",
+            "type": "array"
+          },
+          "urgency": {
+            "enum": [
+              "routine",
+              "urgent",
+              "critical"
+            ],
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "required_date",
+          "urgency",
+          "purpose",
+          "specification"
+        ],
+        "title": "MaterialSubmissionRequirements",
+        "type": "object"
+      },
+      "MaterialSubmissionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "engineer_id": {
+            "format": "uuid",
+            "title": "Engineer Id",
+            "type": "string"
+          },
+          "manager_id": {
+            "format": "uuid",
+            "title": "Manager Id",
+            "type": "string"
+          },
+          "processor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processor Id"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/MaterialSubmissionSnapshot"
+          },
+          "submission_revision": {
+            "title": "Submission Revision",
+            "type": "integer"
+          },
+          "submitted_by": {
+            "format": "uuid",
+            "title": "Submitted By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "submission_revision",
+          "submitted_by",
+          "engineer_id",
+          "manager_id",
+          "processor_id",
+          "requirements",
+          "created_at"
+        ],
+        "title": "MaterialSubmissionResponse",
+        "type": "object"
+      },
+      "MaterialSubmissionSnapshot": {
+        "properties": {
+          "evidence_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Evidence Versions",
+            "type": "object"
+          },
+          "from_location_id": {
+            "format": "uuid",
+            "title": "From Location Id",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialSubmissionLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/MaterialSubmissionRequirements"
+          }
+        },
+        "required": [
+          "project_id",
+          "from_location_id",
+          "requirements",
+          "notes",
+          "lines",
+          "evidence_versions"
+        ],
+        "title": "MaterialSubmissionSnapshot",
         "type": "object"
       },
       "MaterialUsageRow": {
@@ -27399,6 +28477,617 @@
         "title": "ShiftAssignmentResponse",
         "type": "object"
       },
+      "SiteAttendanceCorrectionRequest": {
+        "properties": {
+          "attendance_status": {
+            "enum": [
+              "present",
+              "absent",
+              "on_leave",
+              "off_day"
+            ],
+            "title": "Attendance Status",
+            "type": "string"
+          },
+          "check_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In At"
+          },
+          "check_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out At"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "overtime_hours": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Overtime Hours"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          },
+          "worked_hours": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Worked Hours"
+          }
+        },
+        "required": [
+          "employee_id",
+          "project_id",
+          "work_date",
+          "attendance_status",
+          "worked_hours",
+          "expected_revision"
+        ],
+        "title": "SiteAttendanceCorrectionRequest",
+        "type": "object"
+      },
+      "SiteAttendanceCreateRequest-Input": {
+        "properties": {
+          "attendance_status": {
+            "enum": [
+              "present",
+              "absent",
+              "on_leave",
+              "off_day"
+            ],
+            "title": "Attendance Status",
+            "type": "string"
+          },
+          "check_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In At"
+          },
+          "check_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out At"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "overtime_hours": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Overtime Hours"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          },
+          "worked_hours": {
+            "anyOf": [
+              {
+                "maximum": 24.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Worked Hours"
+          }
+        },
+        "required": [
+          "employee_id",
+          "project_id",
+          "work_date",
+          "attendance_status",
+          "worked_hours"
+        ],
+        "title": "SiteAttendanceCreateRequest",
+        "type": "object"
+      },
+      "SiteAttendanceCreateRequest-Output": {
+        "properties": {
+          "attendance_status": {
+            "enum": [
+              "present",
+              "absent",
+              "on_leave",
+              "off_day"
+            ],
+            "title": "Attendance Status",
+            "type": "string"
+          },
+          "check_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In At"
+          },
+          "check_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out At"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "overtime_hours": {
+            "default": "0",
+            "title": "Overtime Hours",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          },
+          "worked_hours": {
+            "title": "Worked Hours",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "project_id",
+          "work_date",
+          "attendance_status",
+          "worked_hours"
+        ],
+        "title": "SiteAttendanceCreateRequest",
+        "type": "object"
+      },
+      "SiteAttendanceDecisionRequest": {
+        "properties": {
+          "comments": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "returned",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "engineer",
+              "hr"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "stage",
+          "decision"
+        ],
+        "title": "SiteAttendanceDecisionRequest",
+        "type": "object"
+      },
+      "SiteAttendancePageResponse": {
+        "properties": {
+          "confirmed_present": {
+            "title": "Confirmed Present",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SiteAttendanceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "submitted_present": {
+            "title": "Submitted Present",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "submitted_present",
+          "confirmed_present"
+        ],
+        "title": "SiteAttendancePageResponse",
+        "type": "object"
+      },
+      "SiteAttendanceResponse": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "record_revision": {
+            "title": "Record Revision",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "pending_engineer",
+              "pending_hr",
+              "approved",
+              "returned",
+              "rejected"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "submission": {
+            "$ref": "#/components/schemas/SiteAttendanceSubmissionResponse"
+          },
+          "worker": {
+            "$ref": "#/components/schemas/SiteAttendanceWorker"
+          }
+        },
+        "required": [
+          "id",
+          "record_revision",
+          "worker",
+          "stage",
+          "submission"
+        ],
+        "title": "SiteAttendanceResponse",
+        "type": "object"
+      },
+      "SiteAttendanceSubmissionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "engineer_comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engineer Comments"
+          },
+          "engineer_decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engineer Decided At"
+          },
+          "engineer_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engineer Decision"
+          },
+          "engineer_id": {
+            "format": "uuid",
+            "title": "Engineer Id",
+            "type": "string"
+          },
+          "hr_comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hr Comments"
+          },
+          "hr_decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hr Decided At"
+          },
+          "hr_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hr Decision"
+          },
+          "hr_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hr Id"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/SiteAttendanceCreateRequest-Output"
+          },
+          "submission_revision": {
+            "title": "Submission Revision",
+            "type": "integer"
+          },
+          "submitted_by": {
+            "format": "uuid",
+            "title": "Submitted By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "submission_revision",
+          "submitted_by",
+          "engineer_id",
+          "requirements",
+          "engineer_decision",
+          "engineer_comments",
+          "engineer_decided_at",
+          "hr_id",
+          "hr_decision",
+          "hr_comments",
+          "hr_decided_at",
+          "created_at"
+        ],
+        "title": "SiteAttendanceSubmissionResponse",
+        "type": "object"
+      },
+      "SiteAttendanceWorker": {
+        "properties": {
+          "employee_code": {
+            "title": "Employee Code",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "employee_code",
+          "full_name"
+        ],
+        "title": "SiteAttendanceWorker",
+        "type": "object"
+      },
+      "SiteAttendanceWorkerPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SiteAttendanceWorker"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "SiteAttendanceWorkerPage",
+        "type": "object"
+      },
+      "SiteOperationsSummary": {
+        "properties": {
+          "confirmed_present_today": {
+            "title": "Confirmed Present Today",
+            "type": "integer"
+          },
+          "confirmed_progress": {
+            "title": "Confirmed Progress",
+            "type": "integer"
+          },
+          "confirmed_registrations": {
+            "title": "Confirmed Registrations",
+            "type": "integer"
+          },
+          "material_requests_awaiting_review": {
+            "title": "Material Requests Awaiting Review",
+            "type": "integer"
+          },
+          "progress_awaiting_review": {
+            "title": "Progress Awaiting Review",
+            "type": "integer"
+          },
+          "registrations_awaiting_review": {
+            "title": "Registrations Awaiting Review",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confirmed_progress",
+          "progress_awaiting_review",
+          "material_requests_awaiting_review",
+          "registrations_awaiting_review",
+          "confirmed_registrations",
+          "confirmed_present_today"
+        ],
+        "title": "SiteOperationsSummary",
+        "type": "object"
+      },
       "StockResponse": {
         "properties": {
           "available_qty": {
@@ -27516,8 +29205,20 @@
         "title": "SuperAdminToken",
         "type": "object"
       },
-      "SupervisorUpdateCreateRequest": {
+      "SupervisorUpdateCreateRequest-Input": {
         "properties": {
+          "activity_scope": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Scope"
+          },
           "attachment_refs": {
             "items": {
               "$ref": "#/components/schemas/AttachmentRef"
@@ -27529,6 +29230,33 @@
             "minimum": 0.0,
             "title": "Attendance Count",
             "type": "integer"
+          },
+          "completed_area": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Area"
+          },
+          "completed_quantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Quantity"
           },
           "day_type": {
             "default": "weekday",
@@ -27545,6 +29273,18 @@
               }
             ],
             "title": "Delay Notes"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
           },
           "overtime_hours": {
             "anyOf": [
@@ -27564,10 +29304,51 @@
             "title": "Progress Notes",
             "type": "string"
           },
+          "progress_percentage": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Percentage"
+          },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
             "type": "string"
+          },
+          "quantity_unit": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Unit"
+          },
+          "remaining_work": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Work"
           },
           "required_notes": {
             "minLength": 1,
@@ -27597,6 +29378,207 @@
         "title": "SupervisorUpdateCreateRequest",
         "type": "object"
       },
+      "SupervisorUpdateCreateRequest-Output": {
+        "properties": {
+          "activity_scope": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Scope"
+          },
+          "attachment_refs": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentRef"
+            },
+            "title": "Attachment Refs",
+            "type": "array"
+          },
+          "attendance_count": {
+            "minimum": 0.0,
+            "title": "Attendance Count",
+            "type": "integer"
+          },
+          "completed_area": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Area"
+          },
+          "completed_quantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Quantity"
+          },
+          "day_type": {
+            "default": "weekday",
+            "title": "Day Type",
+            "type": "string"
+          },
+          "delay_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Notes"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "overtime_hours": {
+            "default": "0",
+            "title": "Overtime Hours",
+            "type": "string"
+          },
+          "progress_notes": {
+            "minLength": 1,
+            "title": "Progress Notes",
+            "type": "string"
+          },
+          "progress_percentage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Percentage"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "quantity_unit": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Unit"
+          },
+          "remaining_work": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Work"
+          },
+          "required_notes": {
+            "minLength": 1,
+            "title": "Required Notes",
+            "type": "string"
+          },
+          "update_date": {
+            "format": "date",
+            "title": "Update Date",
+            "type": "string"
+          },
+          "work_location": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Work Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "update_date",
+          "work_location",
+          "attendance_count",
+          "progress_notes",
+          "required_notes"
+        ],
+        "title": "SupervisorUpdateCreateRequest",
+        "type": "object"
+      },
+      "SupervisorUpdateDecisionRequest": {
+        "properties": {
+          "comments": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "returned",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_submission_revision": {
+            "minimum": 1.0,
+            "title": "Expected Submission Revision",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "qs",
+              "engineer"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_submission_revision",
+          "stage",
+          "decision"
+        ],
+        "title": "SupervisorUpdateDecisionRequest",
+        "type": "object"
+      },
       "SupervisorUpdateListResponse": {
         "properties": {
           "items": {
@@ -27620,6 +29602,17 @@
       },
       "SupervisorUpdateResponse": {
         "properties": {
+          "activity_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Scope"
+          },
           "attachment_refs": {
             "items": {
               "additionalProperties": true,
@@ -27631,6 +29624,28 @@
           "attendance_count": {
             "title": "Attendance Count",
             "type": "integer"
+          },
+          "completed_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Area"
+          },
+          "completed_quantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Quantity"
           },
           "day_type": {
             "title": "Day Type",
@@ -27656,22 +29671,83 @@
             "title": "Overtime Hours",
             "type": "string"
           },
+          "pending_reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Reviewer Id"
+          },
           "progress_notes": {
             "title": "Progress Notes",
             "type": "string"
+          },
+          "progress_percentage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Percentage"
           },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
             "type": "string"
           },
+          "quantity_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Unit"
+          },
+          "remaining_work": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Work"
+          },
           "required_notes": {
             "title": "Required Notes",
             "type": "string"
           },
+          "revision": {
+            "default": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "submission_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Revision"
           },
           "submitted_at": {
             "anyOf": [
@@ -27779,6 +29855,156 @@
           "verification_notes"
         ],
         "title": "SupervisorUpdateResponse",
+        "type": "object"
+      },
+      "SupervisorUpdateSubmissionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "engineer_comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engineer Comments"
+          },
+          "engineer_decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engineer Decided At"
+          },
+          "engineer_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engineer Decision"
+          },
+          "engineer_id": {
+            "format": "uuid",
+            "title": "Engineer Id",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "qs_comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qs Comments"
+          },
+          "qs_decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qs Decided At"
+          },
+          "qs_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qs Decision"
+          },
+          "qs_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qs Id"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/SupervisorUpdateCreateRequest-Output"
+          },
+          "submission_revision": {
+            "title": "Submission Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "submission_revision",
+          "requirements",
+          "evidence_ids",
+          "created_at",
+          "engineer_id",
+          "qs_id",
+          "qs_decision",
+          "qs_comments",
+          "qs_decided_at",
+          "engineer_decision",
+          "engineer_comments",
+          "engineer_decided_at"
+        ],
+        "title": "SupervisorUpdateSubmissionResponse",
+        "type": "object"
+      },
+      "SupervisorUpdateSubmitRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "SupervisorUpdateSubmitRequest",
         "type": "object"
       },
       "SupplierCreateRequest": {
@@ -36626,6 +38852,72 @@
           }
         ],
         "summary": "Reject",
+        "tags": [
+          "Approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/{approval_id}/return": {
+      "post": {
+        "operationId": "return_for_correction_api_v1_approvals__approval_id__return_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Return For Correction Api V1 Approvals  Approval Id  Return Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Return For Correction",
         "tags": [
           "Approvals"
         ]
@@ -55375,6 +57667,476 @@
         ]
       }
     },
+    "/api/v1/hr/site-attendance": {
+      "get": {
+        "operationId": "list_site_attendance_api_v1_hr_site_attendance_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entry_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAttendancePageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Site Attendance Api V1 Hr Site Attendance Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Site Attendance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      },
+      "post": {
+        "operationId": "submit_site_attendance_api_v1_hr_site_attendance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteAttendanceCreateRequest-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAttendanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Site Attendance Api V1 Hr Site Attendance Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Site Attendance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/site-attendance/workers": {
+      "get": {
+        "operationId": "list_site_attendance_workers_api_v1_hr_site_attendance_workers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Work Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAttendanceWorkerPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Site Attendance Workers Api V1 Hr Site Attendance Workers Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Site Attendance Workers",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/site-attendance/{entry_id}/correction": {
+      "post": {
+        "operationId": "correct_site_attendance_api_v1_hr_site_attendance__entry_id__correction_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteAttendanceCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAttendanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Correct Site Attendance Api V1 Hr Site Attendance  Entry Id  Correction Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Correct Site Attendance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/site-attendance/{entry_id}/decision": {
+      "post": {
+        "operationId": "review_site_attendance_api_v1_hr_site_attendance__entry_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteAttendanceDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAttendanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Review Site Attendance Api V1 Hr Site Attendance  Entry Id  Decision Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Review Site Attendance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/site-attendance/{entry_id}/history": {
+      "get": {
+        "operationId": "site_attendance_history_api_v1_hr_site_attendance__entry_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SiteAttendanceSubmissionResponse"
+                  },
+                  "title": "Response Site Attendance History Api V1 Hr Site Attendance  Entry Id  History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Site Attendance History Api V1 Hr Site Attendance  Entry Id  History Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Site Attendance History",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/timesheets": {
       "get": {
         "operationId": "list_timesheets_api_v1_hr_timesheets_get",
@@ -57369,6 +60131,402 @@
         ]
       }
     },
+    "/api/v1/inventory/registrations": {
+      "get": {
+        "operationId": "list_inventory_registrations_api_v1_inventory_registrations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "registration_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Registration Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRegistrationPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Inventory Registrations Api V1 Inventory Registrations Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Inventory Registrations",
+        "tags": [
+          "Inventory"
+        ]
+      },
+      "post": {
+        "operationId": "create_inventory_registration_api_v1_inventory_registrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryRegistrationCreateRequest-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRegistrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Inventory Registration Api V1 Inventory Registrations Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Inventory Registration",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/registrations/{registration_id}/correction": {
+      "post": {
+        "operationId": "correct_inventory_registration_api_v1_inventory_registrations__registration_id__correction_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "registration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Registration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryRegistrationCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRegistrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Correct Inventory Registration Api V1 Inventory Registrations  Registration Id  Correction Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Correct Inventory Registration",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/registrations/{registration_id}/decision": {
+      "post": {
+        "operationId": "decide_inventory_registration_api_v1_inventory_registrations__registration_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "registration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Registration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryRegistrationDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRegistrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Inventory Registration Api V1 Inventory Registrations  Registration Id  Decision Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Inventory Registration",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/registrations/{registration_id}/history": {
+      "get": {
+        "operationId": "inventory_registration_history_api_v1_inventory_registrations__registration_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "registration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Registration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryRegistrationResponse"
+                  },
+                  "title": "Response Inventory Registration History Api V1 Inventory Registrations  Registration Id  History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Inventory Registration History Api V1 Inventory Registrations  Registration Id  History Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inventory Registration History",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/registrations/{registration_id}/submit": {
+      "post": {
+        "operationId": "submit_inventory_registration_api_v1_inventory_registrations__registration_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "registration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Registration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryRegistrationSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRegistrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Inventory Registration Api V1 Inventory Registrations  Registration Id  Submit Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Inventory Registration",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
     "/api/v1/inventory/request-projects": {
       "get": {
         "operationId": "list_material_request_projects_api_v1_inventory_request_projects_get",
@@ -57564,7 +60722,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MaterialRequestCreateRequest"
+                "$ref": "#/components/schemas/MaterialRequestSubmitRequest"
               }
             }
           },
@@ -57840,6 +60998,128 @@
           }
         ],
         "summary": "Reserve Material Request",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/requests/{request_id}/resubmit": {
+      "post": {
+        "operationId": "resubmit_material_request_api_v1_inventory_requests__request_id__resubmit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialRequestResubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Resubmit Material Request Api V1 Inventory Requests  Request Id  Resubmit Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resubmit Material Request",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/requests/{request_id}/submissions": {
+      "get": {
+        "operationId": "material_submission_history_api_v1_inventory_requests__request_id__submissions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialSubmissionHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Material Submission History Api V1 Inventory Requests  Request Id  Submissions Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Material Submission History",
         "tags": [
           "Inventory"
         ]
@@ -61136,6 +64416,33 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "review_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Review Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "update_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Update Id"
+            }
           }
         ],
         "responses": {
@@ -61184,7 +64491,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SupervisorUpdateCreateRequest"
+                "$ref": "#/components/schemas/SupervisorUpdateCreateRequest-Input"
               }
             }
           },
@@ -61250,7 +64557,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SupervisorUpdateCreateRequest"
+                "$ref": "#/components/schemas/SupervisorUpdateCreateRequest-Input"
               }
             }
           },
@@ -61297,6 +64604,132 @@
         ]
       }
     },
+    "/api/v1/supervisor-updates/{update_id}/review": {
+      "post": {
+        "operationId": "review_supervisor_update_api_v1_supervisor_updates__update_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "update_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Update Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupervisorUpdateDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupervisorUpdateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Review Supervisor Update Api V1 Supervisor Updates  Update Id  Review Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Review Supervisor Update",
+        "tags": [
+          "Supervisor Updates"
+        ]
+      }
+    },
+    "/api/v1/supervisor-updates/{update_id}/submissions": {
+      "get": {
+        "operationId": "supervisor_submission_history_api_v1_supervisor_updates__update_id__submissions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "update_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Update Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupervisorUpdateSubmissionResponse"
+                  },
+                  "title": "Response Supervisor Submission History Api V1 Supervisor Updates  Update Id  Submissions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Supervisor Submission History Api V1 Supervisor Updates  Update Id  Submissions Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Supervisor Submission History",
+        "tags": [
+          "Supervisor Updates"
+        ]
+      }
+    },
     "/api/v1/supervisor-updates/{update_id}/submit": {
       "post": {
         "operationId": "submit_supervisor_update_api_v1_supervisor_updates__update_id__submit_post",
@@ -61312,6 +64745,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupervisorUpdateSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

@@ -25,6 +25,7 @@ from app.models.inventory import (
     InventoryMovement,
     MaterialRequest,
     MaterialRequestLine,
+    MaterialRequestSubmission,
     StorageLocation,
 )
 from app.models.notification import Notification
@@ -129,6 +130,7 @@ async def seed(
     issued: Decimal = ZERO,
     line_reserved: Decimal = ZERO,
     stock_reserved: Decimal = ZERO,
+    legacy: bool = False,
 ) -> Fixture:
     """Build an item, a stock row and a material request in a known state.
 
@@ -136,7 +138,8 @@ async def seed(
     reproduced exactly, which is what the accounting invariants must tolerate.
     """
     store, _ = await create_user("operations_director")
-    engineer, _ = await create_user("quantity_surveyor")
+    requester, _ = await create_user("site_supervisor")
+    engineer, _ = await create_user("mep_project_manager")
     pm, _ = await create_user("group_project_manager")
     project = await create_project(pm, engineer)
 
@@ -169,9 +172,10 @@ async def seed(
         request = MaterialRequest(
             request_number=f"MR-{uuid4().hex[:10]}",
             project_id=project.id,
-            requester_id=engineer.id,
+            requester_id=requester.id,
             from_location_id=location.id,
             status=status,
+            submission_revision=None if legacy or status == "requested" else 1,
             total_estimated_cost=Decimal("0"),
         )
         session.add_all([stock, request])
@@ -186,10 +190,40 @@ async def seed(
             unit_cost=Decimal("12.50"),
         )
         session.add(line)
+        if request.submission_revision is not None:
+            session.add(
+                MaterialRequestSubmission(
+                    request_id=request.id,
+                    submission_revision=1,
+                    submitted_by=requester.id,
+                    engineer_id=engineer.id,
+                    manager_id=pm.id,
+                    requirements={},
+                )
+            )
+            await session.flush()
+            for step, reviewer in enumerate((engineer, pm), start=1):
+                session.add(
+                    Approval(
+                        request_type="material_request",
+                        request_id=request.id,
+                        project_id=project.id,
+                        step_order=step,
+                        submission_revision=1,
+                        approver_id=reviewer.id,
+                        decided_by=reviewer.id,
+                        submitter_id=requester.id,
+                        title=f"Reviewed accounting fixture {step}",
+                        status="approved",
+                        submitted_at=utc_now(),
+                        due_at=utc_now(),
+                        decided_at=utc_now(),
+                    )
+                )
         await session.commit()
         for obj in (location, item, request):
             await session.refresh(obj)
-        return Fixture(store, engineer, project, location, item, request)
+        return Fixture(store, requester, project, location, item, request)
 
 
 async def read_stock(item_id: UUID, location_id: UUID) -> InventoryLocationStock:
@@ -859,3 +893,18 @@ async def test_stock_reconciliation_report_detects_drift_read_only_without_price
 
     stock = await read_stock(fx.item.id, fx.location.id)
     assert (stock.on_hand_qty, stock.reserved_qty) == (Decimal("2"), Decimal("5"))
+
+
+async def test_unverified_legacy_request_cannot_fulfill_or_change_stock() -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(on_hand=Decimal("5"), quantity=Decimal("3"), legacy=True)
+
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(AppException) as blocked:
+            await InventoryService(session).reserve_request(fixture.request.id, fixture.store)
+        assert blocked.value.error_code == "MATERIAL_APPROVALS_REQUIRED"
+        await session.rollback()
+
+    balance = await read_stock(fixture.item.id, fixture.location.id)
+    assert balance.on_hand_qty == Decimal("5")
+    assert balance.reserved_qty == 0

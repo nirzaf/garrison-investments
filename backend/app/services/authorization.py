@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.document import Document
-from app.models.supervisor_update import SupervisorUpdate
+from app.models.inventory import InventoryRegistration
+from app.models.supervisor_update import SupervisorUpdate, SupervisorUpdateSubmission
 from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.utils.exceptions import AppException, NotFoundException
@@ -26,11 +27,19 @@ from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_REPORTS_SUBMIT,
     PERMISSION_REPORTS_VIEW,
+    ROLE_GROUP_PROJECT_MANAGER,
+    ROLE_MEP_PROJECT_MANAGER,
+    ROLE_QUANTITY_SURVEYOR,
     SUPERVISOR_ROLES,
     has_permission,
 )
 
 COMPANY_WIDE_ROLES = COMPANY_RESOURCE_ROLES
+INVENTORY_REGISTRATION_READER_ROLES = COMPANY_RESOURCE_ROLES | {
+    ROLE_GROUP_PROJECT_MANAGER,
+    ROLE_MEP_PROJECT_MANAGER,
+    ROLE_QUANTITY_SURVEYOR,
+}
 
 
 async def accessible_project_ids(session: AsyncSession, actor: User) -> list[UUID] | None:
@@ -99,6 +108,12 @@ async def ensure_entity_access(
     if entity_type == "project":
         await ensure_project_access(session, entity_id, actor)
         return
+    if entity_type == "inventory_registration":
+        registration = await session.get(InventoryRegistration, entity_id)
+        if registration is None:
+            raise NotFoundException("Inventory registration")
+        await ensure_inventory_registration_access(session, registration, actor)
+        return
     if entity_type == "supervisor_update":
         update = await session.scalar(
             select(SupervisorUpdate).where(
@@ -110,6 +125,16 @@ async def ensure_entity_access(
             raise NotFoundException("Supervisor update")
         if update.supervisor_id == actor.id and has_permission(actor, PERMISSION_REPORTS_SUBMIT):
             return
+        if actor.role == ROLE_QUANTITY_SURVEYOR and update.status != "draft":
+            project_ids = await accessible_project_ids(session, actor) or []
+            if update.project_id in project_ids and await session.scalar(
+                select(SupervisorUpdateSubmission.update_id).where(
+                    SupervisorUpdateSubmission.update_id == update.id,
+                    SupervisorUpdateSubmission.submission_revision == update.submission_revision,
+                    SupervisorUpdateSubmission.qs_id == actor.id,
+                )
+            ):
+                return
         if not has_permission(actor, PERMISSION_REPORTS_VIEW):
             raise NotFoundException("Supervisor update")
         if update.status == "draft" or actor.role in SUPERVISOR_ROLES:
@@ -142,3 +167,16 @@ def _ensure_supported_role(actor: User) -> None:
             status_code=403,
             error_code="INVALID_ROLE",
         )
+
+
+async def ensure_inventory_registration_access(
+    session: AsyncSession, registration: InventoryRegistration, actor: User
+) -> None:
+    scoped = await accessible_project_ids(session, actor)
+    if scoped is not None and registration.project_id not in scoped:
+        raise NotFoundException("Inventory registration")
+    if actor.role in SUPERVISOR_ROLES and registration.created_by == actor.id:
+        return
+    if actor.role in INVENTORY_REGISTRATION_READER_ROLES and registration.status != "draft":
+        return
+    raise NotFoundException("Inventory registration")

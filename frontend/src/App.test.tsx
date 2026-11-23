@@ -249,14 +249,21 @@ describe('App route smoke tests', () => {
     expect(html).toContain('data-navigate-to="/dashboard"');
   });
 
-  it('keeps supervisor review limited to viewers and the update editor limited to supervisors', () => {
+  it('opens the scoped review for QS and reserves the update editor for supervisors', () => {
     const quantitySurveyor = renderApp({
       route: '/reports/supervisor-update',
       role: 'quantity_surveyor',
       permissions: ['reports:submit']
     });
-    expect(quantitySurveyor).toContain('data-navigate-to="/dashboard"');
+    expect(quantitySurveyor).toContain('Supervisor site updates');
     expect(quantitySurveyor).not.toContain('Supervisor Site Update');
+
+    const hrManager = renderApp({
+      route: '/reports/supervisor-update',
+      role: 'hr_manager',
+      permissions: ['hr:employees:read', 'hr:reports:view']
+    });
+    expect(hrManager).toContain('data-navigate-to="/dashboard"');
 
     const siteSupervisor = renderApp({
       route: '/reports/supervisor-update',

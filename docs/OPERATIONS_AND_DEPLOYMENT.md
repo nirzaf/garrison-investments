@@ -149,6 +149,21 @@ requires no separate confirmation codeword or formal acceptance record.
   partial effects before resuming forward recovery. A successful release records
   the migration outcome, before/after revisions and duration when upgraded.
 
+The PDF site-workflow release advances schema `202605310101` to
+`202605310105`. Use the routine forward migration path on PostgreSQL 19.
+Validate the live starting revision and rehearsal evidence. Existing reports,
+attendance, requests, approvals and movements retain their historical records.
+The new stages require evidence from their own submission versions. An
+unversioned material request cannot proceed to stock processing. Eligible
+legacy requests with no stock activity can be resubmitted. Directors can
+cancel eligible legacy requests to release unissued reservations. Existing
+issued quantities stay in the movement ledger.
+
+For any recovery after these migrations, keep writers stopped until the
+replacement build is verified against the installed schema and site-workflow
+rules. A build predating these rules must not resume writing against new site
+records. Keep the newer schema and retained history when rolling forward.
+
 Observed seven-job baseline for three recent successful main pushes (seconds):
 
 | CI run | First-job queue | Seven-job wall | Latest of the five retained jobs in that run |

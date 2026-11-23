@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
@@ -1628,7 +1629,14 @@ export function HRWorkspacePage() {
       )}
 
       {tab === 'attendance' && (
-        <HRTimePanel employees={employees} canReview={hasPerm('hr:attendance:approve')} />
+        <>
+          {hasPerm('hr:attendance:approve') && (
+            <Link className="text-brand-600 underline" to="/hr/site-attendance">
+              Engineer-reviewed site attendance
+            </Link>
+          )}
+          <HRTimePanel employees={employees} canReview={hasPerm('hr:attendance:approve')} />
+        </>
       )}
 
       {tab === 'leave' && (

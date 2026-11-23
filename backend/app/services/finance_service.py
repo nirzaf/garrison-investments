@@ -41,7 +41,7 @@ from app.services.approval_service import (
     ApprovalService,
 )
 from app.services.audit_service import AuditService
-from app.services.authorization import ensure_project_access
+from app.services.authorization import accessible_project_ids, ensure_project_access
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.services.supplier_service import SupplierService
@@ -54,7 +54,6 @@ from app.utils.permissions import (
 
 logger = logging.getLogger(__name__)
 
-FINANCE_ROLES = COMPANY_RESOURCE_ROLES
 PAYMENT_IDEMPOTENCY_ROUTE = "finance.payments.create"
 MAX_INVOICE_FILE_SIZE = 10 * 1024 * 1024
 SIGNED_URL_SECONDS = 300
@@ -102,6 +101,15 @@ class FinanceService:
                 error_code="FINANCE_FORBIDDEN",
             ) from exc
 
+    def _ensure_company_finance_access(self, actor: User) -> None:
+        self.ensure_finance_access(actor)
+        if actor.role not in COMPANY_RESOURCE_ROLES:
+            raise AppException(
+                "Company-wide financial records are restricted.",
+                status_code=403,
+                error_code="FINANCE_FORBIDDEN",
+            )
+
     @staticmethod
     def _deny_finance_write() -> NoReturn:
         raise AppException(
@@ -111,7 +119,7 @@ class FinanceService:
         )
 
     async def currency_reconciliation(self, actor: User) -> CurrencyReconciliationResponse:
-        self.ensure_finance_access(actor)
+        self._ensure_company_finance_access(actor)
         # Include soft-deleted records: their currency semantics matter during a migration.
         unlabelled = {
             "invoices": select(func.count()).select_from(Invoice),
@@ -185,7 +193,7 @@ class FinanceService:
     async def list_supplier_options(
         self, actor: User, *, search: str | None, limit: int, offset: int
     ) -> tuple[list[tuple[UUID, str]], int]:
-        self.ensure_finance_access(actor)
+        self._ensure_company_finance_access(actor)
         query = select(Supplier.id, Supplier.name).where(
             Supplier.is_active.is_(True), Supplier.deleted_at.is_(None)
         )
@@ -227,6 +235,13 @@ class FinanceService:
             .where(Invoice.deleted_at.is_(None))
             .options(selectinload(Invoice.payments))
         )
+        project_ids = await accessible_project_ids(self.session, actor)
+        if project_ids is not None:
+            if project_id is not None and project_id not in project_ids:
+                await ensure_project_access(self.session, project_id, actor)
+            query = query.join(Project, Project.id == Invoice.project_id).where(
+                Invoice.project_id.in_(project_ids), Project.deleted_at.is_(None)
+            )
         if project_id:
             query = query.where(Invoice.project_id == project_id)
         if status:
@@ -527,6 +542,7 @@ class FinanceService:
         )
         if not project:
             raise NotFoundException("Project")
+        await self._ensure_project_scope(project.id, actor)
         invoiced_total = Decimal(
             await self.session.scalar(
                 select(func.coalesce(func.sum(Invoice.total_amount), 0)).where(
@@ -637,6 +653,10 @@ class FinanceService:
     async def _ensure_invoice_scope(self, invoice: Invoice, actor: User) -> None:
         self.ensure_finance_access(actor)
         await self._ensure_project_scope(invoice.project_id, actor)
+        if actor.role not in COMPANY_RESOURCE_ROLES and not await self.session.scalar(
+            select(Project.id).where(Project.id == invoice.project_id, Project.deleted_at.is_(None))
+        ):
+            raise NotFoundException("Invoice")
 
     async def _ensure_project_scope(self, project_id: UUID, actor: User) -> None:
         await ensure_project_access(self.session, project_id, actor)

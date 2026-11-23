@@ -2401,22 +2401,34 @@ async def test_hr_g_calendars_attendance_timesheets_and_overtime() -> None:
 
 
 @pytest.mark.asyncio
-async def test_work_calendar_requires_independent_review_and_preserves_published_rules() -> None:
+async def test_work_calendar_requires_independent_review_and_preserves_published_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     await skip_if_database_unavailable()
+    monkeypatch.setattr(
+        "app.services.hr_site_attendance_service.business_today", lambda: date(2027, 1, 5)
+    )
     _, preparer_email, pw = await _create_portal_user("hr_manager")
     _, reviewer_email, _ = await _create_portal_user("hr_manager", pw)
     _, executive_email, _ = await _create_portal_user("hr_manager", pw)
     _, staff_email, _ = await _create_portal_user("quantity_surveyor", pw)
+    supervisor_id, supervisor_email, _ = await _create_portal_user("site_supervisor", pw)
+    engineer_id, _, _ = await _create_portal_user("mep_project_manager", pw)
     async with AsyncSessionLocal() as session:
         project = Project(
             name="Calendar test site",
             code=f"HR-{uuid4().hex[:10]}",
             scope_of_work="Test scheduling",
+            status="active",
             target_end_date=date(2027, 12, 31),
         )
         session.add(project)
         await session.flush()
         project_id = str(project.id)
+        session.add_all([
+            ProjectMember(project_id=project.id, user_id=UUID(supervisor_id)),
+            ProjectMember(project_id=project.id, user_id=UUID(engineer_id)),
+        ])
         await session.commit()
 
     async with _client() as client:
@@ -2424,6 +2436,7 @@ async def test_work_calendar_requires_independent_review_and_preserves_published
         reviewer = _auth(await _login(client, reviewer_email, pw))
         executive = _auth(await _login(client, executive_email, pw))
         staff = _auth(await _login(client, staff_email, pw))
+        supervisor = _auth(await _login(client, supervisor_email, pw))
         employee = await client.post(
             "/api/v1/hr/employees",
             headers=preparer,
@@ -2431,6 +2444,7 @@ async def test_work_calendar_requires_independent_review_and_preserves_published
                 "employee_code": f"CAL-{uuid4().hex[:8]}",
                 "first_name": "Synthetic",
                 "last_name": "Worker",
+                "employment_status": "active",
                 "primary_project_id": project_id,
             },
         )
@@ -2579,6 +2593,7 @@ async def test_work_calendar_requires_independent_review_and_preserves_published
         ] == "Test shift"
 
         attendance_path = "/api/v1/hr/attendance"
+        site_path = "/api/v1/hr/site-attendance"
         attendance = {
             "employee_id": employee_id,
             "work_date": "2027-01-05",
@@ -2588,16 +2603,26 @@ async def test_work_calendar_requires_independent_review_and_preserves_published
             "worked_hours": "8.00",
         }
         wrong_local_date = await client.post(
-            attendance_path,
-            json={**attendance, "check_in_at": "2027-01-04T17:00:00Z"},
-            headers=executive,
+            site_path,
+            json={**attendance, "project_id": project_id, "check_in_at": "2027-01-04T17:00:00Z"},
+            headers=supervisor,
         )
         assert wrong_local_date.status_code == 422
-        recorded = await client.post(attendance_path, json=attendance, headers=executive)
+        direct = await client.post(attendance_path, json=attendance, headers=executive)
+        assert direct.status_code == 409
+        assert direct.json()["error_code"] == "SITE_ATTENDANCE_WORKFLOW_REQUIRED"
+        recorded = await client.post(
+            site_path, json={**attendance, "project_id": project_id}, headers=supervisor
+        )
         assert recorded.status_code == 201, recorded.text
-        assert recorded.json()["calendar_id"] == calendar["id"]
-        assert recorded.json()["scheduled_workday"] is True
-        assert recorded.json()["shift_assignment_id"] is not None
+        assert recorded.json()["stage"] == "pending_engineer"
+        recorded_id = UUID(recorded.json()["id"])
+        async with AsyncSessionLocal() as session:
+            entry = await session.get(HrAttendanceEntry, recorded_id)
+            assert entry is not None
+            assert str(entry.calendar_id) == calendar["id"]
+            assert entry.scheduled_workday is True
+            assert entry.shift_assignment_id is not None
 
         # The two later revisions are individually valid but overlap one another.
         new_calendar_urls = []

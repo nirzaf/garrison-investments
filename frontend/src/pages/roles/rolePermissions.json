@@ -84,7 +84,8 @@
       "reports:submit",
       "reports:approve",
       "inventory:view",
-      "documents:view"
+      "documents:view",
+      "financial:view"
     ],
     "mep_project_manager": [
       "users:read",
@@ -126,8 +127,6 @@
       "users:read",
       "dashboard:company",
       "dashboard:scoped",
-      "reports:view",
-      "reports:approve",
       "hr:attendance:approve",
       "hr:attendance:record",
       "hr:compliance:manage",

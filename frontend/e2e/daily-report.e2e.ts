@@ -51,7 +51,28 @@ test('offline report photos and verified supervisor evidence survive rejection a
 }) => {
   const account = seed('seed');
   const supervisor = seed('seed-supervisor', '--project-id', account.projectId);
-  const projectManager = seed('seed', '--role', 'group_project_manager', '--project-id', account.projectId);
+  const [engineer, projectManager]: TestAccount[] = JSON.parse(
+    execFileSync(
+      env.BROWSER_TEST_PYTHON ?? 'python',
+      ['-m', 'tests.browser_fixtures', 'seed-group', '--project-id', account.projectId,
+        '--role', 'mep_project_manager', '--role', 'group_project_manager'],
+      { cwd: backendDirectory, encoding: 'utf8' }
+    )
+  );
+  const surveyor = seed('seed', '--role', 'quantity_surveyor', '--project-id', account.projectId);
+  const headers = await signIn(page, account);
+  const surveyorResponse = await request.get('/api/v1/users', {
+    headers,
+    params: { search: surveyor.email, limit: 1 }
+  });
+  expect(surveyorResponse.ok()).toBe(true);
+  const { items }: { items: Array<{ id: string }> } = await surveyorResponse.json();
+  expect(items).toHaveLength(1);
+  const assignment = await request.post(`/api/v1/projects/${account.projectId}/members`, {
+    headers, data: { user_id: items[0].id, role_in_project: 'quantity_surveyor' }
+  });
+  expect(assignment.status()).toBe(201);
+
   const supervisorPage = await browser.newPage();
   await signIn(supervisorPage, supervisor);
   await supervisorPage.getByRole('link', { name: 'Reports', exact: true }).click();
@@ -59,13 +80,45 @@ test('offline report photos and verified supervisor evidence survive rejection a
     .getByRole('combobox', { name: 'Project', exact: true })
     .selectOption(account.projectId);
   await supervisorPage.getByLabel('Work location').fill('Linked supervisor evidence');
+  await supervisorPage.getByLabel('Activity and work scope').fill('Inspect formwork at the east wing.');
   await supervisorPage.getByLabel('Progress notes').fill('Checked the formwork before handover.');
+  await supervisorPage.getByLabel('Remaining work').fill('Confirm the pour sequence.');
+  await supervisorPage.getByLabel('Completed area', { exact: true }).fill('East wing slab');
+  await supervisorPage.getByLabel('Completed quantity', { exact: true }).fill('12.5');
+  await supervisorPage.getByLabel('Quantity unit').fill('m²');
   await supervisorPage.getByLabel('Required notes').fill('Inspect again before concrete.');
+  await supervisorPage.getByLabel(/Drop photos here or tap to use camera/).setInputFiles({
+    name: 'supervisor-evidence.jpg', mimeType: 'image/jpeg', buffer: photo
+  });
+  await expect(supervisorPage.getByText('1 file saved.', { exact: true })).toBeVisible();
   await supervisorPage.getByRole('button', { name: 'Submit update' }).click();
   await expect(supervisorPage.getByText('Site update submitted.', { exact: true })).toBeVisible();
   await supervisorPage.close();
 
-  const headers = await signIn(page, account);
+  const engineerPage = await browser.newPage();
+  await signIn(engineerPage, engineer);
+  await engineerPage.goto('/reports/supervisor-update');
+  const pending = engineerPage.locator('summary').filter({ hasText: 'Linked supervisor evidence' });
+  await expect(pending).toContainText('Pending QS verification');
+  await pending.click();
+  await expect(engineerPage.getByRole('button', { name: 'Confirm technical progress' })).toHaveCount(0);
+
+  const surveyorPage = await browser.newPage();
+  await signIn(surveyorPage, surveyor);
+  await surveyorPage.goto('/reports/supervisor-update');
+  await surveyorPage.locator('summary').filter({ hasText: 'Linked supervisor evidence' }).click();
+  await surveyorPage.getByLabel('QS verification comments').fill('Measured the east wing slab.');
+  await surveyorPage.getByRole('button', { name: 'Verify quantities and area' }).click();
+  await expect(surveyorPage.getByRole('button', { name: 'Verify quantities and area' })).toHaveCount(0);
+  await surveyorPage.close();
+
+  await engineerPage.reload();
+  await expect(pending).toContainText('Pending Site Engineer confirmation');
+  await pending.click();
+  await engineerPage.getByRole('button', { name: 'Confirm technical progress' }).click();
+  await expect(pending).toContainText('Confirmed');
+  await engineerPage.close();
+
   const getReports = async () => {
     const response = await request.get('/api/v1/reports', {
       headers,

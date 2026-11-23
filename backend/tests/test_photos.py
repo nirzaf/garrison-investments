@@ -203,9 +203,7 @@ async def test_photo_quota_serializes_concurrent_uploads() -> None:
             "/api/v1/photos", params={**owner, "deleted": True}, headers=director
         )
         assert denied.status_code == 403
-        denied = await client.post(
-            f"/api/v1/photos/{first_id}/recover", headers=director
-        )
+        denied = await client.post(f"/api/v1/photos/{first_id}/recover", headers=director)
         assert denied.status_code == 403
         listing = await client.get(
             "/api/v1/photos", params={**owner, "kind": "photo"}, headers=engineer
@@ -324,6 +322,8 @@ async def test_supervisor_photo_quota_and_final_state_are_checked() -> None:
                 "work_location": "Quota site",
                 "attendance_count": 1,
                 "overtime_hours": "0",
+                "activity_scope": "Counting material received",
+                "remaining_work": "Finish inspection",
                 "progress_notes": "Test quota.",
                 "required_notes": "No incidents.",
             },
@@ -360,7 +360,9 @@ async def test_supervisor_photo_quota_and_final_state_are_checked() -> None:
         assert repeated.json() == response.json()
 
         submitted = await client.post(
-            f"/api/v1/supervisor-updates/{update_id}/submit", headers=actor
+            f"/api/v1/supervisor-updates/{update_id}/submit",
+            json={"expected_revision": 1},
+            headers=actor,
         )
         assert submitted.status_code == 200
         upload = await client.post(

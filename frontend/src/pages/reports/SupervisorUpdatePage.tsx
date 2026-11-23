@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, Check, ClipboardList, Image, Paperclip, Save, Send } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -37,6 +38,7 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
+import { SupervisorSubmissionHistory } from './SupervisorEvidence';
 
 const updateSchema = z.object({
   project_id: z.string().min(1, 'Select a project.'),
@@ -45,6 +47,12 @@ const updateSchema = z.object({
   work_location: z.string().min(1, 'Enter the work location.').max(255),
   attendance_count: z.coerce.number().int().min(0, 'Attendance cannot be negative.'),
   overtime_hours: z.coerce.number().min(0, 'Overtime cannot be negative.'),
+  activity_scope: z.string().max(2000).optional(),
+  remaining_work: z.string().max(2000).optional(),
+  completed_area: z.string().max(255).optional(),
+  completed_quantity: z.string().optional(),
+  quantity_unit: z.string().max(30).optional(),
+  progress_percentage: z.string().optional(),
   progress_notes: z.string().min(1, 'Enter progress notes.'),
   delay_notes: z.string().optional(),
   required_notes: z.string().min(1, 'Enter required notes.'),
@@ -62,6 +70,12 @@ function createDefaultValues(): UpdateFormValues {
     work_location: '',
     attendance_count: 0,
     overtime_hours: 0,
+    activity_scope: '',
+    remaining_work: '',
+    completed_area: '',
+    completed_quantity: '',
+    quantity_unit: '',
+    progress_percentage: '',
     progress_notes: '',
     delay_notes: '',
     required_notes: '',
@@ -85,6 +99,13 @@ function buildPayload(values: UpdateFormValues, draft: SupervisorUpdateRecord | 
     work_location: values.work_location,
     attendance_count: values.attendance_count,
     overtime_hours: values.overtime_hours.toString(),
+    activity_scope: values.activity_scope || null,
+    remaining_work: values.remaining_work || null,
+    completed_area: values.completed_area || null,
+    completed_quantity: values.completed_quantity || null,
+    quantity_unit: values.quantity_unit || null,
+    progress_percentage: values.progress_percentage || null,
+    expected_revision: draft?.revision,
     progress_notes: values.progress_notes,
     delay_notes: values.delay_notes || null,
     required_notes: values.required_notes,
@@ -111,6 +132,8 @@ function persistDraft(
 
 export function SupervisorUpdatePage() {
   const { user } = useAuth();
+  const [params] = useSearchParams();
+  const focusedUpdateId = params.get('updateId') ?? undefined;
   const browserScope = getBrowserSession()?.scope;
   const scope = browserScope?.ownerUserId === user?.id ? browserScope : undefined;
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -149,16 +172,16 @@ export function SupervisorUpdatePage() {
     async (projectId?: string) => {
       const response = await listSupervisorUpdates({
         project_id: projectId || undefined,
-        status: undefined
+        update_id: focusedUpdateId
       });
       setUpdates(response.items);
     },
-    [setUpdates]
+    [focusedUpdateId]
   );
 
   useEffect(() => {
     let active = true;
-    Promise.all([listReportProjectOptions({ limit: 100 }), listSupervisorUpdates({})])
+    Promise.all([listReportProjectOptions({ limit: 100 }), listSupervisorUpdates({ update_id: focusedUpdateId })])
       .then(([projectResponse, updateResponse]) => {
         if (!active) return;
         setProjects(projectResponse.items);
@@ -177,7 +200,7 @@ export function SupervisorUpdatePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [focusedUpdateId]);
 
   useEffect(() => {
     if (!scope) return;
@@ -262,6 +285,12 @@ export function SupervisorUpdatePage() {
       work_location: update.work_location,
       attendance_count: update.attendance_count,
       overtime_hours: Number(update.overtime_hours),
+      activity_scope: update.activity_scope ?? '',
+      remaining_work: update.remaining_work ?? '',
+      completed_area: update.completed_area ?? '',
+      completed_quantity: update.completed_quantity == null ? '' : String(update.completed_quantity),
+      quantity_unit: update.quantity_unit ?? '',
+      progress_percentage: update.progress_percentage == null ? '' : String(update.progress_percentage),
       progress_notes: update.progress_notes,
       delay_notes: update.delay_notes ?? '',
       required_notes: update.required_notes,
@@ -366,7 +395,7 @@ export function SupervisorUpdatePage() {
     setIsSaving(true);
     try {
       const update =
-        savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
+        savedDraft?.status === 'draft' && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
       setSavedDraft(update);
       setNotice('Draft saved.');
       await loadUpdates(values.project_id);
@@ -386,9 +415,9 @@ export function SupervisorUpdatePage() {
     setIsSaving(true);
     try {
       const draft =
-        savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
+        savedDraft?.status === 'draft' && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
       setSavedDraft(draft);
-      await submitSupervisorUpdate(draft.id, scope);
+      await submitSupervisorUpdate(draft.id, draft.revision ?? 1, scope);
       setSavedDraft(null);
       setUploadedFiles([]);
       setFailedUpload(null);
@@ -487,10 +516,32 @@ export function SupervisorUpdatePage() {
           </div>
 
           <div className="mt-4 grid gap-4">
+            <Field label="Activity and work scope" error={errors.activity_scope?.message}>
+              <textarea className="form-field" maxLength={2000} {...register('activity_scope')} />
+            </Field>
             <Field label="Progress notes" error={errors.progress_notes?.message}>
               <textarea className="form-field min-h-28" {...register('progress_notes')} />
             </Field>
 
+            <Field label="Remaining work" error={errors.remaining_work?.message}>
+              <textarea className="form-field" maxLength={2000} {...register('remaining_work')} />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Completed area" error={errors.completed_area?.message}>
+                <input className="form-field" maxLength={255} {...register('completed_area')} />
+              </Field>
+              <Field label="Progress percentage" error={errors.progress_percentage?.message}>
+                <input className="form-field" type="number" min="0" max="100" step="0.01"
+                  {...register('progress_percentage')} />
+              </Field>
+              <Field label="Completed quantity" error={errors.completed_quantity?.message}>
+                <input className="form-field" type="number" min="0" step="0.001"
+                  {...register('completed_quantity')} />
+              </Field>
+              <Field label="Quantity unit" error={errors.quantity_unit?.message}>
+                <input className="form-field" maxLength={30} {...register('quantity_unit')} />
+              </Field>
+            </div>
             <Field label="Delay notes" error={errors.delay_notes?.message}>
               <textarea className="form-field min-h-24" {...register('delay_notes')} />
             </Field>
@@ -652,6 +703,9 @@ export function SupervisorUpdatePage() {
                 <p className="mt-3 line-clamp-3 text-sm text-theme-text-secondary">
                   {update.progress_notes}
                 </p>
+                {update.submission_revision != null && (
+                  <UpdateHistory updateId={update.id} />
+                )}
                 {update.verified_at && (
                   <p className="mt-2 text-xs text-theme-text-muted">
                     Verified {new Date(update.verified_at).toLocaleString()}
@@ -661,14 +715,16 @@ export function SupervisorUpdatePage() {
                     )}
                   </p>
                 )}
-                {update.status === 'draft' && update.supervisor_id === user?.id ? (
+                {(['draft', 'returned', 'rejected'].includes(update.status) ||
+                  (update.status === 'submitted' && update.submission_revision == null)) &&
+                  update.supervisor_id === user?.id ? (
                   <button
                     className="mt-3 text-sm font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
                     disabled={isSaving}
                     onClick={() => void resumeDraft(update)}
                     type="button"
                   >
-                    Resume draft
+                    {update.status === 'draft' ? 'Resume draft' : 'Correct and resubmit'}
                   </button>
                 ) : null}
               </article>
@@ -689,5 +745,15 @@ function Field({ children, error, label }: { children: ReactNode; error?: string
         <span className="mt-1 block text-xs text-[var(--status-error-text)]">{error}</span>
       ) : null}
     </label>
+  );
+}
+
+function UpdateHistory({ updateId }: { updateId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="mt-2 text-sm" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer">Submission and decision history</summary>
+      {open && <SupervisorSubmissionHistory updateId={updateId} />}
+    </details>
   );
 }

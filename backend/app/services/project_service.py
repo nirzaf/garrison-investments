@@ -248,7 +248,7 @@ class ProjectService:
         if not changes:
             return project
         self._validate_status(changes.get("status"))
-        if "budget_amount" in changes and not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+        if "budget_amount" in changes and actor.role not in COMPANY_RESOURCE_ROLES:
             raise PermissionDeniedException(PERMISSION_FINANCIAL_VIEW)
         start = changes.get("start_date", project.start_date)
         if "start_date" in changes or "target_end_date" in changes:

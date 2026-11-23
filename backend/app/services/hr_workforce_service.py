@@ -196,6 +196,7 @@ from app.schemas.hr import (
     SelfTrainingListResponse,
     ShiftAssignmentCreateRequest,
     ShiftAssignmentResponse,
+    SiteAttendanceCreateRequest,
     TimesheetCreateRequest,
     TimesheetDecisionRequest,
     TimesheetSelfResubmitRequest,
@@ -2861,6 +2862,28 @@ class HrWorkforceService:
         ):
             raise AppException("Attendance belongs to a locked timesheet period.", status_code=409)
 
+    async def _ensure_non_site_attendance(self, employee_id: UUID, work_date: date) -> None:
+        roster = select(HrRosterAllocation.id).where(
+            HrRosterAllocation.employee_id == employee_id,
+            HrRosterAllocation.work_date == work_date,
+            HrRosterAllocation.cancelled_at.is_(None),
+        )
+        shift = select(HrShiftAssignment.id).where(
+            HrShiftAssignment.employee_id == employee_id,
+            HrShiftAssignment.project_id.is_not(None),
+            HrShiftAssignment.effective_from <= work_date,
+            or_(
+                HrShiftAssignment.effective_to.is_(None),
+                HrShiftAssignment.effective_to >= work_date,
+            ),
+        )
+        if await self.session.scalar(select(or_(roster.exists(), shift.exists()))):
+            raise AppException(
+                "Use the site attendance workflow for a project-assigned worker on this date.",
+                status_code=409,
+                error_code="SITE_ATTENDANCE_WORKFLOW_REQUIRED",
+            )
+
     async def record_attendance(
         self, payload: AttendanceEntryCreateRequest, actor: User
     ) -> HrAttendanceEntry:
@@ -2870,8 +2893,14 @@ class HrWorkforceService:
         return entry
 
     async def prepare_attendance(
-        self, payload: AttendanceEntryCreateRequest, actor: User, employee: HrEmployee
+        self,
+        payload: AttendanceEntryCreateRequest | SiteAttendanceCreateRequest,
+        actor: User,
+        employee: HrEmployee,
+        *,
+        replacing_site_entry: UUID | None = None,
     ) -> HrAttendanceEntry:
+        site_submission = isinstance(payload, SiteAttendanceCreateRequest)
         await self._ensure_attendance_period_open(payload.employee_id, payload.work_date)
         self._validate_attendance_time(
             payload.check_in_at,
@@ -2885,13 +2914,17 @@ class HrWorkforceService:
                 HrAttendanceEntry.work_date == payload.work_date,
             )
         )
-        if existing is not None:
+        if existing is not None and not (
+            site_submission and existing.source == "site" and existing.id == replacing_site_entry
+        ):
             raise AppException(
                 "Attendance entry already exists for this employee and work date; "
                 "submit an attendance correction instead.",
                 status_code=409,
                 error_code="ATTENDANCE_ALREADY_EXISTS",
             )
+        if not site_submission:
+            await self._ensure_non_site_attendance(payload.employee_id, payload.work_date)
         schedule = await self._resolve_work_schedule(employee, payload.work_date)
         if schedule.holiday and payload.attendance_status == "absent":
             raise AppException(
@@ -2903,11 +2936,14 @@ class HrWorkforceService:
             schedule.calendar.timezone if schedule.calendar else None,
         )
         entry = HrAttendanceEntry(
-            **payload.model_dump(),
+            **payload.model_dump(exclude={"overtime_hours", "expected_revision"}),
             **self._attendance_schedule_values(schedule),
             recorded_by_id=actor.id,
         )
-        await start_manager_review(self.session, entry, employee)
+        if site_submission:
+            entry.source = "site"
+        else:
+            await start_manager_review(self.session, entry, employee)
         return entry
 
     async def persist_attendance(self, entries: list[HrAttendanceEntry], actor: User) -> None:
@@ -2943,6 +2979,12 @@ class HrWorkforceService:
         )
         if entry is None:
             raise NotFoundException("Attendance entry")
+        if entry is not None and entry.source == "site":
+            raise AppException(
+                "Use the separate Site Engineer and HR attendance review workflow.",
+                status_code=409,
+                error_code="SITE_ATTENDANCE_WORKFLOW_REQUIRED",
+            )
         await self._ensure_attendance_period_open(employee_id, entry.work_date)
         verify_request_revision(entry, payload.expected_revision)
         if entry.status != "submitted":
@@ -3007,7 +3049,14 @@ class HrWorkforceService:
             entry is None or entry.id != payload.attendance_entry_id
         ):
             raise NotFoundException("Attendance entry")
+        if entry is not None and entry.source == "site":
+            raise AppException(
+                "Use the separate Site Engineer and HR attendance review workflow.",
+                status_code=409,
+                error_code="SITE_ATTENDANCE_WORKFLOW_REQUIRED",
+            )
         if entry is None:
+            await self._ensure_non_site_attendance(payload.employee_id, payload.work_date)
             schedule = await self._resolve_work_schedule(employee, payload.work_date)
             timezone = schedule.calendar.timezone if schedule.calendar else None
         else:
@@ -3085,6 +3134,12 @@ class HrWorkforceService:
                     HrAttendanceEntry.work_date == corr.work_date,
                 )
             )
+            if entry is not None and entry.source == "site":
+                raise AppException(
+                    "Use the separate Site Engineer and HR attendance review workflow.",
+                    status_code=409,
+                    error_code="SITE_ATTENDANCE_WORKFLOW_REQUIRED",
+                )
             if (entry.id if entry else None) != corr.attendance_entry_id or (
                 entry.record_revision if entry else None
             ) != corr.entry_revision:
@@ -3095,6 +3150,7 @@ class HrWorkforceService:
                     error_code="REVISION_CONFLICT",
                 )
             if entry is None:
+                await self._ensure_non_site_attendance(corr.employee_id, corr.work_date)
                 schedule = await self._resolve_work_schedule(employee, corr.work_date)
                 self._validate_local_work_date(
                     corr.requested_check_in_at,
@@ -4175,8 +4231,12 @@ class HrWorkforceService:
         return req
 
     async def list_leave_requests(
-        self, *, employee_id: UUID | None = None, status: str | None = None,
-        limit: int | None = None, offset: int = 0,
+        self,
+        *,
+        employee_id: UUID | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[list[HrLeaveRequest], int]:
         stmt = select(HrLeaveRequest)
         if employee_id:
@@ -4604,7 +4664,12 @@ class HrWorkforceService:
 
     @staticmethod
     def _letter_digest(
-        actor: User, employee_id: UUID, revision: int, template_id: UUID, subject: str, body: str,
+        actor: User,
+        employee_id: UUID,
+        revision: int,
+        template_id: UUID,
+        subject: str,
+        body: str,
         term_id: UUID | None = None,
     ) -> str:
         fields = [str(actor.id), str(employee_id), revision, str(template_id), subject, body]
@@ -4731,8 +4796,11 @@ class HrWorkforceService:
             new_values={
                 "template_id": str(row.template_id),
                 "employee_id": str(row.employee_id),
-                **({"compensation_term_id": str(row.compensation_term_id)}
-                   if row.compensation_term_id else {}),
+                **(
+                    {"compensation_term_id": str(row.compensation_term_id)}
+                    if row.compensation_term_id
+                    else {}
+                ),
             },
         )
 
@@ -5335,8 +5403,12 @@ class HrWorkforceService:
         return req
 
     async def list_service_requests(
-        self, *, employee_id: UUID | None = None, status: str | None = None,
-        limit: int | None = None, offset: int = 0,
+        self,
+        *,
+        employee_id: UUID | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[list[HrServiceRequest], int]:
         stmt = select(HrServiceRequest)
         if employee_id:

@@ -1,9 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { getDashboardSummary } from '../../api/dashboard';
+import { siteAttendanceRoles } from '../../api/siteAttendance';
+import { useAuth } from '../../context/useAuth';
 import { EmptyState } from '../../components/shared/EmptyState';
 
 export function DashboardPage() {
+  const { user } = useAuth();
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: getDashboardSummary,
@@ -45,6 +49,24 @@ export function DashboardPage() {
           value={isLoading ? '...' : (data?.unread_notifications ?? 0)}
         />
       </div>
+
+      {user && siteAttendanceRoles.has(user.role) && (
+        <Link className="text-brand-600 underline" to="/hr/site-attendance">Site attendance</Link>
+      )}
+
+      {data?.site_operations && (
+        <section className="space-y-3">
+          <h3 className="font-semibold">Site workflow status</h3>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <StatusPanel label="Confirmed site updates" value={data.site_operations.confirmed_progress} />
+            <StatusPanel label="Site updates awaiting review" value={data.site_operations.progress_awaiting_review} />
+            <StatusPanel label="Material requests awaiting review" value={data.site_operations.material_requests_awaiting_review} />
+            <StatusPanel label="Registrations awaiting engineer review" value={data.site_operations.registrations_awaiting_review} />
+            <StatusPanel label="Confirmed inventory registrations" value={data.site_operations.confirmed_registrations} />
+            <StatusPanel label="Confirmed site workers present today" value={data.site_operations.confirmed_present_today} />
+          </div>
+        </section>
+      )}
 
       {data?.recent_activity.length ? (
         <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">

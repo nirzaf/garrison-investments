@@ -127,15 +127,14 @@ async def test_photo_upload_offloads_storage_and_image_variants(
     loop_thread = threading.get_ident()
     recorder = Recorder()
     image = jpeg_bytes()
-    monkeypatch.setattr(PhotoService, "_upload_object", recorder.stub("_upload_object"))
-    monkeypatch.setattr(
-        PhotoService,
-        "_create_photo_variants",
-        recorder.stub("_create_photo_variants", (image, image, 20, 20)),
-    )
-
     async with create_test_client() as client:
         setup = await setup_project_team(client)
+        monkeypatch.setattr(PhotoService, "_upload_object", recorder.stub("_upload_object"))
+        monkeypatch.setattr(
+            PhotoService,
+            "_create_photo_variants",
+            recorder.stub("_create_photo_variants", (image, image, 20, 20)),
+        )
         report = (
             await client.post(
                 "/api/v1/reports",

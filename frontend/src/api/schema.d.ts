@@ -158,6 +158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/approvals/{approval_id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return For Correction */
+        post: operations["return_for_correction_api_v1_approvals__approval_id__return_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit-logs": {
         parameters: {
             query?: never;
@@ -4094,6 +4111,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/site-attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Site Attendance */
+        get: operations["list_site_attendance_api_v1_hr_site_attendance_get"];
+        put?: never;
+        /** Submit Site Attendance */
+        post: operations["submit_site_attendance_api_v1_hr_site_attendance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/site-attendance/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Site Attendance Workers */
+        get: operations["list_site_attendance_workers_api_v1_hr_site_attendance_workers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/site-attendance/{entry_id}/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Site Attendance */
+        post: operations["correct_site_attendance_api_v1_hr_site_attendance__entry_id__correction_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/site-attendance/{entry_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Site Attendance */
+        post: operations["review_site_attendance_api_v1_hr_site_attendance__entry_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/site-attendance/{entry_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Site Attendance History */
+        get: operations["site_attendance_history_api_v1_hr_site_attendance__entry_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/timesheets": {
         parameters: {
             query?: never;
@@ -4494,6 +4597,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Inventory Registrations */
+        get: operations["list_inventory_registrations_api_v1_inventory_registrations_get"];
+        put?: never;
+        /** Create Inventory Registration */
+        post: operations["create_inventory_registration_api_v1_inventory_registrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/registrations/{registration_id}/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Inventory Registration */
+        post: operations["correct_inventory_registration_api_v1_inventory_registrations__registration_id__correction_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/registrations/{registration_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Inventory Registration */
+        post: operations["decide_inventory_registration_api_v1_inventory_registrations__registration_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/registrations/{registration_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inventory Registration History */
+        get: operations["inventory_registration_history_api_v1_inventory_registrations__registration_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/registrations/{registration_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Inventory Registration */
+        post: operations["submit_inventory_registration_api_v1_inventory_registrations__registration_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/request-projects": {
         parameters: {
             query?: never;
@@ -4574,6 +4763,40 @@ export interface paths {
         put?: never;
         /** Reserve Material Request */
         post: operations["reserve_material_request_api_v1_inventory_requests__request_id__reserve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/requests/{request_id}/resubmit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resubmit Material Request */
+        post: operations["resubmit_material_request_api_v1_inventory_requests__request_id__resubmit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/requests/{request_id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Material Submission History */
+        get: operations["material_submission_history_api_v1_inventory_requests__request_id__submissions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5243,6 +5466,40 @@ export interface paths {
         get?: never;
         /** Update Supervisor Update */
         put: operations["update_supervisor_update_api_v1_supervisor_updates__update_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supervisor-updates/{update_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Supervisor Update */
+        post: operations["review_supervisor_update_api_v1_supervisor_updates__update_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supervisor-updates/{update_id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Supervisor Submission History */
+        get: operations["supervisor_submission_history_api_v1_supervisor_updates__update_id__submissions_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -7240,6 +7497,8 @@ export interface components {
         ApprovalDecisionRequest: {
             /** Comments */
             comments?: string | null;
+            /** Expected Submission Revision */
+            expected_submission_revision?: number | null;
         };
         /** ApprovalDelegateListResponse */
         ApprovalDelegateListResponse: {
@@ -7270,6 +7529,8 @@ export interface components {
              * Format: uuid
              */
             delegated_to_id: string;
+            /** Expected Submission Revision */
+            expected_submission_revision?: number | null;
             /** Reason */
             reason: string;
         };
@@ -7299,6 +7560,8 @@ export interface components {
             currency: string | null;
             /** Decided At */
             decided_at: string | null;
+            /** Decided By */
+            decided_by?: string | null;
             /** Decision Comments */
             decision_comments: string | null;
             /** Delegated To Id */
@@ -7336,6 +7599,8 @@ export interface components {
             status: string;
             /** Step Order */
             step_order: number;
+            /** Submission Revision */
+            submission_revision?: number | null;
             /**
              * Submitted At
              * Format: date-time
@@ -9009,6 +9274,7 @@ export interface components {
             pending_reports: number;
             /** Recent Activity */
             recent_activity: string[];
+            site_operations?: components["schemas"]["SiteOperationsSummary"] | null;
             /** Unread Notifications */
             unread_notifications: number;
         };
@@ -11050,6 +11316,237 @@ export interface components {
             /** Unit Cost */
             unit_cost: string | null;
         };
+        /** InventoryRegistrationCorrectionRequest */
+        InventoryRegistrationCorrectionRequest: {
+            /** Brand */
+            brand?: string | null;
+            /** Catalog Item Id */
+            catalog_item_id?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "material" | "tool" | "equipment";
+            /**
+             * Condition
+             * @enum {string}
+             */
+            condition: "new" | "used";
+            /** Description */
+            description: string;
+            /** Expected Submission Revision */
+            expected_submission_revision: number;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Model Number */
+            model_number?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /**
+             * Received Date
+             * Format: date
+             */
+            received_date: string;
+            /** Remarks */
+            remarks?: string | null;
+            /** Serial Number */
+            serial_number?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "Nos" | "KG" | "TON" | "SQM" | "bag" | "m" | "m2";
+        };
+        /** InventoryRegistrationCreateRequest */
+        "InventoryRegistrationCreateRequest-Input": {
+            /** Brand */
+            brand?: string | null;
+            /** Catalog Item Id */
+            catalog_item_id?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "material" | "tool" | "equipment";
+            /**
+             * Condition
+             * @enum {string}
+             */
+            condition: "new" | "used";
+            /** Description */
+            description: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Model Number */
+            model_number?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /**
+             * Received Date
+             * Format: date
+             */
+            received_date: string;
+            /** Remarks */
+            remarks?: string | null;
+            /** Serial Number */
+            serial_number?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "Nos" | "KG" | "TON" | "SQM" | "bag" | "m" | "m2";
+        };
+        /** InventoryRegistrationCreateRequest */
+        "InventoryRegistrationCreateRequest-Output": {
+            /** Brand */
+            brand?: string | null;
+            /** Catalog Item Id */
+            catalog_item_id?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "material" | "tool" | "equipment";
+            /**
+             * Condition
+             * @enum {string}
+             */
+            condition: "new" | "used";
+            /** Description */
+            description: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Model Number */
+            model_number?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Quantity */
+            quantity: string;
+            /**
+             * Received Date
+             * Format: date
+             */
+            received_date: string;
+            /** Remarks */
+            remarks?: string | null;
+            /** Serial Number */
+            serial_number?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "Nos" | "KG" | "TON" | "SQM" | "bag" | "m" | "m2";
+        };
+        /** InventoryRegistrationDecisionRequest */
+        InventoryRegistrationDecisionRequest: {
+            /** Comments */
+            comments?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected" | "returned";
+            /** Expected Submission Revision */
+            expected_submission_revision: number;
+        };
+        /** InventoryRegistrationPageResponse */
+        InventoryRegistrationPageResponse: {
+            /** Items */
+            items: components["schemas"]["InventoryRegistrationResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** InventoryRegistrationResponse */
+        InventoryRegistrationResponse: {
+            /** Confirmed Item Id */
+            confirmed_item_id: string | null;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decision Comments */
+            decision_comments: string | null;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Movement Id */
+            movement_id: string | null;
+            /** Previous Id */
+            previous_id: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            requirements: components["schemas"]["InventoryRegistrationCreateRequest-Output"];
+            /** Reviewer Id */
+            reviewer_id: string | null;
+            /** Root Id */
+            root_id: string | null;
+            /** Status */
+            status: string;
+            /** Submission Revision */
+            submission_revision: number;
+            /** Submitted At */
+            submitted_at: string | null;
+        };
+        /** InventoryRegistrationSubmitRequest */
+        InventoryRegistrationSubmitRequest: {
+            /** Expected Submission Revision */
+            expected_submission_revision: number;
+        };
         /** InvoiceAttachmentUrlResponse */
         InvoiceAttachmentUrlResponse: {
             /** Expires In Seconds */
@@ -12283,23 +12780,6 @@ export interface components {
             /** Quantity */
             quantity: number | string;
         };
-        /** MaterialRequestCreateRequest */
-        MaterialRequestCreateRequest: {
-            /**
-             * From Location Id
-             * Format: uuid
-             */
-            from_location_id: string;
-            /** Lines */
-            lines: components["schemas"]["MaterialRequestLineCreate"][];
-            /** Notes */
-            notes?: string | null;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-        };
         /** MaterialRequestLineCreate */
         MaterialRequestLineCreate: {
             /**
@@ -12357,8 +12837,140 @@ export interface components {
             revision: number;
             /** Status */
             status: string;
+            /** Submission Revision */
+            submission_revision?: number | null;
             /** Total Estimated Cost */
             total_estimated_cost: string | null;
+        };
+        /** MaterialRequestResubmitRequest */
+        MaterialRequestResubmitRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * From Location Id
+             * Format: uuid
+             */
+            from_location_id: string;
+            /** Lines */
+            lines: components["schemas"]["MaterialRequestLineCreate"][];
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            requirements: components["schemas"]["MaterialSubmissionRequirements"];
+        };
+        /** MaterialRequestSubmitRequest */
+        MaterialRequestSubmitRequest: {
+            /**
+             * From Location Id
+             * Format: uuid
+             */
+            from_location_id: string;
+            /** Lines */
+            lines: components["schemas"]["MaterialRequestLineCreate"][];
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            requirements: components["schemas"]["MaterialSubmissionRequirements"];
+        };
+        /** MaterialSubmissionHistoryResponse */
+        MaterialSubmissionHistoryResponse: {
+            /** Decisions */
+            decisions: components["schemas"]["ApprovalResponse"][];
+            /** Submissions */
+            submissions: components["schemas"]["MaterialSubmissionResponse"][];
+        };
+        /** MaterialSubmissionLine */
+        MaterialSubmissionLine: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Name */
+            name: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit */
+            unit: string;
+        };
+        /** MaterialSubmissionRequirements */
+        MaterialSubmissionRequirements: {
+            /** Purpose */
+            purpose: string;
+            /**
+             * Required Date
+             * Format: date
+             */
+            required_date: string;
+            /** Specification */
+            specification: string;
+            /** Stock Availability */
+            stock_availability?: string | null;
+            /** Supporting Document Ids */
+            supporting_document_ids?: string[];
+            /**
+             * Urgency
+             * @enum {string}
+             */
+            urgency: "routine" | "urgent" | "critical";
+        };
+        /** MaterialSubmissionResponse */
+        MaterialSubmissionResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Engineer Id
+             * Format: uuid
+             */
+            engineer_id: string;
+            /**
+             * Manager Id
+             * Format: uuid
+             */
+            manager_id: string;
+            /** Processor Id */
+            processor_id: string | null;
+            requirements: components["schemas"]["MaterialSubmissionSnapshot"];
+            /** Submission Revision */
+            submission_revision: number;
+            /**
+             * Submitted By
+             * Format: uuid
+             */
+            submitted_by: string;
+        };
+        /** MaterialSubmissionSnapshot */
+        MaterialSubmissionSnapshot: {
+            /** Evidence Versions */
+            evidence_versions: {
+                [key: string]: number;
+            };
+            /**
+             * From Location Id
+             * Format: uuid
+             */
+            from_location_id: string;
+            /** Lines */
+            lines: components["schemas"]["MaterialSubmissionLine"][];
+            /** Notes */
+            notes: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            requirements: components["schemas"]["MaterialSubmissionRequirements"];
         };
         /** MaterialUsageRow */
         MaterialUsageRow: {
@@ -16247,6 +16859,230 @@ export interface components {
              */
             start_time: string;
         };
+        /** SiteAttendanceCorrectionRequest */
+        SiteAttendanceCorrectionRequest: {
+            /**
+             * Attendance Status
+             * @enum {string}
+             */
+            attendance_status: "present" | "absent" | "on_leave" | "off_day";
+            /** Check In At */
+            check_in_at?: string | null;
+            /** Check Out At */
+            check_out_at?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Overtime Hours
+             * @default 0
+             */
+            overtime_hours: number | string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+            /** Worked Hours */
+            worked_hours: number | string;
+        };
+        /** SiteAttendanceCreateRequest */
+        "SiteAttendanceCreateRequest-Input": {
+            /**
+             * Attendance Status
+             * @enum {string}
+             */
+            attendance_status: "present" | "absent" | "on_leave" | "off_day";
+            /** Check In At */
+            check_in_at?: string | null;
+            /** Check Out At */
+            check_out_at?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Overtime Hours
+             * @default 0
+             */
+            overtime_hours: number | string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+            /** Worked Hours */
+            worked_hours: number | string;
+        };
+        /** SiteAttendanceCreateRequest */
+        "SiteAttendanceCreateRequest-Output": {
+            /**
+             * Attendance Status
+             * @enum {string}
+             */
+            attendance_status: "present" | "absent" | "on_leave" | "off_day";
+            /** Check In At */
+            check_in_at?: string | null;
+            /** Check Out At */
+            check_out_at?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Overtime Hours
+             * @default 0
+             */
+            overtime_hours: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+            /** Worked Hours */
+            worked_hours: string;
+        };
+        /** SiteAttendanceDecisionRequest */
+        SiteAttendanceDecisionRequest: {
+            /** Comments */
+            comments?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "returned" | "rejected";
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "engineer" | "hr";
+        };
+        /** SiteAttendancePageResponse */
+        SiteAttendancePageResponse: {
+            /** Confirmed Present */
+            confirmed_present: number;
+            /** Items */
+            items: components["schemas"]["SiteAttendanceResponse"][];
+            /** Submitted Present */
+            submitted_present: number;
+            /** Total */
+            total: number;
+        };
+        /** SiteAttendanceResponse */
+        SiteAttendanceResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Record Revision */
+            record_revision: number;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "pending_engineer" | "pending_hr" | "approved" | "returned" | "rejected";
+            submission: components["schemas"]["SiteAttendanceSubmissionResponse"];
+            worker: components["schemas"]["SiteAttendanceWorker"];
+        };
+        /** SiteAttendanceSubmissionResponse */
+        SiteAttendanceSubmissionResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Engineer Comments */
+            engineer_comments: string | null;
+            /** Engineer Decided At */
+            engineer_decided_at: string | null;
+            /** Engineer Decision */
+            engineer_decision: string | null;
+            /**
+             * Engineer Id
+             * Format: uuid
+             */
+            engineer_id: string;
+            /** Hr Comments */
+            hr_comments: string | null;
+            /** Hr Decided At */
+            hr_decided_at: string | null;
+            /** Hr Decision */
+            hr_decision: string | null;
+            /** Hr Id */
+            hr_id: string | null;
+            requirements: components["schemas"]["SiteAttendanceCreateRequest-Output"];
+            /** Submission Revision */
+            submission_revision: number;
+            /**
+             * Submitted By
+             * Format: uuid
+             */
+            submitted_by: string;
+        };
+        /** SiteAttendanceWorker */
+        SiteAttendanceWorker: {
+            /** Employee Code */
+            employee_code: string;
+            /** Full Name */
+            full_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** SiteAttendanceWorkerPage */
+        SiteAttendanceWorkerPage: {
+            /** Items */
+            items: components["schemas"]["SiteAttendanceWorker"][];
+            /** Total */
+            total: number;
+        };
+        /** SiteOperationsSummary */
+        SiteOperationsSummary: {
+            /** Confirmed Present Today */
+            confirmed_present_today: number;
+            /** Confirmed Progress */
+            confirmed_progress: number;
+            /** Confirmed Registrations */
+            confirmed_registrations: number;
+            /** Material Requests Awaiting Review */
+            material_requests_awaiting_review: number;
+            /** Progress Awaiting Review */
+            progress_awaiting_review: number;
+            /** Registrations Awaiting Review */
+            registrations_awaiting_review: number;
+        };
         /** StockResponse */
         StockResponse: {
             /** Available Qty */
@@ -16323,11 +17159,17 @@ export interface components {
             expires_at: string;
         };
         /** SupervisorUpdateCreateRequest */
-        SupervisorUpdateCreateRequest: {
+        "SupervisorUpdateCreateRequest-Input": {
+            /** Activity Scope */
+            activity_scope?: string | null;
             /** Attachment Refs */
             attachment_refs?: components["schemas"]["AttachmentRef"][];
             /** Attendance Count */
             attendance_count: number;
+            /** Completed Area */
+            completed_area?: string | null;
+            /** Completed Quantity */
+            completed_quantity?: number | string | null;
             /**
              * Day Type
              * @default weekday
@@ -16335,6 +17177,8 @@ export interface components {
             day_type: string;
             /** Delay Notes */
             delay_notes?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
             /**
              * Overtime Hours
              * @default 0
@@ -16342,11 +17186,17 @@ export interface components {
             overtime_hours: number | string;
             /** Progress Notes */
             progress_notes: string;
+            /** Progress Percentage */
+            progress_percentage?: number | string | null;
             /**
              * Project Id
              * Format: uuid
              */
             project_id: string;
+            /** Quantity Unit */
+            quantity_unit?: string | null;
+            /** Remaining Work */
+            remaining_work?: string | null;
             /** Required Notes */
             required_notes: string;
             /**
@@ -16357,6 +17207,72 @@ export interface components {
             /** Work Location */
             work_location: string;
         };
+        /** SupervisorUpdateCreateRequest */
+        "SupervisorUpdateCreateRequest-Output": {
+            /** Activity Scope */
+            activity_scope?: string | null;
+            /** Attachment Refs */
+            attachment_refs?: components["schemas"]["AttachmentRef"][];
+            /** Attendance Count */
+            attendance_count: number;
+            /** Completed Area */
+            completed_area?: string | null;
+            /** Completed Quantity */
+            completed_quantity?: string | null;
+            /**
+             * Day Type
+             * @default weekday
+             */
+            day_type: string;
+            /** Delay Notes */
+            delay_notes?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /**
+             * Overtime Hours
+             * @default 0
+             */
+            overtime_hours: string;
+            /** Progress Notes */
+            progress_notes: string;
+            /** Progress Percentage */
+            progress_percentage?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Quantity Unit */
+            quantity_unit?: string | null;
+            /** Remaining Work */
+            remaining_work?: string | null;
+            /** Required Notes */
+            required_notes: string;
+            /**
+             * Update Date
+             * Format: date
+             */
+            update_date: string;
+            /** Work Location */
+            work_location: string;
+        };
+        /** SupervisorUpdateDecisionRequest */
+        SupervisorUpdateDecisionRequest: {
+            /** Comments */
+            comments?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "returned" | "rejected";
+            /** Expected Submission Revision */
+            expected_submission_revision: number;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "qs" | "engineer";
+        };
         /** SupervisorUpdateListResponse */
         SupervisorUpdateListResponse: {
             /** Items */
@@ -16366,12 +17282,18 @@ export interface components {
         };
         /** SupervisorUpdateResponse */
         SupervisorUpdateResponse: {
+            /** Activity Scope */
+            activity_scope?: string | null;
             /** Attachment Refs */
             attachment_refs: {
                 [key: string]: unknown;
             }[];
             /** Attendance Count */
             attendance_count: number;
+            /** Completed Area */
+            completed_area?: string | null;
+            /** Completed Quantity */
+            completed_quantity?: string | null;
             /** Day Type */
             day_type: string;
             /** Delay Notes */
@@ -16383,17 +17305,32 @@ export interface components {
             id: string;
             /** Overtime Hours */
             overtime_hours: string;
+            /** Pending Reviewer Id */
+            pending_reviewer_id?: string | null;
             /** Progress Notes */
             progress_notes: string;
+            /** Progress Percentage */
+            progress_percentage?: string | null;
             /**
              * Project Id
              * Format: uuid
              */
             project_id: string;
+            /** Quantity Unit */
+            quantity_unit?: string | null;
+            /** Remaining Work */
+            remaining_work?: string | null;
             /** Required Notes */
             required_notes: string;
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
             /** Status */
             status: string;
+            /** Submission Revision */
+            submission_revision?: number | null;
             /** Submitted At */
             submitted_at: string | null;
             /**
@@ -16418,6 +17355,45 @@ export interface components {
             verified_report_id: string | null;
             /** Work Location */
             work_location: string;
+        };
+        /** SupervisorUpdateSubmissionResponse */
+        SupervisorUpdateSubmissionResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Engineer Comments */
+            engineer_comments: string | null;
+            /** Engineer Decided At */
+            engineer_decided_at: string | null;
+            /** Engineer Decision */
+            engineer_decision: string | null;
+            /**
+             * Engineer Id
+             * Format: uuid
+             */
+            engineer_id: string;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Qs Comments */
+            qs_comments: string | null;
+            /** Qs Decided At */
+            qs_decided_at: string | null;
+            /** Qs Decision */
+            qs_decision: string | null;
+            /** Qs Id */
+            qs_id: string | null;
+            requirements: components["schemas"]["SupervisorUpdateCreateRequest-Output"];
+            /** Submission Revision */
+            submission_revision: number;
+        };
+        /** SupervisorUpdateSubmitRequest */
+        SupervisorUpdateSubmitRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Notes */
+            notes?: string | null;
         };
         /** SupplierCreateRequest */
         SupplierCreateRequest: {
@@ -20041,6 +21017,41 @@ export interface operations {
         };
     };
     reject_api_v1_approvals__approval_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    return_for_correction_api_v1_approvals__approval_id__return_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -29565,6 +30576,210 @@ export interface operations {
             };
         };
     };
+    list_site_attendance_api_v1_hr_site_attendance_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                work_date?: string | null;
+                entry_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendancePageResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_site_attendance_api_v1_hr_site_attendance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteAttendanceCreateRequest-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_site_attendance_workers_api_v1_hr_site_attendance_workers_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                work_date: string;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendanceWorkerPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    correct_site_attendance_api_v1_hr_site_attendance__entry_id__correction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteAttendanceCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    review_site_attendance_api_v1_hr_site_attendance__entry_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteAttendanceDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    site_attendance_history_api_v1_hr_site_attendance__entry_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendanceSubmissionResponse"][];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_timesheets_api_v1_hr_timesheets_get: {
         parameters: {
             query?: {
@@ -30605,6 +31820,208 @@ export interface operations {
             };
         };
     };
+    list_inventory_registrations_api_v1_inventory_registrations_get: {
+        parameters: {
+            query?: {
+                registration_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryRegistrationPageResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    create_inventory_registration_api_v1_inventory_registrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryRegistrationCreateRequest-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryRegistrationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    correct_inventory_registration_api_v1_inventory_registrations__registration_id__correction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryRegistrationCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryRegistrationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_inventory_registration_api_v1_inventory_registrations__registration_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryRegistrationDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryRegistrationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    inventory_registration_history_api_v1_inventory_registrations__registration_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryRegistrationResponse"][];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_inventory_registration_api_v1_inventory_registrations__registration_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryRegistrationSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryRegistrationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_material_request_projects_api_v1_inventory_request_projects_get: {
         parameters: {
             query?: {
@@ -30681,7 +32098,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MaterialRequestCreateRequest"];
+                "application/json": components["schemas"]["MaterialRequestSubmitRequest"];
             };
         };
         responses: {
@@ -30797,6 +32214,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    resubmit_material_request_api_v1_inventory_requests__request_id__resubmit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialRequestResubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    material_submission_history_api_v1_inventory_requests__request_id__submissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialSubmissionHistoryResponse"];
                 };
             };
             /** @description Invalid request */
@@ -32252,6 +33735,8 @@ export interface operations {
                 status?: string | null;
                 limit?: number;
                 offset?: number;
+                review_only?: boolean;
+                update_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -32288,7 +33773,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SupervisorUpdateCreateRequest"];
+                "application/json": components["schemas"]["SupervisorUpdateCreateRequest-Input"];
             };
         };
         responses: {
@@ -32323,7 +33808,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SupervisorUpdateCreateRequest"];
+                "application/json": components["schemas"]["SupervisorUpdateCreateRequest-Input"];
             };
         };
         responses: {
@@ -32347,7 +33832,42 @@ export interface operations {
             };
         };
     };
-    submit_supervisor_update_api_v1_supervisor_updates__update_id__submit_post: {
+    review_supervisor_update_api_v1_supervisor_updates__update_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                update_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupervisorUpdateDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupervisorUpdateResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    supervisor_submission_history_api_v1_supervisor_updates__update_id__submissions_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -32357,6 +33877,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupervisorUpdateSubmissionResponse"][];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_supervisor_update_api_v1_supervisor_updates__update_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                update_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupervisorUpdateSubmitRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

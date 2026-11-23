@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.business_policy import MAX_MONEY
+from app.models.approval import Approval
 from app.models.daily_report import DailyReport
 from app.models.idempotency_record import IdempotencyRecord
 from app.models.inventory import (
@@ -15,8 +16,10 @@ from app.models.inventory import (
     InventoryItem,
     InventoryLocationStock,
     InventoryMovement,
+    InventoryRegistration,
     MaterialRequest,
     MaterialRequestLine,
+    MaterialRequestSubmission,
     StorageLocation,
 )
 from app.models.notification import Notification
@@ -29,26 +32,31 @@ from app.schemas.inventory import (
     InventoryItemCreateRequest,
     LocationCreateRequest,
     MaterialQuantityCommand,
-    MaterialRequestCreateRequest,
     MaterialRequestResponse,
+    MaterialRequestResubmitRequest,
+    MaterialRequestSubmitRequest,
     MovementCreateRequest,
 )
-from app.services.approval_service import ApprovalService
+from app.services.approval_service import MATERIAL_STAGE_ROLES, ApprovalService
 from app.services.audit_service import AuditService
-from app.services.authorization import accessible_project_ids
+from app.services.authorization import accessible_project_ids, ensure_project_access
+from app.services.document_service import DocumentService
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.notification_service import NotificationService
 from app.services.supplier_service import SupplierService
-from app.utils.exceptions import AppException, NotFoundException
+from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_INVENTORY_MANAGE,
     PERMISSION_INVENTORY_VIEW,
     PROJECT_OPERATIONAL_MANAGER_ROLES,
+    ROLE_ADMINISTRATIVE_EXECUTIVE,
+    SUPERVISOR_ROLES,
     ensure_permission,
     has_permission,
     roles_with_permission,
 )
+from app.utils.security import utc_now
 
 STOCK_OUT_TYPES = {"issue", "consume", "wastage", "damaged"}
 MOVEMENT_IDEMPOTENCY_ROUTE = "inventory.movements.create"
@@ -390,11 +398,72 @@ class InventoryService:
         return list((await self.session.scalars(query.order_by(InventoryItem.name.asc()))).all())
 
     async def create_material_request(
-        self,
-        payload: MaterialRequestCreateRequest,
-        actor: User,
+        self, payload: MaterialRequestSubmitRequest, actor: User
     ) -> MaterialRequest:
-        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
+        self._ensure_material_submitter(actor)
+        sequence = int(
+            await self.session.scalar(text("select nextval('material_request_number_seq')"))
+        )
+        request = MaterialRequest(
+            request_number=f"MR-{sequence:05d}",
+            project_id=payload.project_id,
+            requester_id=actor.id,
+        )
+        return await self._submit_material_requirements(request, payload, actor)
+
+    async def resubmit_material_request(
+        self, request_id: UUID, payload: MaterialRequestResubmitRequest, actor: User
+    ) -> MaterialRequest:
+        self._ensure_material_submitter(actor)
+        request = await self._get_material_request(request_id, for_update=True, lock_lines=False)
+        await ensure_project_access(self.session, request.project_id, actor)
+        if request.requester_id != actor.id and actor.role not in COMPANY_RESOURCE_ROLES:
+            raise NotFoundException("Material request")
+        if request.project_id != payload.project_id:
+            raise AppException(
+                "A corrected request must remain on its original project.",
+                status_code=422,
+                error_code="REQUEST_PROJECT_INVALID",
+            )
+        if request.revision != payload.expected_revision:
+            raise AppException(
+                "Refresh the request before correcting it.",
+                status_code=409,
+                error_code="REQUEST_REVISION_CONFLICT",
+            )
+        legacy_open = request.submission_revision is None and request.status in {
+            "requested",
+            "approved",
+        }
+        if not legacy_open and request.status not in {"returned", "rejected"}:
+            raise AppException(
+                "Only returned or rejected requests may be corrected.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
+        await ApprovalService(self.session).cancel_material_request_approvals(request.id, actor)
+        await self._lock_request_lines(request.id)
+        if any(line.reserved_quantity or line.issued_quantity for line in request.lines):
+            raise AppException(
+                "A request with stock reservations or issues cannot be amended.",
+                status_code=409,
+                error_code="REQUEST_HAS_STOCK_ACTIVITY",
+            )
+        for line in request.lines:
+            line.deleted_at = utc_now()
+        request.revision += 1
+        request.requester_id = actor.id
+        return await self._submit_material_requirements(request, payload, actor)
+
+    @staticmethod
+    def _ensure_material_submitter(actor: User) -> None:
+        ensure_permission(actor, PERMISSION_INVENTORY_VIEW)
+        if actor.role not in SUPERVISOR_ROLES | COMPANY_RESOURCE_ROLES:
+            raise PermissionDeniedException("submit material requests")
+
+    async def _submit_material_requirements(
+        self, request: MaterialRequest, payload: MaterialRequestSubmitRequest, actor: User
+    ) -> MaterialRequest:
         projects = await self._request_projects_query(actor)
         project = await self.session.scalar(projects.where(Project.id == payload.project_id))
         if project is None:
@@ -409,29 +478,49 @@ class InventoryService:
         )
         if location is None:
             raise NotFoundException("Eligible request source location")
-        sequence = int(
-            await self.session.scalar(text("select nextval('material_request_number_seq')"))
+        evidence_versions = {}
+        for document_id in payload.requirements.supporting_document_ids:
+            document = await DocumentService(self.session).get(document_id, actor)
+            if document.project_id != project.id or document.active_version is None:
+                raise NotFoundException("Project supporting document")
+            evidence_versions[str(document.id)] = document.active_version
+        approvals = ApprovalService(self.session)
+        engineer = await approvals.require_project_reviewer(
+            project.id, MATERIAL_STAGE_ROLES[1], excluded_user_ids={actor.id}
         )
-        request = MaterialRequest(
-            request_number=f"MR-{sequence:05d}",
-            project_id=payload.project_id,
-            requester_id=actor.id,
-            from_location_id=payload.from_location_id,
-            status="requested",
-            notes=payload.notes,
-            total_estimated_cost=Decimal("0"),
+        manager = await approvals.require_project_reviewer(
+            project.id, MATERIAL_STAGE_ROLES[2], excluded_user_ids={actor.id, engineer.id}
         )
-        total = Decimal("0")
+        processor_id = await self.session.scalar(
+            select(User.id)
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .where(
+                ProjectMember.project_id == project.id,
+                ProjectMember.deleted_at.is_(None),
+                User.role == ROLE_ADMINISTRATIVE_EXECUTIVE,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+            .order_by(ProjectMember.assigned_at, User.id)
+            .limit(1)
+        )
+        submission_revision = (request.submission_revision or 0) + 1
+        request.submission_revision = submission_revision
+        request.from_location_id = location.id
+        request.status = "pending_engineer"
+        request.notes = payload.notes
+        request.total_estimated_cost = Decimal("0")
         self.session.add(request)
         await self.session.flush()
+        total = Decimal("0")
+        line_snapshots = []
         for line_payload in payload.lines:
             item = await self._get_item(line_payload.item_id)
             if not item.is_active:
                 raise AppException(
                     "Select an active inventory item.", status_code=422, error_code="ITEM_INACTIVE"
                 )
-            line_cost = (item.unit_cost or Decimal("0")) * line_payload.quantity
-            total += line_cost
+            total += (item.unit_cost or Decimal("0")) * line_payload.quantity
             self.session.add(
                 MaterialRequestLine(
                     request_id=request.id,
@@ -440,6 +529,13 @@ class InventoryService:
                     unit_cost=item.unit_cost,
                 )
             )
+            line_snapshots.append(
+                {
+                    **line_payload.model_dump(mode="json"),
+                    "name": item.name,
+                    "unit": item.unit,
+                }
+            )
         if total > MAX_MONEY:
             raise AppException(
                 "Material request total exceeds the allowed amount.",
@@ -447,23 +543,115 @@ class InventoryService:
                 error_code="MATERIAL_REQUEST_AMOUNT_TOO_LARGE",
             )
         request.total_estimated_cost = total
+        snapshot = payload.model_dump(mode="json", exclude={"expected_revision"})
+        snapshot["lines"] = line_snapshots
+        snapshot["evidence_versions"] = evidence_versions
+        submission = MaterialRequestSubmission(
+            request_id=request.id,
+            submission_revision=submission_revision,
+            submitted_by=actor.id,
+            engineer_id=engineer.id,
+            manager_id=manager.id,
+            processor_id=processor_id,
+            requirements=snapshot,
+        )
+        self.session.add(submission)
         await self.session.flush()
-        await ApprovalService(self.session).create_approval(
+        await approvals.create_approval(
             ApprovalCreateRequest(
                 request_type="material_request",
                 request_id=request.id,
                 project_id=request.project_id,
-                title=request.request_number,
+                title=f"{request.request_number} · Technical verification",
                 amount=total,
                 comments=payload.notes,
             ),
             actor,
             commit=False,
             internal=True,
+            material_submission=submission,
+        )
+        await self.audit.record(
+            action="inventory.requests.submitted",
+            user_id=actor.id,
+            entity_type="material_requests",
+            entity_id=request.id,
+            new_values={"submission_revision": submission_revision, "revision": request.revision},
         )
         request_id = request.id
         await self.session.commit()
+        self.session.expire(request, ["lines"])
         return await self._get_material_request(request_id)
+
+    async def material_submission_history(
+        self, request_id: UUID, actor: User
+    ) -> tuple[list[MaterialRequestSubmission], list[Approval]]:
+        ensure_permission(actor, PERMISSION_INVENTORY_VIEW)
+        request = await self._get_material_request(request_id)
+        await ensure_project_access(self.session, request.project_id, actor)
+        submissions = await self.session.scalars(
+            select(MaterialRequestSubmission)
+            .where(MaterialRequestSubmission.request_id == request.id)
+            .order_by(MaterialRequestSubmission.submission_revision.desc())
+        )
+        decisions = await self.session.scalars(
+            select(Approval)
+            .where(
+                Approval.request_type == "material_request",
+                Approval.request_id == request.id,
+                Approval.submission_revision.is_not(None),
+                Approval.deleted_at.is_(None),
+            )
+            .order_by(Approval.submission_revision.desc(), Approval.step_order.asc())
+        )
+        return list(submissions), list(decisions)
+
+    async def _ensure_material_fulfillment(
+        self, request: MaterialRequest, actor: User, *, check_decisions: bool = True
+    ) -> None:
+        if not has_permission(actor, PERMISSION_INVENTORY_MANAGE):
+            if actor.role != ROLE_ADMINISTRATIVE_EXECUTIVE:
+                raise PermissionDeniedException("fulfill material requests")
+            await ApprovalService(self.session).require_project_reviewer(
+                request.project_id,
+                ROLE_ADMINISTRATIVE_EXECUTIVE,
+                approver_id=actor.id,
+                excluded_user_ids=set(),
+            )
+            processor = await self.session.scalar(
+                select(MaterialRequestSubmission.processor_id).where(
+                    MaterialRequestSubmission.request_id == request.id,
+                    MaterialRequestSubmission.submission_revision == request.submission_revision,
+                )
+            )
+            if processor != actor.id:
+                raise PermissionDeniedException("fulfill this material request")
+        if not check_decisions:
+            return
+        if request.submission_revision is not None:
+            actors = list(
+                await self.session.scalars(
+                    select(Approval.decided_by)
+                    .where(
+                        Approval.request_type == "material_request",
+                        Approval.request_id == request.id,
+                        Approval.submission_revision == request.submission_revision,
+                        Approval.step_order.in_((1, 2)),
+                        Approval.status == "approved",
+                        Approval.deleted_at.is_(None),
+                        Approval.decided_by.is_not(None),
+                        Approval.decided_by != request.requester_id,
+                    )
+                    .order_by(Approval.step_order)
+                )
+            )
+            if len(set(actors)) == 2:
+                return
+        raise AppException(
+            "Engineer verification and GPM approval of the current submission are required.",
+            status_code=409,
+            error_code="MATERIAL_APPROVALS_REQUIRED",
+        )
 
     async def _request_projects_query(self, actor: User) -> Select[Project]:
         if not has_permission(actor, PERMISSION_INVENTORY_VIEW):
@@ -533,8 +721,8 @@ class InventoryService:
         return list(page_rows), int(total or 0)
 
     async def reserve_request(self, request_id: UUID, actor: User) -> MaterialRequest:
-        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         request = await self._get_material_request(request_id, for_update=True)
+        await self._ensure_material_fulfillment(request, actor)
         if request.status != "approved":
             raise AppException(
                 "Only approved material requests can be reserved.",
@@ -567,8 +755,8 @@ class InventoryService:
         return request
 
     async def issue_request(self, request_id: UUID, actor: User) -> MaterialRequest:
-        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         request = await self._get_material_request(request_id, for_update=True)
+        await self._ensure_material_fulfillment(request, actor)
         if request.status not in {"reserved", "partially_issued"}:
             raise AppException(
                 "Only reserved material requests can be issued.",
@@ -664,7 +852,7 @@ class InventoryService:
         action: Literal["reserve", "issue"],
         key: str,
     ) -> MaterialRequestResponse:
-        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
+        ensure_permission(actor, PERMISSION_INVENTORY_VIEW)
         route = f"inventory.requests.{action}"
         amounts = {line.line_id: line.quantity for line in command.lines}
         payload = "|".join(
@@ -685,6 +873,10 @@ class InventoryService:
         )
         assert record is not None
         if replay is not None:
+            request = await self._get_material_request(
+                request_id, for_update=True, lock_lines=False
+            )
+            await self._ensure_material_fulfillment(request, actor, check_decisions=False)
             if record.request_fingerprint != fingerprint or record.response_json is None:
                 raise AppException(
                     "This command key was used for different quantities.",
@@ -694,6 +886,7 @@ class InventoryService:
             return MaterialRequestResponse.model_validate(record.response_json)
 
         request = await self._get_material_request(request_id, for_update=True)
+        await self._ensure_material_fulfillment(request, actor)
         if request.revision != command.expected_revision:
             raise AppException(
                 "Refresh the request before making further changes.",
@@ -808,7 +1001,21 @@ class InventoryService:
         actor: User,
         *,
         import_row: tuple[UUID, int] | None = None,
+        registration: InventoryRegistration | None = None,
     ) -> InventoryMovement:
+        if payload.reference_type == "material_request":
+            raise AppException(
+                "Use the material request workflow to post request stock movements.",
+                status_code=409,
+                error_code="MATERIAL_REQUEST_WORKFLOW_REQUIRED",
+            )
+        if payload.reference_type == "inventory_registration" and (
+            registration is None
+            or registration.id != payload.reference_id
+            or registration.reviewer_id != actor.id
+            or registration.status != "pending_engineer"
+        ):
+            raise PermissionDeniedException("receive an inventory registration")
         await self._get_item(payload.item_id)
         if payload.movement_type == "receive":
             if not payload.to_location_id:
@@ -899,6 +1106,8 @@ class InventoryService:
             await self._reserve_stock(payload.item_id, payload.from_location_id, payload.quantity)
 
         movement = InventoryMovement(**payload.model_dump(), handled_by=actor.id)
+        if registration is not None:
+            movement.registration_id = registration.id
         if import_row:
             movement.import_batch_id, movement.import_row_index = import_row
         self.session.add(movement)

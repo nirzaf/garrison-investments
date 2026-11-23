@@ -48,6 +48,8 @@ class Approval(TimestampMixin, SoftDeleteMixin, Base):
         String(30), nullable=False, server_default=text("'pending'")
     )
     step_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    submission_revision: Mapped[int | None] = mapped_column(Integer)
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)

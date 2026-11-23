@@ -17,11 +17,13 @@ class ApprovalCreateRequest(BaseModel):
 
 class ApprovalDecisionRequest(BaseModel):
     comments: str | None = Field(default=None, max_length=2000)
+    expected_submission_revision: int | None = Field(default=None, ge=1)
 
 
 class ApprovalDelegationRequest(BaseModel):
     delegated_to_id: UUID
     reason: str = Field(min_length=3, max_length=2000)
+    expected_submission_revision: int | None = Field(default=None, ge=1)
 
 
 class ApprovalOverrideRequest(BaseModel):
@@ -40,6 +42,8 @@ class ApprovalResponse(BaseModel):
     escalation_user_id: UUID | None
     status: str
     step_order: int
+    submission_revision: int | None = None
+    decided_by: UUID | None = None
     amount: Decimal | None
     currency: str | None
     title: str

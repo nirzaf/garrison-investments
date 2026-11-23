@@ -270,6 +270,13 @@ from app.schemas.hr import (
     ShiftAssignmentCreateRequest,
     ShiftAssignmentListResponse,
     ShiftAssignmentResponse,
+    SiteAttendanceCorrectionRequest,
+    SiteAttendanceCreateRequest,
+    SiteAttendanceDecisionRequest,
+    SiteAttendancePageResponse,
+    SiteAttendanceResponse,
+    SiteAttendanceSubmissionResponse,
+    SiteAttendanceWorkerPage,
     TimesheetCreateRequest,
     TimesheetDecisionRequest,
     TimesheetListResponse,
@@ -367,6 +374,7 @@ from app.services.hr_separation_settlement import (
     review_separation_settlement,
 )
 from app.services.hr_service import HrService
+from app.services.hr_site_attendance_service import HrSiteAttendanceService
 from app.services.hr_training_requirements import (
     deactivate_rule,
     list_employee_requirements,
@@ -1053,7 +1061,8 @@ async def list_employment_changes(
 
 @router.get("/employment-changes/due", response_model=DueEmploymentChangeList)
 async def list_due_employment_changes(
-    _: CanAccessSensitive, session: DbSession,
+    _: CanAccessSensitive,
+    session: DbSession,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DueEmploymentChangeList:
@@ -2115,9 +2124,7 @@ async def read_timesheet(
     timesheet_id: UUID, _: CanRecordAttendance, session: DbSession, response: Response
 ) -> TimesheetResponse:
     response.headers["Cache-Control"] = "no-store"
-    return TimesheetResponse.model_validate(
-        await HrService(session).get_timesheet(timesheet_id)
-    )
+    return TimesheetResponse.model_validate(await HrService(session).get_timesheet(timesheet_id))
 
 
 @router.post("/timesheets/{timesheet_id}/decision", response_model=TimesheetResponse)
@@ -2352,22 +2359,29 @@ async def decide_leave_request(
 
 @router.get("/leave/date-evidence/candidates", response_model=LeaveDateEvidenceCandidates)
 async def find_legacy_leave_dates(
-    actor: CanManageLeave, session: DbSession, response: Response,
+    actor: CanManageLeave,
+    session: DbSession,
+    response: Response,
     employee_id: Annotated[UUID | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> LeaveDateEvidenceCandidates:
     response.headers["Cache-Control"] = "no-store"
     return await list_missing_leave_dates(
-        session, actor, employee_id=employee_id, limit=limit, offset=offset,
+        session,
+        actor,
+        employee_id=employee_id,
+        limit=limit,
+        offset=offset,
     )
 
 
-@router.get(
-    "/leave/requests/{request_id}/date-evidence", response_model=LeaveDateEvidencePage
-)
+@router.get("/leave/requests/{request_id}/date-evidence", response_model=LeaveDateEvidencePage)
 async def read_legacy_leave_dates(
-    request_id: UUID, actor: CanManageLeave, session: DbSession, response: Response,
+    request_id: UUID,
+    actor: CanManageLeave,
+    session: DbSession,
+    response: Response,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> LeaveDateEvidencePage:
@@ -2375,12 +2389,13 @@ async def read_legacy_leave_dates(
     return await list_leave_date_evidence(session, request_id, actor, limit=limit, offset=offset)
 
 
-@router.post(
-    "/leave/requests/{request_id}/date-evidence", response_model=LeaveDateEvidenceResponse
-)
+@router.post("/leave/requests/{request_id}/date-evidence", response_model=LeaveDateEvidenceResponse)
 async def propose_legacy_leave_dates(
-    request_id: UUID, payload: LeaveDateEvidenceCreate, actor: CanManageLeave,
-    session: DbSession, response: Response,
+    request_id: UUID,
+    payload: LeaveDateEvidenceCreate,
+    actor: CanManageLeave,
+    session: DbSession,
+    response: Response,
 ) -> LeaveDateEvidenceResponse:
     response.headers["Cache-Control"] = "no-store"
     return await propose_leave_date_evidence(session, request_id, payload, actor)
@@ -2391,8 +2406,11 @@ async def propose_legacy_leave_dates(
     response_model=LeaveDateEvidenceResponse,
 )
 async def show_legacy_leave_date_proposal(
-    request_id: UUID, proposal_id: UUID, actor: CanManageLeave,
-    session: DbSession, response: Response,
+    request_id: UUID,
+    proposal_id: UUID,
+    actor: CanManageLeave,
+    session: DbSession,
+    response: Response,
 ) -> LeaveDateEvidenceResponse:
     response.headers["Cache-Control"] = "no-store"
     return await read_leave_date_evidence(session, request_id, proposal_id, actor)
@@ -2403,8 +2421,12 @@ async def show_legacy_leave_date_proposal(
     response_model=LeaveDateEvidenceResponse,
 )
 async def decide_legacy_leave_dates(
-    request_id: UUID, proposal_id: UUID, payload: LeaveDateEvidenceDecision,
-    actor: CanApproveLeave, session: DbSession, response: Response,
+    request_id: UUID,
+    proposal_id: UUID,
+    payload: LeaveDateEvidenceDecision,
+    actor: CanApproveLeave,
+    session: DbSession,
+    response: Response,
 ) -> LeaveDateEvidenceResponse:
     response.headers["Cache-Control"] = "no-store"
     return await decide_leave_date_evidence(session, request_id, proposal_id, payload, actor)
@@ -3232,8 +3254,10 @@ async def get_payroll_policy(
 
 @router.put("/payroll/policies/{policy_id}/draft", response_model=PayrollPolicyResponse)
 async def update_payroll_policy_draft(
-    policy_id: UUID, payload: PayrollPolicyDraftUpdateRequest,
-    actor: CanPreparePayroll, session: DbSession,
+    policy_id: UUID,
+    payload: PayrollPolicyDraftUpdateRequest,
+    actor: CanPreparePayroll,
+    session: DbSession,
 ) -> PayrollPolicyResponse:
     row = await HrService(session).update_payroll_policy_draft(policy_id, payload, actor)
     return PayrollPolicyResponse.model_validate(row)
@@ -3241,7 +3265,9 @@ async def update_payroll_policy_draft(
 
 @router.post("/payroll/policies/{policy_id}/approve", response_model=PayrollPolicyResponse)
 async def approve_payroll_policy(
-    policy_id: UUID, actor: CanApprovePayroll, session: DbSession,
+    policy_id: UUID,
+    actor: CanApprovePayroll,
+    session: DbSession,
     payload: PayrollPolicyApproveRequest | None = None,
 ) -> PayrollPolicyResponse:
     row = await HrService(session).approve_payroll_policy(
@@ -3395,8 +3421,11 @@ async def list_run_adjustments(
 
 @router.post("/payroll/runs/{run_id}/adjustments", response_model=PayrollAdjustmentResponse)
 async def propose_run_adjustment(
-    run_id: UUID, payload: PayrollAdjustmentCreate, actor: CanPreparePayroll,
-    session: DbSession, response: Response,
+    run_id: UUID,
+    payload: PayrollAdjustmentCreate,
+    actor: CanPreparePayroll,
+    session: DbSession,
+    response: Response,
 ) -> PayrollAdjustmentResponse:
     response.headers["Cache-Control"] = "no-store"
     return await submit_payroll_adjustment(session, run_id, payload, actor)
@@ -3407,8 +3436,12 @@ async def propose_run_adjustment(
     response_model=PayrollAdjustmentResponse,
 )
 async def decide_run_adjustment(
-    run_id: UUID, adjustment_id: UUID, payload: PayrollAdjustmentReview, actor: CanApprovePayroll,
-    session: DbSession, response: Response,
+    run_id: UUID,
+    adjustment_id: UUID,
+    payload: PayrollAdjustmentReview,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    response: Response,
 ) -> PayrollAdjustmentResponse:
     response.headers["Cache-Control"] = "no-store"
     return await review_payroll_adjustment(session, run_id, adjustment_id, payload, actor)
@@ -3416,8 +3449,10 @@ async def decide_run_adjustment(
 
 @router.post("/payroll/runs/{run_id}/calculate", response_model=PayrollRunResponse)
 async def calculate_payroll_run(
-    run_id: UUID, payload: PayrollSnapshotCalculateRequest,
-    actor: CanPreparePayroll, session: DbSession,
+    run_id: UUID,
+    payload: PayrollSnapshotCalculateRequest,
+    actor: CanPreparePayroll,
+    session: DbSession,
 ) -> PayrollRunResponse:
     row = await calculate_payroll_snapshot(
         session, run_id, payload.employee_ids, actor, source_evidence=payload.source_evidence
@@ -3439,7 +3474,9 @@ async def get_payroll_snapshot(
     responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}}},
 )
 async def download_frozen_payroll_source(
-    run_id: UUID, source: Literal["time", "leave"], actor: CanReadPayrollSensitive,
+    run_id: UUID,
+    source: Literal["time", "leave"],
+    actor: CanReadPayrollSensitive,
     session: DbSession,
 ) -> Response:
     content, digest = await read_frozen_payroll_source(session, run_id, source, actor)
@@ -3514,8 +3551,11 @@ async def get_payroll_settlement_summary(
 
 @router.post("/payroll/runs/{run_id}/close", response_model=PayrollClosureResponse)
 async def close_run_period(
-    run_id: UUID, payload: PayrollClosureRequest, actor: CanApprovePayroll,
-    session: DbSession, response: Response,
+    run_id: UUID,
+    payload: PayrollClosureRequest,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    response: Response,
 ) -> PayrollClosureResponse:
     response.headers["Cache-Control"] = "no-store"
     return await close_payroll_period(session, run_id, payload, actor)
@@ -3525,8 +3565,12 @@ async def close_run_period(
     "/payroll/runs/{run_id}/lines/{line_id}/corrections", response_model=PayrollCorrectionPage
 )
 async def get_run_payroll_corrections(
-    run_id: UUID, line_id: UUID, actor: CanReadPayrollSensitive, session: DbSession,
-    response: Response, limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    run_id: UUID,
+    line_id: UUID,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PayrollCorrectionPage:
     response.headers["Cache-Control"] = "no-store"
@@ -3540,8 +3584,12 @@ async def get_run_payroll_corrections(
     response_model=PayrollCorrectionResponse,
 )
 async def propose_run_payroll_correction(
-    run_id: UUID, line_id: UUID, payload: PayrollCorrectionCreate, actor: CanPreparePayroll,
-    session: DbSession, response: Response,
+    run_id: UUID,
+    line_id: UUID,
+    payload: PayrollCorrectionCreate,
+    actor: CanPreparePayroll,
+    session: DbSession,
+    response: Response,
 ) -> PayrollCorrectionResponse:
     response.headers["Cache-Control"] = "no-store"
     return await propose_payroll_correction(session, run_id, line_id, payload, actor)
@@ -3552,8 +3600,12 @@ async def propose_run_payroll_correction(
     response_model=PayrollCorrectionResponse,
 )
 async def show_run_payroll_correction(
-    run_id: UUID, line_id: UUID, correction_id: UUID, actor: CanReadPayrollSensitive,
-    session: DbSession, response: Response,
+    run_id: UUID,
+    line_id: UUID,
+    correction_id: UUID,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
 ) -> PayrollCorrectionResponse:
     response.headers["Cache-Control"] = "no-store"
     return await read_payroll_correction(session, run_id, line_id, correction_id, actor)
@@ -3564,8 +3616,13 @@ async def show_run_payroll_correction(
     response_model=PayrollCorrectionResponse,
 )
 async def decide_run_payroll_correction(
-    run_id: UUID, line_id: UUID, correction_id: UUID, payload: PayrollCorrectionDecision,
-    actor: CanApprovePayroll, session: DbSession, response: Response,
+    run_id: UUID,
+    line_id: UUID,
+    correction_id: UUID,
+    payload: PayrollCorrectionDecision,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    response: Response,
 ) -> PayrollCorrectionResponse:
     response.headers["Cache-Control"] = "no-store"
     return await decide_payroll_correction(session, run_id, line_id, correction_id, payload, actor)
@@ -3648,8 +3705,11 @@ async def get_hr_case(
 
 @router.post("/cases/{case_id}/close", response_model=HrCaseResponse)
 async def close_hr_case(
-    case_id: UUID, payload: HrCaseCloseRequest, actor: CanManageCases,
-    session: DbSession, response: Response,
+    case_id: UUID,
+    payload: HrCaseCloseRequest,
+    actor: CanManageCases,
+    session: DbSession,
+    response: Response,
 ) -> HrCaseResponse:
     response.headers["Cache-Control"] = "no-store"
     return await HrService(session).close_hr_case(case_id, payload, actor)
@@ -3696,3 +3756,73 @@ async def export_hr_summary(
         media_type=HR_REPORT_MEDIA_TYPES[output_format],
         headers={"Content-Disposition": f'attachment; filename="hr-summary.{output_format}"'},
     )
+
+
+@router.get("/site-attendance/workers", response_model=SiteAttendanceWorkerPage)
+async def list_site_attendance_workers(
+    project_id: UUID,
+    work_date: date,
+    actor: CurrentUser,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> SiteAttendanceWorkerPage:
+    return await HrSiteAttendanceService(session).list_workers(
+        project_id, work_date, actor, search=search, limit=limit, offset=offset
+    )
+
+
+@router.get("/site-attendance", response_model=SiteAttendancePageResponse)
+async def list_site_attendance(
+    actor: CurrentUser,
+    session: DbSession,
+    project_id: UUID | None = None,
+    work_date: date | None = None,
+    entry_id: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> SiteAttendancePageResponse:
+    return await HrSiteAttendanceService(session).list_entries(
+        actor,
+        project_id=project_id,
+        work_date=work_date,
+        entry_id=entry_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/site-attendance",
+    response_model=SiteAttendanceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_site_attendance(
+    payload: SiteAttendanceCreateRequest, actor: CurrentUser, session: DbSession
+) -> SiteAttendanceResponse:
+    return await HrSiteAttendanceService(session).submit(payload, actor)
+
+
+@router.post("/site-attendance/{entry_id}/decision", response_model=SiteAttendanceResponse)
+async def review_site_attendance(
+    entry_id: UUID, payload: SiteAttendanceDecisionRequest, actor: CurrentUser, session: DbSession
+) -> SiteAttendanceResponse:
+    return await HrSiteAttendanceService(session).decide(entry_id, payload, actor)
+
+
+@router.post("/site-attendance/{entry_id}/correction", response_model=SiteAttendanceResponse)
+async def correct_site_attendance(
+    entry_id: UUID, payload: SiteAttendanceCorrectionRequest, actor: CurrentUser, session: DbSession
+) -> SiteAttendanceResponse:
+    return await HrSiteAttendanceService(session).correct(entry_id, payload, actor)
+
+
+@router.get(
+    "/site-attendance/{entry_id}/history",
+    response_model=list[SiteAttendanceSubmissionResponse],
+)
+async def site_attendance_history(
+    entry_id: UUID, actor: CurrentUser, session: DbSession
+) -> list[SiteAttendanceSubmissionResponse]:
+    return await HrSiteAttendanceService(session).history(entry_id, actor)

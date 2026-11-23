@@ -13,6 +13,8 @@ import { PasswordResetPage } from './pages/auth/PasswordResetPage';
 import { UserManagementPage } from './pages/admin/UserManagementPage';
 import { ApprovalInboxPage } from './pages/approvals/ApprovalInboxPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { SiteAttendancePage } from './pages/hr/SiteAttendancePage';
+import { siteAttendanceRoles } from './api/siteAttendance';
 import { DeliveryPlanPage } from './pages/delivery/DeliveryPlanPage';
 import { DocumentsPage } from './pages/documents/DocumentsPage';
 import { FinancePage } from './pages/finance/FinancePage';
@@ -57,11 +59,24 @@ function SupervisorUpdatesRoute() {
       </RequirePermission>
     );
   }
+  if (user?.role === 'quantity_surveyor') {
+    return (
+      <RequirePermission permission="reports:submit">
+        <SupervisorReviewPage />
+      </RequirePermission>
+    );
+  }
   return (
     <RequirePermission permission="reports:view">
       <SupervisorReviewPage />
     </RequirePermission>
   );
+}
+
+function SiteAttendanceRoute() {
+  const { user } = useAuth();
+  if (!user || !siteAttendanceRoles.has(user.role)) return <Navigate to="/dashboard" replace />;
+  return <SiteAttendancePage />;
 }
 
 function HRRoute({ selfService = false }: { selfService?: boolean }) {
@@ -105,6 +120,7 @@ export function App() {
         <Route path="/me/hr" element={<HRRoute selfService />} />
         <Route path="/roles" element={<RolesPermissionsPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/hr/site-attendance" element={<SiteAttendanceRoute />} />
         <Route
           path="/projects"
           element={

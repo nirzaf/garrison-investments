@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.supervisor_update import SupervisorUpdate
+from app.models.supervisor_update import SupervisorUpdate, SupervisorUpdateSubmission
 
 
 class SupervisorUpdateRepository:
@@ -60,7 +60,11 @@ class SupervisorUpdateRepository:
                     SupervisorUpdate.deleted_at.is_(None),
                     or_(
                         SupervisorUpdate.verified_report_id == report_id,
-                        SupervisorUpdate.status == "submitted",
+                        (
+                            (SupervisorUpdate.status == "verified")
+                            & SupervisorUpdate.verified_report_id.is_(None)
+                            & SupervisorUpdate.submission_revision.is_not(None)
+                        ),
                     ),
                 )
                 .order_by(SupervisorUpdate.update_date.desc(), SupervisorUpdate.id)
@@ -76,10 +80,25 @@ class SupervisorUpdateRepository:
         limit: int,
         offset: int,
         project_ids: list[UUID] | None = None,
+        qs_reviewer_id: UUID | None = None,
+        update_id: UUID | None = None,
     ) -> tuple[list[SupervisorUpdate], int]:
         query: Select = select(SupervisorUpdate).where(SupervisorUpdate.deleted_at.is_(None))
         if project_id:
             query = query.where(SupervisorUpdate.project_id == project_id)
+        if update_id is not None:
+            query = query.where(SupervisorUpdate.id == update_id)
+        if qs_reviewer_id is not None:
+            query = query.where(
+                select(SupervisorUpdateSubmission.update_id)
+                .where(
+                    SupervisorUpdateSubmission.update_id == SupervisorUpdate.id,
+                    SupervisorUpdateSubmission.submission_revision
+                    == SupervisorUpdate.submission_revision,
+                    SupervisorUpdateSubmission.qs_id == qs_reviewer_id,
+                )
+                .exists()
+            )
         if project_ids is not None:
             query = query.where(SupervisorUpdate.project_id.in_(project_ids))
         if supervisor_id:

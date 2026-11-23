@@ -36,6 +36,7 @@ ROLES = (
     "administrative_executive",
 )
 COMPANY_WIDE = ("managing_director", "operations_director")
+FINANCE_READERS = (*COMPANY_WIDE, "group_project_manager")
 SCOPES = ("own", "other", "none")
 _MATRIX_CACHE: dict = {}
 
@@ -48,7 +49,7 @@ REPORTS_LIST: dict[str, dict[str, int]] = {
     "quantity_surveyor": {"own": 200, "other": 404, "none": 200},
     "senior_site_supervisor": {"own": 200, "other": 404, "none": 200},
     "site_supervisor": {"own": 200, "other": 404, "none": 200},
-    "hr_manager": {"own": 200, "other": 404, "none": 200},
+    "hr_manager": {"own": 403, "other": 403, "none": 403},
     "administrative_executive": {"own": 403, "other": 403, "none": 403},
 }
 
@@ -61,7 +62,7 @@ REPORTS_GET: dict[str, dict[str, int]] = {
     "quantity_surveyor": {"own": 200, "other": 404},
     "senior_site_supervisor": {"own": 404, "other": 404},
     "site_supervisor": {"own": 404, "other": 404},
-    "hr_manager": {"own": 200, "other": 404},
+    "hr_manager": {"own": 404, "other": 404},
     "administrative_executive": {"own": 404, "other": 404},
 }
 
@@ -69,14 +70,20 @@ REPORTS_GET: dict[str, dict[str, int]] = {
 FINANCE_LIST: dict[str, dict[str, int]] = {
     "managing_director": {"own": 200, "other": 200, "none": 200},
     "operations_director": {"own": 200, "other": 200, "none": 200},
-    **{role: {"own": 403, "other": 403, "none": 403} for role in ROLES if role not in COMPANY_WIDE},
+    "group_project_manager": {"own": 200, "other": 403, "none": 200},
+    **{
+        role: {"own": 403, "other": 403, "none": 403}
+        for role in ROLES
+        if role not in FINANCE_READERS
+    },
 }
 
 # GET /finance/invoices/{id} — get_invoice() / _ensure_invoice_scope()
 FINANCE_GET: dict[str, dict[str, int]] = {
     "managing_director": {"own": 200, "other": 200},
     "operations_director": {"own": 200, "other": 200},
-    **{role: {"own": 403, "other": 403} for role in ROLES if role not in COMPANY_WIDE},
+    "group_project_manager": {"own": 200, "other": 403},
+    **{role: {"own": 403, "other": 403} for role in ROLES if role not in FINANCE_READERS},
 }
 
 
@@ -316,5 +323,5 @@ async def test_group_project_manager_without_membership_sees_nothing() -> None:
 
     assert response.status_code == 200
     assert response.json()["items"] == []
-    assert finance.status_code == 403
-    assert finance.json()["error_code"] == "PERMISSION_DENIED"
+    assert finance.status_code == 200
+    assert finance.json() == {"items": [], "total": 0}

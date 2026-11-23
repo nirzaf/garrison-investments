@@ -16,7 +16,7 @@ candidate remain technical issues under the [beta release policy](BETA_RELEASE_P
 | D03 | Project scope and initial commercial setup | Proposed: Managing Director and Operations Director have company resource scope; Group/MEP Project Managers are membership-scoped; initial priced project setup remains director-only. | No company-wide scope for dashboard-only roles. Business confirmation remains pending. |
 | D04 | Company and private document scope | Proposed: company-wide director scope; other roles need active project membership. Unscoped/company documents require explicit classification. | Do not broaden null-project document access. Business confirmation remains pending. |
 | D05 | User administration ceilings | Directors approve and apply account changes. HR Managers request changes through the HR workflow and may review requests prepared by a different HR Manager. | Preserve one usable director account and prohibit self-role elevation. HR Manager retains operational HR authority. HR Executive holds the four [read grants](HR_WORKFORCE.md#hr-executive-scope-and-proposed-hr-tasks). |
-| D06 | Financial confidentiality | Proposed: only roles granted `financial:view` may read finance and other monetary detail; omit withheld values rather than returning zero. | Finance writes remain denied for all roles because the matrix grants no write permission. Business confirmation remains pending. |
+| D06 | Financial confidentiality | PDF gap-closure implementation decision. Managing Director and Operations Director retain company-wide financial reads. Group Project Manager receives `financial:view` for assigned projects only. Withheld amounts are null. | Company-wide financial tools, budget edits and priced BOQ maintenance remain director-only. Invoice and payment writes remain unavailable. This decision does not amend the historical checkbox source or record formal business acceptance. |
 | D07 | Operations without a permission key | No implied grants for finance writes, generic overrides, special backdating, purge/configuration, or non-report decisions. | Deny/remove unsupported operations. Business confirmation remains pending. |
 | D08 | Separation of duties | Proposed: no submitter self-approval; no override bypass. | Enforce in workflow services. Business confirmation remains pending. |
 | D09 | Company dashboard versus resource details | Proposed: company aggregates for directors, HR Manager, and Administrative Executive; each underlying project/report/document/finance endpoint keeps its own grant and scope. | Aggregate access cannot imply record detail or finance access. Business confirmation remains pending. |
@@ -39,6 +39,29 @@ The D02–D10 entries are implementation proposals, not signed business decision
 No production account, permission, database, or deployment change is authorized
 by this record.
 
+
+## Site workflow role mapping
+
+The PDF gap-closure specification retains the ten business-role keys. A
+project-assigned MEP Project Manager is the Site Engineer for the specified
+site workflows. The Quantity Surveyor is the Site QS. Both supervisor roles
+are eligible for site submissions within their project assignments. Secondary
+site-attendance checking belongs to HR Manager. HR Manager no longer has
+site-report read or approval grants. These are implementation decisions for
+the specified flows, with no change to the historical checkbox source.
+
+A material request has two versions. The submitted requirements and both
+decisions share `submission_revision`. A correction creates a new submission
+and restarts engineer and Group Project Manager review. The operational
+`revision` protects stock commands against stale writes. Reservation and
+issue can advance that value while the current approval remains effective.
+Users must release reservations or use an authorized stock correction before
+amending requests affected by stock activity. Historical decisions remain visible.
+
+Progress, inventory registration, and site attendance retain their respective
+submission history. QS and technical confirmation are distinct, and a site
+attendance entry needs both the technical decision and the subsequent HR check
+before it can enter payroll preparation.
 
 ## HR workforce scope
 

@@ -1,19 +1,26 @@
-from sqlalchemy import func, select
+from uuid import UUID
+
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.daily_report import DailyReport
 from app.models.document import Document
+from app.models.hr import HrAttendanceEntry, HrSiteAttendanceSubmission
+from app.models.inventory import InventoryRegistration, MaterialRequest
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
+from app.models.supervisor_update import SupervisorUpdate
 from app.models.user import User
-from app.schemas.dashboard import DashboardSummaryResponse
+from app.schemas.dashboard import DashboardSummaryResponse, SiteOperationsSummary
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_DASHBOARD_COMPANY,
     PERMISSION_REPORTS_VIEW,
+    PROJECT_OPERATIONAL_MANAGER_ROLES,
     has_permission,
 )
+from app.utils.time import business_today
 
 
 class DashboardService:
@@ -42,7 +49,75 @@ class DashboardService:
             pending_documents=pending_documents,
             unread_notifications=unread_notifications,
             recent_activity=recent_activity,
+            site_operations=(
+                await self._site_operations(project_ids)
+                if actor.role in PROJECT_OPERATIONAL_MANAGER_ROLES
+                else None
+            ),
         )
+
+    async def _site_operations(self, project_ids: list[UUID] | None) -> SiteOperationsSummary:
+        project_scope = select(Project.id).where(Project.deleted_at.is_(None))
+        if project_ids is not None:
+            project_scope = project_scope.where(Project.id.in_(project_ids))
+        progress = select(func.count(SupervisorUpdate.id)).where(
+            SupervisorUpdate.project_id.in_(project_scope),
+            SupervisorUpdate.deleted_at.is_(None),
+        )
+        registrations = select(func.count(InventoryRegistration.id)).where(
+            InventoryRegistration.project_id.in_(project_scope),
+        )
+        site_counts: dict[str, Select[int]] = {
+            "confirmed_progress": progress.where(
+                SupervisorUpdate.status == "verified",
+                SupervisorUpdate.submission_revision.is_not(None),
+            ),
+            "progress_awaiting_review": progress.where(
+                SupervisorUpdate.status.in_(("submitted", "pending_qs", "pending_engineer")),
+            ),
+            "material_requests_awaiting_review": select(func.count(MaterialRequest.id)).where(
+                MaterialRequest.project_id.in_(project_scope),
+                MaterialRequest.deleted_at.is_(None),
+                MaterialRequest.status.in_(("requested", "pending_engineer", "pending_gpm")),
+            ),
+            "registrations_awaiting_review": registrations.where(
+                InventoryRegistration.status == "pending_engineer",
+            ),
+            "confirmed_registrations": registrations.where(
+                InventoryRegistration.status == "approved",
+                InventoryRegistration.movement_id.is_not(None),
+            ),
+            "confirmed_present_today": select(func.count(HrAttendanceEntry.id))
+            .join(
+                HrSiteAttendanceSubmission,
+                (HrSiteAttendanceSubmission.entry_id == HrAttendanceEntry.id)
+                & (
+                    HrSiteAttendanceSubmission.submission_revision
+                    == HrAttendanceEntry.site_submission_revision
+                ),
+            )
+            .where(
+                HrAttendanceEntry.project_id.in_(project_scope),
+                HrAttendanceEntry.work_date == business_today(),
+                HrAttendanceEntry.source == "site",
+                HrAttendanceEntry.status == "approved",
+                HrAttendanceEntry.attendance_status == "present",
+                HrSiteAttendanceSubmission.engineer_decision == "approved",
+                HrSiteAttendanceSubmission.hr_decision == "approved",
+            ),
+        }
+        counters = (
+            (
+                await self.session.execute(
+                    select(
+                        *(query.scalar_subquery().label(key) for key, query in site_counts.items())
+                    )
+                )
+            )
+            .mappings()
+            .one()
+        )
+        return SiteOperationsSummary.model_validate(dict(counters))
 
     async def _visible_project_ids(self, actor: User) -> list | None:
         if actor.role in COMPANY_RESOURCE_ROLES or has_permission(

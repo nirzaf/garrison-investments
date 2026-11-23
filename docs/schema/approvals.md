@@ -20,6 +20,8 @@ The combination of `request_type` and `request_id` identifies the underlying wor
 | `escalation_user_id` | `uuid` | Yes | — |
 | `status` | `varchar(30)` | No | `'pending'` |
 | `step_order` | `integer` | No | `1` |
+| `submission_revision` | `integer` | Yes | — |
+| `decided_by` | `uuid` | Yes | — |
 | `amount` | `numeric(14, 2)` | Yes | — |
 | `currency` | `varchar(3)` | Yes | — |
 | `title` | `varchar(200)` | No | — |
@@ -62,3 +64,13 @@ The combination of `request_type` and `request_id` identifies the underlying wor
 | `idx_approvals_outbox` | `btree` | `submitter_id, status` | No | — |
 | `idx_approvals_request` | `btree` | `request_type, request_id` | No | — |
 | `uq_approvals_open_request` | `btree` | `request_type, request_id` | Yes | `((deleted_at IS NULL) AND (status IN ('pending', 'delegated', 'escalated')))` |
+
+## Material-request stages
+
+For versioned material requests the approval row references
+`material_request_submissions(request_id, submission_revision)`. A partial
+unique index restricts each revision to one row per stage. Stage 1 is the
+assigned engineer and stage 2 is the assigned Group Project Manager.
+`decided_by` records the actual actor. Historical approval rows retain their
+original status without acquiring a staged decision.
+[Migration 102](../../backend/alembic/versions/202605310102_material_submission_revisions.py)

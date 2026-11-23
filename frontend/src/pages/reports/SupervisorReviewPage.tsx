@@ -1,15 +1,24 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { formatApiError } from '../../api/errors';
 import { listReportProjectOptions } from '../../api/projects';
-import { listSupervisorUpdates } from '../../api/supervisorUpdates';
+import {
+  listSupervisorUpdates,
+  reviewSupervisorUpdate,
+  type SupervisorUpdateRecord
+} from '../../api/supervisorUpdates';
+import { useAuth } from '../../context/useAuth';
 import { useDebouncedSearch } from '../../useDebouncedSearch';
 import { SupervisorUpdateDetails } from './SupervisorEvidence';
 
 const pageSize = 20;
 
 export function SupervisorReviewPage() {
+  const { user } = useAuth();
+  const [params] = useSearchParams();
+  const updateId = params.get('updateId') ?? undefined;
   const [project, setProject] = useState<{ id: string; name: string }>();
   const [search, setSearch] = useState('');
   const projectId = project?.id ?? '';
@@ -23,19 +32,22 @@ export function SupervisorReviewPage() {
   const options = projects.data?.items ?? [];
   const selectedOutsideResults = project && !options.some((option) => option.id === project.id);
   const updates = useQuery({
-    queryKey: ['supervisor-review', projectId, status, offset],
+    queryKey: ['supervisor-review', projectId, status, offset, updateId],
     queryFn: () =>
       listSupervisorUpdates({
         project_id: projectId || undefined,
         status: status || undefined,
         limit: pageSize,
-        offset
+        offset,
+        review_only: user?.role === 'quantity_surveyor',
+        update_id: updateId
       }),
   });
 
   return (
     <section className="space-y-4">
       <h2 className="text-2xl font-semibold text-theme-text-primary">Supervisor site updates</h2>
+      {updateId && <Link className="text-brand-600 underline" to="/reports/supervisor-update">All updates</Link>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           Search projects
@@ -80,8 +92,11 @@ export function SupervisorReviewPage() {
             }}
           >
             <option value="">All visible statuses</option>
-            <option value="submitted">Submitted</option>
-            <option value="verified">Verified</option>
+            <option value="pending_qs">Pending QS verification</option>
+            <option value="pending_engineer">Pending Site Engineer confirmation</option>
+            <option value="verified">Confirmed</option>
+            <option value="returned">Returned for correction</option>
+            <option value="submitted">Legacy submission awaiting correction</option>
           </select>
         </label>
       </div>
@@ -94,7 +109,11 @@ export function SupervisorReviewPage() {
       )}
       {updates.data?.total === 0 && <p>No matching updates.</p>}
       {updates.data?.items.map((update) => (
-        <SupervisorUpdateDetails key={update.id} update={update} />
+        <SupervisorUpdateDetails key={update.id} update={update}>
+          {update.pending_reviewer_id === user?.id && update.submission_revision != null && (
+            <ProgressReviewActions update={update} />
+          )}
+        </SupervisorUpdateDetails>
       ))}
       {updates.data && updates.data.total > pageSize && (
         <div className="flex gap-4 text-sm">
@@ -117,5 +136,51 @@ export function SupervisorReviewPage() {
         </div>
       )}
     </section>
+  );
+}
+
+function ProgressReviewActions({ update }: { update: SupervisorUpdateRecord }) {
+  const [comments, setComments] = useState('');
+  const queryClient = useQueryClient();
+  const stage = update.status === 'pending_qs' ? 'qs' : 'engineer';
+  function refresh() {
+    void queryClient.invalidateQueries({ queryKey: ['supervisor-review'] });
+    void queryClient.invalidateQueries({ queryKey: ['site-progress-submissions', update.id] });
+  }
+  const decision = useMutation({
+    mutationFn: (value: 'approved' | 'returned' | 'rejected') =>
+      reviewSupervisorUpdate(update.id, {
+        expected_submission_revision: update.submission_revision!,
+        stage,
+        decision: value,
+        comments
+      }),
+    onSuccess: refresh
+  });
+  return (
+    <div className="space-y-2 border-t border-theme-border pt-3">
+      <label className="block">
+        {stage === 'qs' ? 'QS verification comments' : 'Site Engineer confirmation comments'}
+        <textarea className="form-field" maxLength={2000} value={comments}
+          onChange={(event) => setComments(event.target.value)} />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        {([
+          ['approved', stage === 'qs' ? 'Verify quantities and area' : 'Confirm technical progress'],
+          ['returned', 'Return for correction'],
+          ['rejected', 'Reject submitted progress']
+        ] as const).map(([value, label]) => (
+          <button key={value} type="button" className="form-button"
+            disabled={decision.isPending || (value !== 'approved' && !comments.trim())}
+            onClick={() => decision.mutate(value)}>{label}</button>
+        ))}
+      </div>
+      {decision.isError && (
+        <div role="alert">
+          {formatApiError(decision.error, 'Unable to record the decision.')}
+          <button type="button" className="ml-2 underline" onClick={refresh}>Reload update</button>
+        </div>
+      )}
+    </div>
   );
 }
