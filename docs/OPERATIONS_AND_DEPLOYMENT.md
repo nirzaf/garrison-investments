@@ -95,39 +95,39 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 ## Production deployments from GitHub Actions
 
-[CI](../.github/workflows/ci.yml) uses isolated self-hosted Linux x64 runners tagged `garrison-ci` for pull requests and pushes to `main`. Test databases, Redis and object storage run in disposable Docker-in-Docker environments; CI receives no production credentials, production Docker socket or production volumes. The integration matrix allows up to three jobs at once; GitHub schedules only on online `garrison-ci` runners, and CI never uses the dedicated `garrison-production` runner. At the latest read-only runner check, one of four CI runners was online. Persistent pip/npm caches avoid repeated dependency downloads. [Deploy production](../.github/workflows/deploy.yml) remains a separate workflow in the `Production` environment. It runs only on the dedicated self-hosted Hostinger runner labeled `garrison-production`; CI never uses that runner. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
+The prepared GitHub-hosted Hostinger transport and its not-yet-completed activation steps are documented in [GitHub-hosted production deployment](GITHUB_HOSTED_DEPLOYMENT.md).
 
-As of 2026-11-22, GitHub reports [Deploy production](https://github.com/nirzaf/garrison-investments/actions/workflows/deploy.yml) as active. This enables the automatic trigger; it does not establish that a compatible release has successfully deployed automatically. The existing host verifier, schema compatibility, backup-key, and readiness checks remain in force. Independently verify the next successful automatic rollout using its exact CI run, deployment run, and active release receipt.
+[CI](../.github/workflows/ci.yml) uses GitHub-hosted `ubuntu-24.04` runners for pull requests and pushes to `main`. Each job receives an isolated VM; disposable PostgreSQL, Redis, and object-storage test services run inside that job. Lockfile-based pip/npm caches avoid repeated dependency downloads, and all four suite shards can run concurrently. CI has no production credentials, production Docker socket, or production volumes. The local candidate [Deploy production](../.github/workflows/deploy.yml) also uses GitHub-hosted `ubuntu-24.04`, connecting to the existing Hostinger release entrypoint through a restricted Cloudflare Access SSH route and forced-command account. The published workflow is active and currently selects the Hostinger production runner. The restricted Access route and GitHub Production credentials are installed. The GitHub-hosted workflow awaits publication and a hosted probe. See [GitHub-hosted production deployment](GITHUB_HOSTED_DEPLOYMENT.md) for preparation and activation requirements. GitHub concurrency (`garrison-portal-production`) and the host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
+
+On 2026-11-23, [Deploy production](https://github.com/nirzaf/garrison-investments/actions/workflows/deploy.yml) was disabled before push CI run `45174272215`, so that green run did not trigger a deployment. The workflow was subsequently enabled. Push CI passed five jobs for `91d7aea` in 4m47s, and full regression run `45167599606` passed seven jobs on the same SHA. The Production environment now limits deployments to `main`. The host launcher accepts routine releases only for the current `main` tip, so publishing a new workflow commit requires new green push CI for that tip.
 
 The deployment workflow token is limited to `actions: read`, `contents: read`, and `deployments: read`. The last permission is required for the host's read-only check of predecessor deployment history; the host does not create GitHub deployment records.
 
-The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, the applicable required CI job set, and the current `main` tip before fetching the tested archive. The local verifier derives five versus seven required jobs from a marker in the exact tested workflow file; historical workflows without that marker retain the seven-job contract. This verifier change is not installed on the production host.
+The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, the applicable required CI job set, and the current `main` tip before fetching the tested archive. The installed verifier uses the `fast-main-v1` marker in the exact tested workflow file to select the required job set. Historical workflows without that marker retain the seven-job contract.
 
-The installed [host release script](../deploy/hostinger-release.sh) checks root ownership and safe permissions on host directories and secrets, verifies the CI run/attempt, required CI jobs, deployment workflow run, and current `main` tip, extracts the tested tarball, and runs self-contained validation against `docker compose config --format json` (requiring `production.env` mode `0600`, byte equality with candidate `.env`, `LOG_PURGE_ENABLED=false`, all pinned candidate environment values in the effective `backend`/`celery_worker`/`celery_beat` environments, non-symlink safe bind mounts inside the portal root, mounted TLS `fullchain.pem`/`privkey.pem`, and mounted JWT signing keys). It checks stateful Compose resources and Alembic heads and builds from the tested source. The legacy routine path refuses a schema mismatch and takes encrypted application and Grafana database backups before activation; the separately prepared fast path below changes those two steps only after installation and verification. Finally, it swaps the frontend index atomically and checks running images, public readiness, and served HTML, JavaScript, and service worker hashes. Success advances `current` and writes `DEPLOYED` with `Status: Deployed — Formal Acceptance Pending` (recording the commit, CI/deploy runs and attempts, UTC timestamp, frontend asset/service-worker hashes, image IDs, and schema heads, without `PREDEPLOY.json` or `PREDEPLOY_MANIFEST.json`). Failed activations follow the [rollback procedure](#rollback). Optional post-release formal acceptance follows [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
+The installed [host release script](../deploy/hostinger-release.sh) checks root ownership and safe permissions on host directories and secrets, verifies the CI run/attempt, required CI jobs, deployment workflow run, and current `main` tip, extracts the tested tarball, and runs self-contained validation against `docker compose config --format json` (requiring `production.env` mode `0600`, byte equality with candidate `.env`, `LOG_PURGE_ENABLED=false`, all pinned candidate environment values in the effective `backend`/`celery_worker`/`celery_beat` environments, non-symlink safe bind mounts inside the portal root, mounted TLS `fullchain.pem`/`privkey.pem`, and mounted JWT signing keys). It checks stateful Compose resources and Alembic heads and builds from the tested source. Routine releases use the migration and recovery conditions below. Finally, it swaps the frontend index atomically and checks running images, public readiness, and served HTML, JavaScript, and service worker hashes. Success advances `current` and writes `DEPLOYED` with `Status: Deployed — Formal Acceptance Pending` (recording the commit, CI/deploy runs and attempts, UTC timestamp, frontend asset/service-worker hashes, image IDs, and schema heads, without `PREDEPLOY.json` or `PREDEPLOY_MANIFEST.json`). Failed activations follow the [rollback procedure](#rollback). Optional post-release formal acceptance follows [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
 
 <a id="fast-beta-release-path-prepared-not-yet-verified-live"></a>
+<a id="fast-beta-release-path"></a>
 
-### Fast beta release path (local candidate; not yet published to `origin/main` or verified live)
+### Fast beta release path
 
-The local working tree contains a candidate fast-main CI policy and matching
-release verifier. The exact remote `main` SHA recorded above still has the
-seven-job workflow, and the launcher candidate has not been pushed or installed.
-Until the candidate is reviewed, pushed, and installed using the existing
-[host replacement procedure](#host-bootstrap-and-runner-maintenance), the
-installed launcher may still require seven jobs, a matching live schema, and
-a synchronous backup. Do not publish the five-job workflow on its own and assume
-an older launcher can activate it.
+The five-job push policy was used for the [successful automatic deployment of `762254c`](https://github.com/nirzaf/garrison-investments/actions/runs/45058527452).
+The active host receipt identifies that commit, CI run `45056876940`, and schema
+`202605310098`. On 2026-11-23 the installed launcher SHA-256 matched the reviewed
+source and the file was owned by root with mode `0755`. The recorded release
+required no Alembic upgrade. The hosted transport described above still awaits
+activation.
 
 - A push to `main` runs backend lint/types and OpenAPI, frontend lint/types/tests/build,
   Compose validation, and both backend integration shards. Open the **CI**
   workflow and use **Run workflow** on the intended branch to run the full suite;
   pull requests and manual CI also run both Chrome shards. Manual full CI is not
   the qualifying push event for automatic deployment.
-- The existing **Deploy production** workflow accepts successful CI pushes from
-  this repository's `main`, carries the exact SHA and CI run to the isolated
-  Hostinger runner, and keeps the existing deployment lock. Check the workflow
-  state in GitHub Actions separately from verifying an actual `workflow_run`
-  deployment, running image identities, readiness, and the final receipt.
+- The published **Deploy production** workflow still selects the Hostinger
+  runner. The GitHub-hosted candidate uses the restricted SSH transport and
+  retains the existing host lock. Verify the GitHub-hosted probe, then confirm
+  the deployment run, active images, readiness, and host receipt.
 - On verified PostgreSQL 19 with unchanged stateful Compose configuration and
   rollback generation, a changed single Alembic head must be reachable from the
   live revision. The launcher places a recovery hold, stops ingress and the three
@@ -207,13 +207,97 @@ Dispatch `44973465614` used main SHA `1c09c7e7fbdacb65b9bd77bdea42a92615ab60a` a
 
 ### CI runner isolation and availability
 
-CI runs on isolated self-hosted Linux x64 runners tagged `garrison-ci`, with separate Docker-in-Docker fixtures and persistent pip/npm caches. PostgreSQL and Redis service containers use runner-assigned host ports, and each Moto container receives an ephemeral loopback port; the workflow passes those resolved endpoints to migrations and tests. This avoids fixed host-port collisions when isolated jobs share a Docker host. Browser shards use Google Chrome only. CI receives no production secrets, production Docker socket or production volumes. The Hostinger `garrison-production` runner remains dedicated to deployment and must never be used as a general CI fallback.
+The CI workflow on remote `main` runs on GitHub-hosted `ubuntu-24.04` VMs. PostgreSQL and Redis service containers use runner-assigned host ports, and each Moto container receives an ephemeral loopback port; the workflow passes those resolved endpoints to migrations and tests. Browser shards use Google Chrome only. CI receives no production secrets, production Docker socket, or production volumes. This local worktree's deployment candidate also uses GitHub-hosted `ubuntu-24.04`, but it is not published or active; remote `main` still selects the dedicated Hostinger runner. The Hostinger runner is never used for CI.
 
-### CI runner availability — 2026-11-21
+### Grafana HTTPS readiness
+
+The 2026-11-23 read-only check found production at `762254c` with Alembic head
+`202605310098`. The live `GRAFANA_DOMAIN` is `grafana.portal.garrisons.lk`.
+Nginx's effective configuration passed `nginx -t`. Grafana reported its database
+healthy, its protected API returned HTTP 401 without credentials, and its port
+3000 had no host binding. Portal readiness returned HTTP 200 over verified TLS.
+
+Authoritative DNS returned `NXDOMAIN` for Grafana. The portal's verified ingress
+is `187.77.156.146`. The certificate mounted by both virtual hosts has a single
+SAN, `portal.garrisons.lk`, and expires on 9 February 2027 at 14:49:19 UTC.
+Normal certificate verification against the origin fails for the Grafana name.
+The active Certbot timer renews `portal.garrisons.lk` using standalone validation.
+Its deploy hook accepts only that lineage and copies the renewed pair into the
+directory currently mounted at `/etc/nginx/ssl`. The separate Super Admin timer
+covers its own certificate.
+
+For the authorized change, obtain a certificate covering both names using
+[DNS-01 validation](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge).
+The host currently has Certbot's standalone and webroot plugins. Automated
+Cloudflare DNS-01 requires the [Certbot Cloudflare plugin and a zone-scoped credential](https://certbot-dns-cloudflare.readthedocs.io/en/stable/).
+Keep the credential in a protected file. Expand the existing `portal.garrisons.lk`
+lineage so that the scheduled hook renews the same dual-name pair. A second
+lineage would leave the portal-only renewal hook able to overwrite the installed
+pair. Under the host deployment lock, preserve the active mounted pair and the
+existing renewal configuration. Run a DNS-01 rehearsal with `--dry-run` before
+issuing the certificate with the following arguments. Keep directory hooks
+disabled during issuance so installation can be validated separately.
+
+```bash
+certbot certonly --cert-name portal.garrisons.lk --expand --no-directory-hooks \
+  --dns-cloudflare --dns-cloudflare-credentials "$GARRISON_CLOUDFLARE_CREDENTIAL_FILE" \
+  -d portal.garrisons.lk -d grafana.portal.garrisons.lk
+```
+
+Check the new lineage's chain, both names, expiry, and key match. Stage the pair
+in the directory mounted at `/etc/nginx/ssl` and run `nginx -t` before reload.
+Check both hostnames with normal verification using `curl --resolve`. If
+validation fails, restore the saved mounted pair, revalidate, and reload. Keep
+both Certbot revisions and reconcile the runtime and renewal state before
+retrying. After the switch, verify persisted DNS-01 options and run a controlled
+renewal dry run for that lineage before verifying the 30-day and 7-day Grafana
+alerts.
+
+The disposable Nginx rehearsal used the production ingress configs and pinned
+image with fixture upstreams and a private test CA. A mismatched key failed
+`nginx -t` while the running portal returned HTTP 200. A valid dual-name pair
+served both names and forwarded the fixture Grafana API denial. Restoring the
+previous pair brought back the portal-only baseline. The documentation branch's
+expiry monitor passed all seven local tests. Certificate issuance, external
+Grafana sign-in, and alert delivery remain production verification steps.
+
+After TLS and authentication checks pass against the origin, publish only the
+DNS-only A record for `grafana.portal.garrisons.lk` at the verified ingress.
+Verify authoritative DNS and two recursive resolvers, then check the login page,
+protected-route denial, authenticated access, and portal readiness using public
+DNS.
+
+<a id="live-ci-and-deployment-snapshot-2026-11-23"></a>
+
+### Live CI and deployment snapshot — 2026-11-23
+
+Exact-main CI run `45174272215` passed all five push jobs for
+`91d7aea947031ecf1951c4b371525c4b4ce0a2b4` in 4m47s on GitHub-hosted
+`ubuntu-24.04`; full regression run `45167599606` passed all seven jobs on the
+same runner class. After re-enabling `Deploy production` and starting the
+Hostinger production runner, manual dispatch run
+[`45223024498`](https://github.com/nirzaf/garrison-investments/actions/runs/45223024498)
+deployed `91d7aea947031ecf1951c4b371525c4b4ce0a2b4` in 1m51s (activation 47s,
+image/readiness verification 1s, `Routine migration: not needed`, Alembic
+`202605310098`, PostgreSQL `19.0`, frontend asset `/assets/index-C_fpcwF7.js`,
+readiness HTTP 200). The `Production` GitHub environment is now restricted to
+`main`, and the Hostinger Cloudflare Access SSH transport (`deploy-ssh.garrisons.lk`
+via `garrison-cloudflared.service` and restricted `garrison-gh-deploy` account)
+is installed and configured with Production secrets, awaiting the GitHub-hosted
+`transport_check=true` verification and hosted CD cutover.
+
+### Historical runner availability — 2026-11-21 and earlier
+
+The following runner checks describe earlier states and do not supersede the
+live snapshot above. An earlier exact-main CI run `45133316069` for SHA
+`43a2d32c920e1c571d9b30615a57d72b057acc35` remained queued with five jobs and
+no steps started. At a separate 12:50 UTC check, all four `garrison-ci` runners
+were offline while the production runner was online. The runner restoration
+steps recorded below are historical events.
 
 At 12:50 UTC, the GitHub runner API showed all four `garrison-ci` runners offline while the separate `garrison-production` runner was online; all seven jobs in exact-main run `44905570008` for `5f032409bf997914dfa8f288a551cb4d7b11efe5` were queued. The existing local registrations for `garrison-ci-desktop` (ID 22) and `garrison-ci-linux-3` (ID 25) were restarted with their isolated Docker-in-Docker daemons. Registration `garrison-ci-linux-2` (ID 24) was then restored from its existing credential state and isolated daemon. As of 14:24 UTC, IDs 22, 24 and 25 were online; ID 23 remained offline. A separate legacy Docker-in-Docker container was restart-looping on a stale daemon PID file, but its registration mapping to ID 23 could not be confirmed; its data volume was preserved. Do not route jobs to the production runner.
 
-A hosted-runner fallback was tested on PR #39 (`283713cab3f892b2f5ffe77aa58d3ddd28efadca`, run `44907543620`) but GitHub rejected job startup because of account payment/spending-limit restrictions. No steps ran, so this is not a test result. The repair commit `f47d1941df72d30b3d0ca34f75da56f37e2eece2` keeps isolated self-hosted CI and passed all seven required jobs in run `44912557531` at 14:30:07 UTC. That run took 19m34s from dispatch to completion; the first job started three seconds after dispatch. Hosted CI remains unavailable until the account restriction is resolved.
+A hosted-runner fallback was rejected before job startup on PR #39 (`283713cab3f892b2f5ffe77aa58d3ddd28efadca`, run `44907543620`) because of the account payment/spending-limit restriction recorded at that time; no steps ran. That is historical evidence only and was superseded by the successful GitHub-hosted CI runs listed above. The remote production workflow remains on Hostinger pending the separate remote-channel setup.
 
 The initial verification of runner-restoration commit `6cdccfdac2cdb428d91779e13ce01c6f0a8986f7` exposed a Docker host-port collision: both integration jobs scheduled on `garrison-ci-linux-2` failed before checkout because PostgreSQL could not bind host port 5432, which was already allocated. The job logs confirm those two test suites did not run. The workflow now requests ephemeral ports for PostgreSQL, Redis, and Moto and supplies the resolved ports to the migration and test processes. The exact repair head `3dfc2b0fb3993ca3d4a49c857a772e4396ca5b5a` passed all seven required jobs on the first attempt in PR run `44917734091` (15:10:10–15:27:12 UTC, 17m02s); the first job started three seconds after dispatch. Backend shards took 5m12s and 6m52s, Chrome shards 9m02s and 9m11s, frontend checks 1m03s, backend lint/types 50s, and Compose validation 25s. Backend tests reported 1,300 passed and six environment-gated skips; browser shards reported 82 passed and one intentional `single_owner`-mode skip; Vitest reported 63 passed. The six backend skips were then covered by a separate disposable Docker/PostgreSQL/Nginx run (`RUN_FORWARD097_STACK=1 RUN_SYNTHETIC_MAINTENANCE_NGINX=1 BUSINESS_TIMEZONE=Asia/Qatar pytest -q -rs tests/test_forward097_stack.py tests/test_maintenance_ingress.py`): 15 passed in 2m54s. The `single_owner` browser case was then run separately against disposable PostgreSQL 19, Redis, and Moto services with Google Chrome 158.0.8127.37; migrations from an empty local database succeeded and the focused Playwright case passed (1 passed in 7.6s). This local run supplements the Chrome CI shards but does not replace production migration or restore evidence. The CI run verifies that the corrected CI path works and avoids the observed port collision; one run does not establish a repeatable pipeline speedup. The account restriction still prevents GitHub-hosted fallback, and runner ID 23 remains offline; keep CI isolated from the production runner.
 
@@ -232,16 +316,25 @@ Three recent successful seven-job main runs establish the current comparison:
 The median full-workflow wall time is 1,001 seconds (16m41s). In those same
 seven-job runs, the five jobs intended for the fast main gate had completion
 times of 451, 1,236 and 441 seconds from workflow creation (median 451 seconds).
-Those are historical subset timings, not an after-change measurement: browser
-jobs were still consuming runners and affecting queue order. Step timings show
+Those are historical subset timings, not a post-change five-job measurement:
+browser jobs were still consuming runners and affecting queue order. Step timings show
 cached pip installation at about 1 second, npm installation at 7–8 seconds,
 browser test preparation at 9–12 seconds, backend pytest at 269–387 seconds per
 shard, and Chrome execution at 432–450 seconds per shard. Current runner API
-state is one of four `garrison-ci` runners online, so availability remains a
-limiting factor. The fast-main workflow and host verifier are local-only and
-have no comparable remote run yet; no after-change speedup is claimed. Exact
-main run `45046582618` passed on attempt 3 after two backend lint/type failures;
-the retries make it unsuitable as a clean timing comparison.
+state and latest hosted timings are recorded in the [live snapshot](#live-ci-and-deployment-snapshot-2026-11-23).
+The latest five-job hosted push completed in 4m47s; the full seven-job hosted
+regression completed in 5m19s. The [hosted push run](https://github.com/nirzaf/garrison-investments/actions/runs/45174272215)
+started its first job after 2 seconds. The last job to finish was backend shard 2,
+which took 4m43s including setup and 3m51s in Pytest.
+The [self-hosted push run](https://github.com/nirzaf/garrison-investments/actions/runs/45056876940)
+took 17m47s. Its first job started after 3 seconds, while Compose started 17m22s
+after creation and ran for 24 seconds. The two comparable samples show a change
+in the critical path. A third successful five-job run is needed for a median.
+Run `45046582618` had seven jobs and passed after retries, so it is excluded.
+
+The [full hosted regression](https://github.com/nirzaf/garrison-investments/actions/runs/45167599606)
+on `91d7aea` reported 1,405 backend tests passed and six skipped, 64 Vitest
+tests passed, and 82 Chrome tests passed with one skipped.
 
 On `be5f583328e9a4958f6be5738663767b8e31c56a`, exact-main run `44974005236`
 passed all seven jobs on attempt 2. The first attempt's Chrome shards failed

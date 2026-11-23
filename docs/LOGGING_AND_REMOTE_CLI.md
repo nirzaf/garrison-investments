@@ -102,7 +102,7 @@ Run `python scripts/preview_audit_retention.py --help` for the supported categor
 
 Services emit structured JSON to container stdout. [Alloy](../observability/alloy-config.alloy) discovers the environment's Compose containers, applies redaction, and ships logs to [Loki](../observability/loki-config.yml). Grafana uses Loki for operational queries. Loki's configured retention is 14 days. The PostgreSQL audit store has its own retention and backup policy.
 
-Production Grafana is routed through the configured `GRAFANA_DOMAIN` HTTPS hostname. The legacy staging Compose file retains a subpath configuration, but it is not an active monitoring target. Grafana disables anonymous access and public sign-up. Loki and Alloy use internal ports.
+Production Nginx routes the configured `GRAFANA_DOMAIN` to Grafana's private port. The 2026-11-23 check confirmed internal Grafana health and denied anonymous API access. Public access still requires a trusted certificate for the Grafana hostname and a DNS record. See [Grafana HTTPS readiness](OPERATIONS_AND_DEPLOYMENT.md#grafana-https-readiness) for the observed configuration and renewal steps. Grafana disables anonymous access and public sign-up. Loki and Alloy use internal ports.
 
 Set `DOCKER_SOCKET_GID` in the deployment environment to the numeric group returned by `stat -Lc '%g' /var/run/docker.sock` on the Docker host. Recreate Alloy when this value changes so its supplementary group matches the socket. Alloy's container health check verifies socket access. To verify ingestion after recreation, use the existing private Loki connection and query a recent request ID from a permitted API read. Confirm that it appears under the expected environment and service labels.
 
