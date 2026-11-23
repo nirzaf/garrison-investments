@@ -201,7 +201,7 @@ Nginx, or application changes were made.
 | Grafana health and access | Internal Grafana 13.1.1 `/api/health` returned healthy; unauthenticated `/api/org` returned 401. Anonymous access and public sign-up are disabled. Container port 3000 has no host-published binding. |
 | Active certificate | The Nginx-mounted certificate and private key match. The trusted Let's Encrypt leaf has SAN `portal.garrisons.lk` only and expires 2027-02-09 14:49:19 UTC. A normal TLS check with Grafana SNI fails hostname verification. |
 | Portal regression | `https://portal.garrisons.lk/health/readiness` returned HTTP 200 with normal TLS verification. |
-| Renewal ownership | `certbot.timer` is enabled and active twice daily. Its current automatic lineage is for `portal.garrisons.lk` and its deploy hook copies that renewed pair to the Nginx mount and reloads Nginx. The separate daily `garrison-support-tls.timer` checks only the Super Admin certificate. Neither current path covers Grafana. |
+| Renewal ownership | `certbot.timer` is enabled and active twice daily. Its current automatic lineage is for `portal.garrisons.lk` and its deploy hook copies that renewed pair to the Nginx mount and reloads Nginx. The separate daily `garrison-support-tls.timer` checks only the Super Admin certificate. Neither installed path covers Grafana. This branch prepares `garrison-grafana-tls-check` and its systemd unit/timer; they are not installed or active in production. |
 
 The live Nginx configuration and internal Grafana health do not make the public
 Grafana hostname usable while DNS is absent and the active certificate lacks
@@ -214,7 +214,21 @@ The prepared record is `A grafana.portal.garrisons.lk -> 187.77.156.146`,
 Cloudflare DNS-only (`proxied: false`, automatic TTL). Use a DNS-01 challenge
 if needed to preserve the required TLS-before-A-record order. The renewal
 procedure and warning/urgent alerts must include the resulting Grafana
-certificate before the endpoint is declared complete. Do not change the Super
+certificate before the endpoint is declared complete. The prepared host
+monitor connects to `127.0.0.1:443` with Grafana SNI, verifies the normal trust
+chain and hostname, and checks 30-day warning and 7-day urgent expiry
+thresholds. It logs to journald and sends alerts through the existing backend
+email service to `info@quadrate.lk`; it does not inspect a release-specific
+certificate path. After a valid Grafana certificate is installed and
+production change authorization is available, install the script as
+`/usr/local/sbin/garrison-grafana-tls-check`, install its service and timer
+under `/etc/systemd/system/`, run `systemctl daemon-reload`, invoke
+`garrison-grafana-tls-check --test-warning`, verify the labeled test receipt,
+then enable the timer and verify its next run. The corresponding tracked
+assets are `deploy/garrison-grafana-tls-check`,
+`deploy/garrison-grafana-tls.service`, and
+`deploy/garrison-grafana-tls.timer`. These assets are prepared only: there is
+no production installation or delivery evidence yet. Do not change the Super
 Admin certificate or allowlist.
 
 ### Forward097 incident reconciliation (evidence review, 2026-11-21–22)

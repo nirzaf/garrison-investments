@@ -1,0 +1,84 @@
+#!/bin/sh
+set -eu
+
+host=grafana.portal.garrisons.lk
+connect=127.0.0.1:443
+recipient=info@quadrate.lk
+tag=garrison-grafana-tls
+
+emit() {
+  level=$1
+  detail=$2
+  logger -t "$tag" -p "daemon.$level" -- "host=$host $detail"
+  if [ "$level" = info ]; then
+    return 0
+  fi
+
+  prefix='[ALERT]'
+  reference="$(date -u +%Y%m%dT%H%M%SZ)"
+  case "$detail" in
+    *synthetic=true*)
+      prefix='[TEST]'
+      reference='GARRISON-GRAFANA-TLS-TEST-V01'
+      ;;
+  esac
+  subject="$prefix Garrisons Grafana TLS alert | $reference"
+  body="Certificate monitoring event for $host. $detail. Reference $reference. [TEST] indicates a synthetic delivery check."
+
+  if timeout 45 docker exec garrison-portal-backend-1 python -c 'import sys; from app.services.email_service import EmailService; accepted = EmailService().send(recipients=[sys.argv[1]], subject=sys.argv[2], body=sys.argv[3]); sys.exit(0 if accepted == 1 else 1)' \
+    "$recipient" "$subject" "$body" >/dev/null 2>&1; then
+    logger -t "$tag" -p daemon.info -- "host=$host event=expiry_alert_accepted reference=$reference"
+  else
+    logger -t "$tag" -p daemon.err -- "host=$host event=expiry_alert_delivery_failed reference=$reference"
+    return 1
+  fi
+}
+
+case "${1:-}" in
+  --test-warning) emit warning 'event=certificate_expiry_warning synthetic=true'; exit 0 ;;
+  --test-urgent) emit err 'event=certificate_expiry_urgent synthetic=true'; exit 0 ;;
+  '') ;;
+  *) exit 2 ;;
+esac
+
+tls_output=$(mktemp)
+leaf_certificate=$(mktemp)
+trap 'rm -f "$tls_output" "$leaf_certificate"' EXIT HUP INT TERM
+
+if ! timeout 30 openssl s_client \
+  -connect "$connect" \
+  -servername "$host" \
+  -verify 5 \
+  -verify_return_error \
+  -verify_hostname "$host" \
+  -showcerts \
+  </dev/null >"$tls_output" 2>&1; then
+  emit err 'event=certificate_missing_or_invalid synthetic=false'
+  exit 1
+fi
+
+if ! grep -Fq 'Verify return code: 0 (ok)' "$tls_output"; then
+  emit err 'event=certificate_missing_or_invalid synthetic=false'
+  exit 1
+fi
+
+awk '
+  /-----BEGIN CERTIFICATE-----/ { count++ }
+  count == 1 { print }
+  /-----END CERTIFICATE-----/ && count == 1 { exit }
+' "$tls_output" >"$leaf_certificate"
+
+if ! openssl x509 -in "$leaf_certificate" -noout >/dev/null 2>&1; then
+  emit err 'event=certificate_missing_or_invalid synthetic=false'
+  exit 1
+fi
+
+expiry=$(openssl x509 -in "$leaf_certificate" -noout -enddate)
+if ! openssl x509 -in "$leaf_certificate" -noout -checkend 604800 >/dev/null 2>&1; then
+  emit err "event=certificate_expiry_urgent synthetic=false $expiry"
+  exit 1
+elif ! openssl x509 -in "$leaf_certificate" -noout -checkend 2592000 >/dev/null 2>&1; then
+  emit warning "event=certificate_expiry_warning synthetic=false $expiry"
+else
+  emit info "event=certificate_expiry_ok synthetic=false $expiry"
+fi

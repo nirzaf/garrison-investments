@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Garrisons Grafana TLS certificate expiry
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/garrison-grafana-tls-check
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
