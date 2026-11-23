@@ -92,7 +92,7 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 ## Production deployments from GitHub Actions
 
-[CI](../.github/workflows/ci.yml) uses isolated self-hosted Linux x64 runners tagged `garrison-ci` for pull requests and pushes to `main`. Test databases, Redis and object storage run in disposable Docker-in-Docker environments; CI receives no production credentials, production Docker socket or production volumes. The integration matrix allows up to three jobs at once; GitHub schedules only on online `garrison-ci` runners, and CI never uses the dedicated `garrison-production` runner. At the latest read-only runner check on 2026-11-22, all four registered CI runners were offline. Persistent pip/npm caches avoid repeated dependency downloads. [Deploy production](../.github/workflows/deploy.yml) remains a separate workflow in the `Production` environment. It runs only on the dedicated self-hosted Hostinger runner labeled `garrison-production`; that runner was online and idle at the check and is reserved for deployment. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
+[CI](../.github/workflows/ci.yml) uses isolated self-hosted Linux x64 runners tagged `garrison-ci` for pull requests and pushes to `main`. Test databases, Redis and object storage run in disposable Docker-in-Docker environments; CI receives no production credentials, production Docker socket or production volumes. The integration matrix allows up to three jobs at once; GitHub schedules only on online `garrison-ci` runners, and CI never uses the dedicated `garrison-production` runner. At the latest read-only runner check on 2026-11-23, all four registered CI runners were offline. Persistent pip/npm caches avoid repeated dependency downloads. [Deploy production](../.github/workflows/deploy.yml) remains a separate workflow in the `Production` environment. It runs only on the dedicated self-hosted Hostinger runner labeled `garrison-production`; that runner was online and idle at the check and is reserved for deployment. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
 
 As of 2026-11-22, GitHub reports [Deploy production](https://github.com/nirzaf/garrison-investments/actions/workflows/deploy.yml) as active, and run 45058527452 demonstrates the automatic trigger and deployment for the exact tested `main` SHA. The existing host verifier, schema compatibility, backup-key, and readiness checks remain in force. For later releases, verify the exact CI run, deployment run, and active release receipt.
 
@@ -185,6 +185,27 @@ runner service/journal and system resources, then restart only that verified
 service and rerun the seven-job workflow. Do not use the production runner as a
 fallback.
 
+### CI runner status refresh — 2026-11-23
+
+The GitHub Actions runner API again reports IDs 22–25 (`garrison-ci-*`) offline
+and ID 21 (`garrison-hostinger-production`) online and idle. The API response
+does not expose a usable last-seen timestamp. The Hostinger inventory has no
+VM identified as `garrison-ci`; the only nonproduction VM inspected through
+Docker Manager hosts an unrelated admin panel and observability stack. The
+production VM's Docker Manager endpoint rejects its Ubuntu version, so its
+runtime was checked through the existing root SSH key using read-only
+commands. No CI runner was restarted or repurposed, and no production runner
+was used for CI. The isolated runner host and its agent service/journal remain
+unidentified, so the outage root cause is still unverified.
+
+GitHub confirmed only one successful five-job push run under the current
+fast-gate workflow (`45056876940`, SHA `762254ce`). Recent successful pushes
+`45046582618`, `45012746159`, `45008220436`, and `45005886117` each contained
+seven jobs, including both Chrome shards, so they are not comparable timing
+samples. Full-regression run `45058989806` remains cancelled. Keep the
+performance baseline pending until two more comparable five-job runs complete
+naturally; do not manufacture pushes to create samples.
+
 <a id="grafana-external-access-readiness-2026-11-22"></a>
 
 ### Grafana external-access readiness — 2026-11-22
@@ -230,6 +251,31 @@ assets are `deploy/garrison-grafana-tls-check`,
 `deploy/garrison-grafana-tls.timer`. These assets are prepared only: there is
 no production installation or delivery evidence yet. Do not change the Super
 Admin certificate or allowlist.
+
+<a id="grafana-production-status-refresh-2026-11-23"></a>
+
+### Grafana production status refresh — 2026-11-23
+
+**Status: still not externally ready.** A read-only check over the existing
+Hostinger SSH access completed at `2026-11-23T03:54:53Z`; no production files,
+services, certificates, or DNS records were changed.
+
+| Check | Verified result |
+| --- | --- |
+| Release identity | `origin/main` and the running backend, worker, and beat image tag are `762254ce7812973731cd6b653e7c1bad10612c48`. |
+| Host and containers | Hostinger identifies production VM `2150745` at `187.77.156.146`. Nginx `1.30.7-alpine`, Grafana `13.1.1`, PostgreSQL `19.0-alpine3.24`, backend, worker, and beat were running; Grafana and the backend reported healthy. |
+| Nginx | `nginx -t` passed in the running Nginx container. The TLS mount source is `/opt/garrison-portal/releases/469842a/nginx/ssl`. |
+| Served Grafana certificate | The leaf is Let's Encrypt `YE1`, subject `CN=portal.garrisons.lk`, SAN `portal.garrisons.lk` only, valid through `2027-02-09T14:49:19Z`. A normal TLS/SNI check for `grafana.portal.garrisons.lk` returns verification error 62 (hostname mismatch). |
+| Grafana access | Grafana `/api/health` reports healthy. Unauthenticated `/api/org` returns 401. The Grafana container exposes only its internal port 3000. |
+| DNS and portal regression | Cloudflare's active `garrisons.lk` zone still has no A, AAAA, or CNAME for `grafana.portal.garrisons.lk`. The portal readiness endpoint returns HTTP 200 with TLS verification result 0. |
+| Renewal monitor | The Grafana monitor executable, service, and timer are absent from production. The new monitor source and tests are local in commit `a2b3579c0907bb915c8a13b0f0d1d491b213bb10`; no installation or mail-delivery test is claimed. |
+
+Hostinger's Docker Manager API cannot inspect the production Ubuntu image and
+returned its unsupported-OS response; the read-only SSH checks above supplied
+the runtime evidence instead. Continue to require a trusted certificate that
+covers Grafana, normal TLS and Nginx validation, and the authorized DNS/TLS
+change before publishing the A record. Do not use the portal-only certificate
+as Grafana HTTPS evidence.
 
 ### Forward097 incident reconciliation (evidence review, 2026-11-21–22)
 
