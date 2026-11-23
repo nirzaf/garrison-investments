@@ -3,10 +3,18 @@ import { useRef, useState, type FormEvent } from 'react';
 
 import { formatApiError } from '../../api/errors';
 import {
+  normalizeProjectCreate,
+  projectSetupIssues,
+  type BoqDraft,
+  type MilestoneDraft
+} from '../../api/projectSetup';
+import {
   assignProjectMember,
+  createProjectBoqItem,
   getProject,
   listProjectMembers,
   updateProject,
+  type ProjectBoqItemPayload,
   type ProjectDetail,
   type ProjectUpdatePayload
 } from '../../api/projects';
@@ -35,6 +43,8 @@ export function ProjectDetailPanel({
 }) {
   const { user } = useAuth();
   const canViewFinancial = user?.permissions?.includes('financial:view') ?? false;
+  const isBoqDirector =
+    user?.role === 'managing_director' || user?.role === 'operations_director';
   const [tab, setTab] = useState<(typeof tabs)[number]>('Overview');
   const detail = useQuery({
     queryKey: ['project-detail', projectId],
@@ -101,6 +111,7 @@ export function ProjectDetailPanel({
               project={project}
               canEdit={canEdit}
               canViewFinancial={canViewFinancial}
+              canAddBoqItem={canEdit && canViewFinancial && isBoqDirector}
               refresh={() => void detail.refetch()}
             />
           </div>
@@ -123,14 +134,17 @@ function ProjectOverview({
   project,
   canEdit,
   canViewFinancial,
+  canAddBoqItem,
   refresh
 }: {
   project: ProjectDetail;
   canEdit: boolean;
   canViewFinancial: boolean;
+  canAddBoqItem: boolean;
   refresh: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [addingBoqItem, setAddingBoqItem] = useState(false);
   const milestoneNames = new Map(project.milestones.map((item) => [item.id, item.name]));
   const details = [
     ['Client', project.client_name],
@@ -195,6 +209,25 @@ function ProjectOverview({
           <p className="text-sm">No milestones.</p>
         )}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-semibold">Bill of quantities</h4>
+        {canAddBoqItem && !addingBoqItem && (
+          <button
+            className={projectActionClass}
+            type="button"
+            onClick={() => setAddingBoqItem(true)}
+          >
+            Add BOQ Item
+          </button>
+        )}
+      </div>
+      {addingBoqItem && canAddBoqItem && (
+        <ProjectBoqItemForm
+          project={project}
+          onCancel={() => setAddingBoqItem(false)}
+          onCreated={() => setAddingBoqItem(false)}
+        />
+      )}
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <caption className="mb-2 text-left font-semibold">Bill of quantities</caption>
@@ -234,9 +267,210 @@ function ProjectOverview({
             ))}
           </tbody>
         </table>
-        {!project.boq_items.length && <p className="p-2 text-sm">No BOQ items.</p>}
+        {!project.boq_items.length && (
+          <p className="p-2 text-sm">No BOQ items added yet.</p>
+        )}
       </div>
     </div>
+  );
+}
+
+function ProjectBoqItemForm({
+  project,
+  onCancel,
+  onCreated
+}: {
+  project: ProjectDetail;
+  onCancel: () => void;
+  onCreated: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<BoqDraft>({
+    rowId: 'new-boq-item',
+    milestoneId: '',
+    item_code: '',
+    description: '',
+    discipline: '',
+    phase: '',
+    unit: 'lot',
+    planned_quantity: '1',
+    unit_rate: '0'
+  });
+  const [issues, setIssues] = useState<ReturnType<typeof projectSetupIssues>>([]);
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+  const locked = useRef(false);
+
+  function updateDraft(fields: Partial<BoqDraft>) {
+    setDraft((current) => ({ ...current, ...fields }));
+    setIssues([]);
+    setError('');
+  }
+
+  function fieldIssues(field: string) {
+    return issues
+      .filter(
+        (issue) =>
+          issue.field === field ||
+          issue.field === `boq_items.0.${field}` ||
+          issue.field.endsWith(`.${field}`)
+      )
+      .map((issue, index) => (
+        <p key={`${issue.field}-${index}`} className="text-sm text-red-700 dark:text-red-300">
+          {issue.message}
+        </p>
+      ));
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (locked.current) return;
+    locked.current = true;
+    setPending(true);
+    setError('');
+    setIssues([]);
+    try {
+      const milestones: MilestoneDraft[] = project.milestones.map((milestone) => ({
+        rowId: milestone.id,
+        name: milestone.name,
+        discipline: milestone.discipline,
+        planned_start_date: milestone.planned_start_date,
+        planned_end_date: milestone.planned_end_date,
+        sort_order: milestone.sort_order
+      }));
+      const normalized = normalizeProjectCreate({
+        name: project.name,
+        scope_of_work: project.scope_of_work,
+        target_end_date: project.target_end_date,
+        status: project.status,
+        start_date: project.start_date,
+        location: project.location,
+        description: project.description,
+        client_name: project.client_name,
+        contract_number: project.contract_number,
+        budget_amount: project.budget_amount,
+        milestones,
+        boq_items: [draft]
+      });
+      const payload: ProjectBoqItemPayload = normalized.boq_items[0];
+      await createProjectBoqItem(project.id, payload);
+      void queryClient.invalidateQueries({ queryKey: ['project-detail', project.id] });
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      void queryClient.invalidateQueries({ queryKey: ['finance', 'budget', project.id] });
+      onCreated();
+    } catch (failure) {
+      const fieldIssues = projectSetupIssues(failure);
+      setIssues(fieldIssues);
+      setError(
+        fieldIssues.length
+          ? 'Correct the BOQ item fields below and try again.'
+          : formatApiError(failure, 'Unable to add this BOQ item.')
+      );
+    } finally {
+      locked.current = false;
+      setPending(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => void submit(event)}
+      className="space-y-3 rounded-md border border-theme-border p-3"
+      aria-label="Add BOQ item"
+    >
+      <h5 className="font-semibold">Add BOQ Item</h5>
+      {error && (
+        <p role="alert" className="alert-error rounded-md p-2 text-sm">
+          {error}
+        </p>
+      )}
+      <fieldset disabled={pending} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <ProjectInput
+            label="Item code"
+            required
+            maxLength={50}
+            value={draft.item_code}
+            onChange={(event) => updateDraft({ item_code: event.target.value })}
+          />
+          {fieldIssues('item_code')}
+        </div>
+        <div className="sm:col-span-2">
+          <ProjectTextArea
+            label="BOQ description"
+            required
+            value={draft.description}
+            onChange={(event) => updateDraft({ description: event.target.value })}
+          />
+          {fieldIssues('description')}
+        </div>
+        <ProjectInput
+          label="Discipline"
+          maxLength={50}
+          value={draft.discipline ?? ''}
+          onChange={(event) => updateDraft({ discipline: event.target.value })}
+        />
+        <ProjectInput
+          label="Phase"
+          maxLength={100}
+          value={draft.phase ?? ''}
+          onChange={(event) => updateDraft({ phase: event.target.value })}
+        />
+        <div>
+          <ProjectSelect
+            label="Linked milestone"
+            value={draft.milestoneId}
+            onChange={(event) => updateDraft({ milestoneId: event.target.value })}
+          >
+            <option value="">No milestone</option>
+            {project.milestones.map((milestone) => (
+              <option key={milestone.id} value={milestone.id}>
+                {milestone.name}
+              </option>
+            ))}
+          </ProjectSelect>
+          {fieldIssues('milestone_name')}
+        </div>
+        <div>
+          <ProjectInput
+            label="Unit"
+            required
+            maxLength={20}
+            value={draft.unit}
+            onChange={(event) => updateDraft({ unit: event.target.value })}
+          />
+          {fieldIssues('unit')}
+        </div>
+        <div>
+          <ProjectInput
+            label="Planned quantity"
+            required
+            inputMode="decimal"
+            value={draft.planned_quantity}
+            onChange={(event) => updateDraft({ planned_quantity: event.target.value })}
+          />
+          {fieldIssues('planned_quantity')}
+        </div>
+        <div>
+          <ProjectInput
+            label="Unit rate"
+            required
+            inputMode="decimal"
+            value={draft.unit_rate}
+            onChange={(event) => updateDraft({ unit_rate: event.target.value })}
+          />
+          {fieldIssues('unit_rate')}
+        </div>
+      </fieldset>
+      <div className="flex flex-wrap gap-2">
+        <button className={projectSubmitClass} type="submit" disabled={pending}>
+          {pending ? 'Adding…' : 'Save BOQ item'}
+        </button>
+        <button className={projectActionClass} type="button" disabled={pending} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

@@ -71,6 +71,32 @@ async def test_mep_financial_creation_preserves_validated_amounts(rate, budget):
     svc.session.commit.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_mep_can_create_planning_project_without_boq_but_cannot_add_priced_boq():
+    svc = service()
+    actor = User(id=uuid4(), role="mep_project_manager")
+    data = payload().model_copy(update={"boq_items": []})
+
+    project = await svc.create_project(data, actor)
+
+    assert project.status == "planning"
+    svc._create_boq_items.assert_not_awaited()
+    svc.session.commit.assert_awaited_once()
+    with pytest.raises(PermissionDeniedException):
+        await svc.add_boq_item(
+            uuid4(),
+            BoqItemCreateRequest(
+                item_code="B2",
+                description="Priced work",
+                unit="lot",
+                planned_quantity=Decimal("1"),
+                unit_rate=Decimal("2.00"),
+            ),
+            actor,
+        )
+    svc.projects.get_by_id.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "rate,budget", [("-1", None), ("1.001", None), ("1", Decimal("-1")), ("1", Decimal("1.001"))]
 )

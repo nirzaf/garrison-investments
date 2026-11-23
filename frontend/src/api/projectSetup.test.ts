@@ -45,6 +45,17 @@ function draft(): ProjectSetupDraft {
 }
 
 describe('project setup payload', () => {
+  it('normalizes an empty BOQ and does not mutate the project draft', () => {
+    const input = draft();
+    input.boq_items = [];
+    const original = structuredClone(input);
+    const payload = normalizeProjectCreate(input);
+
+    expect(payload.boq_items).toEqual([]);
+    expect(plannedBoqTotal([])).toBe('0.00');
+    expect(input).toEqual(original);
+  });
+
   it('resolves the current milestone name, normalizes dates and preserves decimals without mutating the draft', () => {
     const input = draft();
     const original = structuredClone(input);

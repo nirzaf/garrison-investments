@@ -4838,6 +4838,23 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/boq-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Project Boq Item */
+        post: operations["create_project_boq_item_api_v1_projects__project_id__boq_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/hr-assignment-requests": {
         parameters: {
             query?: never;
@@ -14523,7 +14540,7 @@ export interface components {
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
             /** Boq Items */
-            boq_items: components["schemas"]["BoqItemCreateRequest"][];
+            boq_items?: components["schemas"]["BoqItemCreateRequest"][];
             /** Budget Amount */
             budget_amount?: number | string | null;
             /** Client Name */
@@ -31171,6 +31188,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    create_project_boq_item_api_v1_projects__project_id__boq_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoqItemCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoqItemResponse"];
                 };
             };
             /** @description Invalid request */

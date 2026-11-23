@@ -43,7 +43,7 @@ function initialDraft(): ProjectSetupDraft {
     target_end_date: '',
     status: 'planning',
     milestones: [milestone],
-    boq_items: [newBoqItem('BOQ-001', milestone.rowId)]
+    boq_items: []
   };
 }
 
@@ -307,6 +307,11 @@ export function ProjectCreateForm({
               Add BOQ item
             </button>
           </div>
+          {!draft.boq_items.length && (
+            <p className="text-sm text-theme-text-secondary">
+              BOQ items can be added after project creation.
+            </p>
+          )}
           {draft.boq_items.map((row, index) => (
             <fieldset
               key={row.rowId}
@@ -393,7 +398,6 @@ export function ProjectCreateForm({
                 </button>
                 <button
                   className={projectActionClass}
-                  disabled={draft.boq_items.length === 1}
                   type="button"
                   onClick={() =>
                     setField(
@@ -408,7 +412,7 @@ export function ProjectCreateForm({
             </fieldset>
           ))}
           {rowIssues('boq_items', false)}
-          {plannedTotal !== null && (
+          {draft.boq_items.length > 0 && plannedTotal !== null && (
             <p className="text-sm text-theme-text-secondary">Planned BOQ total {plannedTotal}</p>
           )}
         </div>

@@ -42,7 +42,7 @@ class ProjectCreateRequest(BaseModel):
     client_name: str | None = Field(default=None, max_length=200)
     contract_number: str | None = Field(default=None, max_length=50)
     milestones: list[MilestoneCreateRequest] = Field(default_factory=list)
-    boq_items: list[BoqItemCreateRequest] = Field(min_length=1)
+    boq_items: list[BoqItemCreateRequest] = Field(default_factory=list)
 
 
 class ProjectUpdateRequest(BaseModel):

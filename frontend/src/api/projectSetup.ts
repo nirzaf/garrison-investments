@@ -3,6 +3,9 @@ import { isAxiosError } from 'axios';
 import type { components } from './schema';
 
 type CreateRequest = components['schemas']['ProjectCreateRequest'];
+type NormalizedCreateRequest = Omit<CreateRequest, 'boq_items'> & {
+  boq_items: NonNullable<CreateRequest['boq_items']>;
+};
 export type MilestoneDraft = components['schemas']['MilestoneCreateRequest'] & { rowId: string };
 export type BoqDraft = Omit<
   components['schemas']['BoqItemCreateRequest'],
@@ -75,7 +78,7 @@ export function plannedBoqTotal(rows: BoqDraft[]): string | null {
   return `${totalCents / 100n}.${String(totalCents % 100n).padStart(2, '0')}`;
 }
 
-export function normalizeProjectCreate(input: ProjectSetupDraft): CreateRequest {
+export function normalizeProjectCreate(input: ProjectSetupDraft): NormalizedCreateRequest {
   const issues: FieldIssue[] = [];
   const projectName = input.name.trim();
   const scope = input.scope_of_work.trim();
@@ -158,7 +161,6 @@ export function normalizeProjectCreate(input: ProjectSetupDraft): CreateRequest 
       unit_rate: row.unit_rate.trim()
     };
   });
-  if (!boqItems.length) issues.push({ field: 'boq_items', message: 'Add at least one BOQ item.' });
   if (issues.length) throw new ProjectSetupError(issues);
   return {
     ...input,

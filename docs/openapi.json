@@ -22835,7 +22835,6 @@
             "items": {
               "$ref": "#/components/schemas/BoqItemCreateRequest"
             },
-            "minItems": 1,
             "title": "Boq Items",
             "type": "array"
           },
@@ -22945,8 +22944,7 @@
         "required": [
           "name",
           "scope_of_work",
-          "target_end_date",
-          "boq_items"
+          "target_end_date"
         ],
         "title": "ProjectCreateRequest",
         "type": "object"
@@ -59158,6 +59156,72 @@
           }
         ],
         "summary": "Update Project",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/boq-items": {
+      "post": {
+        "operationId": "create_project_boq_item_api_v1_projects__project_id__boq_items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoqItemCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoqItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Project Boq Item Api V1 Projects  Project Id  Boq Items Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Project Boq Item",
         "tags": [
           "Projects"
         ]

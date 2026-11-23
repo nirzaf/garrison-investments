@@ -143,7 +143,8 @@ class ProjectService:
         try:
             await self.projects.add_project(project)
             milestones = await self._create_milestones(project.id, payload)
-            await self._create_boq_items(project.id, payload.boq_items, amounts, milestones)
+            if payload.boq_items:
+                await self._create_boq_items(project.id, payload.boq_items, amounts, milestones)
             await self.audit.record(
                 action="projects.created",
                 user_id=actor.id,
@@ -160,6 +161,77 @@ class ProjectService:
                 error_code="PROJECT_CONFLICT",
             ) from exc
         return project
+
+    async def add_boq_item(
+        self, project_id: UUID, payload: BoqItemCreateRequest, actor: User
+    ) -> BoqItem:
+        ensure_permission(actor, PERMISSION_PROJECTS_MANAGE)
+        if actor.role not in COMPANY_RESOURCE_ROLES:
+            raise PermissionDeniedException(PERMISSION_PROJECTS_MANAGE)
+
+        project = await self._get_editable_project(project_id, actor)
+        existing_items = await self.projects.list_boq_items(project.id)
+        item_code = payload.item_code.casefold()
+        if any(item.item_code.casefold() == item_code for item in existing_items):
+            raise self._invalid_field(
+                "item_code", "BOQ item codes must be unique.", "BOQ_DUPLICATE_ITEM_CODE"
+            )
+
+        milestone_id = None
+        if payload.milestone_name:
+            milestone = next(
+                (
+                    item
+                    for item in await self.projects.list_milestones(project.id)
+                    if item.name.casefold() == payload.milestone_name.casefold()
+                ),
+                None,
+            )
+            if milestone is None:
+                raise self._invalid_field(
+                    "milestone_name",
+                    "Select a milestone included in this project.",
+                    "BOQ_UNKNOWN_MILESTONE",
+                )
+            milestone_id = milestone.id
+
+        planned_amount = self._planned_boq_amount(payload, "unit_rate")
+        item = BoqItem(
+            project_id=project.id,
+            milestone_id=milestone_id,
+            item_code=payload.item_code,
+            description=payload.description,
+            discipline=payload.discipline,
+            phase=payload.phase,
+            unit=payload.unit,
+            planned_quantity=payload.planned_quantity,
+            unit_rate=payload.unit_rate,
+            planned_amount=planned_amount,
+        )
+        try:
+            await self.projects.add_boq_item(item)
+            project.revision += 1
+            await self.audit.record(
+                action="projects.boq_item_added",
+                user_id=actor.id,
+                entity_type="projects",
+                entity_id=project.id,
+                new_values={
+                    "project_id": str(project.id),
+                    "boq_item_id": str(item.id),
+                    "item_code": item.item_code,
+                    "revision": project.revision,
+                },
+            )
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise AppException(
+                "The BOQ item conflicts with an existing project item.",
+                status_code=409,
+                error_code="PROJECT_CONFLICT",
+            ) from exc
+        return item
 
     async def update_project(
         self,
@@ -405,15 +477,18 @@ class ProjectService:
                     "Select a milestone included in this project.",
                     "BOQ_UNKNOWN_MILESTONE",
                 )
-            amount = (item.planned_quantity * item.unit_rate).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            if amount >= Decimal("10000000000000"):
-                raise self._invalid_field(
-                    f"{field}.unit_rate", "The planned amount is too large.", "BOQ_AMOUNT_TOO_LARGE"
-                )
-            amounts.append(amount)
+            amounts.append(self._planned_boq_amount(item, f"{field}.unit_rate"))
         return amounts
+
+    def _planned_boq_amount(self, item: BoqItemCreateRequest, field: str) -> Decimal:
+        amount = (item.planned_quantity * item.unit_rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if amount >= Decimal("10000000000000"):
+            raise self._invalid_field(
+                field, "The planned amount is too large.", "BOQ_AMOUNT_TOO_LARGE"
+            )
+        return amount
 
     async def _validate_task_fields(
         self, project_id: UUID, fields: dict[str, Any], *, task: ProjectTask | None = None

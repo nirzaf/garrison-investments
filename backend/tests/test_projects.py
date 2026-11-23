@@ -14,7 +14,11 @@ from app.models.project_member import ProjectMember
 from app.models.project_task import ProjectTask
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.projects import ProjectTaskUpdateRequest, ProjectUpdateRequest
+from app.schemas.projects import (
+    BoqItemCreateRequest,
+    ProjectTaskUpdateRequest,
+    ProjectUpdateRequest,
+)
 from app.services.project_service import ProjectService
 from tests.concurrency_helpers import error_codes, race, race_sessions, status_counts
 from tests.password_fixtures import hash_fixture_password
@@ -103,6 +107,20 @@ def project_payload() -> dict:
     }
 
 
+def boq_item_payload(**updates: object) -> dict[str, object]:
+    return {
+        "item_code": "MANUAL-001",
+        "description": "Manual BOQ entry",
+        "discipline": "civil",
+        "phase": "Construction",
+        "milestone_name": "Mobilization",
+        "unit": "m2",
+        "planned_quantity": "1.105",
+        "unit_rate": "4.60",
+        **updates,
+    }
+
+
 async def test_operation_manager_creates_project_with_boq_and_timeline() -> None:
     await skip_if_database_unavailable()
     op_email, op_password = await create_user("operations_director")
@@ -141,6 +159,239 @@ async def test_operation_manager_creates_project_with_boq_and_timeline() -> None
 
         assert timeline_response.status_code == 200
         assert timeline_response.json()["milestones"][0]["name"] == "Mobilization"
+
+
+async def test_director_can_create_project_without_boq_items() -> None:
+    await skip_if_database_unavailable()
+    credentials = await create_user("operations_director")
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, *credentials)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        for include_empty_boq in (True, False):
+            payload = project_payload()
+            if include_empty_boq:
+                payload["boq_items"] = []
+            else:
+                payload.pop("boq_items")
+            created = await client.post("/api/v1/projects", json=payload, headers=headers)
+            assert created.status_code == 201, created.text
+            project = created.json()
+            assert project["code"]
+
+            detail = await client.get(f"/api/v1/projects/{project['id']}", headers=headers)
+            assert detail.status_code == 200
+            assert detail.json()["boq_items"] == []
+            assert detail.json()["milestones"][0]["name"] == "Mobilization"
+            timeline = await client.get(
+                f"/api/v1/projects/{project['id']}/timeline", headers=headers
+            )
+            assert timeline.status_code == 200
+
+            async with AsyncSessionLocal() as session:
+                events = list(
+                    (
+                        await session.scalars(
+                            select(ActivityLog).where(
+                                ActivityLog.entity_id == UUID(project["id"]),
+                                ActivityLog.action == "projects.created",
+                            )
+                        )
+                    ).all()
+                )
+                assert len(events) == 1
+
+
+@pytest.mark.parametrize("role", ["managing_director", "operations_director"])
+async def test_director_can_add_multiple_manual_boq_items(role: str) -> None:
+    await skip_if_database_unavailable()
+    credentials = await create_user(role)
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, *credentials)
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = project_payload()
+        payload["boq_items"] = []
+        created = await client.post("/api/v1/projects", json=payload, headers=headers)
+        assert created.status_code == 201, created.text
+        project = created.json()
+        url = f"/api/v1/projects/{project['id']}/boq-items"
+
+        first = await client.post(url, json=boq_item_payload(), headers=headers)
+        assert first.status_code == 201, first.text
+        assert first.json()["planned_amount"] == "5.08"
+        assert first.json()["milestone_id"]
+        second = await client.post(
+            url,
+            json=boq_item_payload(
+                item_code="MANUAL-002",
+                description="Unlinked manual BOQ entry",
+                milestone_name=None,
+                planned_quantity="2",
+                unit_rate="3.25",
+            ),
+            headers=headers,
+        )
+        assert second.status_code == 201, second.text
+        assert second.json()["milestone_id"] is None
+        assert second.json()["planned_amount"] == "6.50"
+
+        duplicate = await client.post(
+            url, json=boq_item_payload(item_code="manual-001"), headers=headers
+        )
+        assert duplicate.status_code == 422
+        assert duplicate.json()["error_code"] == "BOQ_DUPLICATE_ITEM_CODE"
+        foreign_project_payload = project_payload()
+        foreign_project_payload["boq_items"] = []
+        foreign_project_payload["milestones"] = [{"name": "Foreign-only milestone"}]
+        foreign_project = await client.post(
+            "/api/v1/projects", json=foreign_project_payload, headers=headers
+        )
+        assert foreign_project.status_code == 201, foreign_project.text
+        foreign_url = f"/api/v1/projects/{foreign_project.json()['id']}/boq-items"
+        same_code_other_project = await client.post(
+            foreign_url,
+            json=boq_item_payload(milestone_name="Foreign-only milestone"),
+            headers=headers,
+        )
+        assert same_code_other_project.status_code == 201, same_code_other_project.text
+        foreign_milestone = await client.post(
+            url,
+            json=boq_item_payload(item_code="MANUAL-003", milestone_name="Foreign-only milestone"),
+            headers=headers,
+        )
+        assert foreign_milestone.status_code == 422
+        assert foreign_milestone.json()["error_code"] == "BOQ_UNKNOWN_MILESTONE"
+        unknown_milestone = await client.post(
+            url, json=boq_item_payload(item_code="MANUAL-003", milestone_name="Elsewhere"),
+            headers=headers,
+        )
+        assert unknown_milestone.status_code == 422
+        invalid_quantity = await client.post(
+            url, json=boq_item_payload(item_code="MANUAL-004", planned_quantity="0"),
+            headers=headers,
+        )
+        assert invalid_quantity.status_code == 422
+        invalid_rate_precision = await client.post(
+            url, json=boq_item_payload(item_code="MANUAL-005", unit_rate="1.001"),
+            headers=headers,
+        )
+        assert invalid_rate_precision.status_code == 422
+        oversized_amount = await client.post(
+            url,
+            json=boq_item_payload(
+                item_code="MANUAL-006",
+                planned_quantity="99999999999.999",
+                unit_rate="999999999999.99",
+            ),
+            headers=headers,
+        )
+        assert oversized_amount.status_code == 422
+        assert oversized_amount.json()["error_code"] == "BOQ_AMOUNT_TOO_LARGE"
+
+        detail = await client.get(f"/api/v1/projects/{project['id']}", headers=headers)
+        assert detail.status_code == 200
+        assert [item["item_code"] for item in detail.json()["boq_items"]] == [
+            "MANUAL-001",
+            "MANUAL-002",
+        ]
+        assert detail.json()["revision"] == project["revision"] + 2
+
+        async with AsyncSessionLocal() as session:
+            events = list(
+                (
+                    await session.scalars(
+                        select(ActivityLog).where(
+                            ActivityLog.entity_id == UUID(project["id"]),
+                            ActivityLog.action == "projects.boq_item_added",
+                        )
+                    )
+                ).all()
+            )
+            assert len(events) == 2
+        revisions = []
+        for event in events:
+            assert event.new_values is not None
+            revisions.append(event.new_values["revision"])
+        assert sorted(revisions) == [2, 3]
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "group_project_manager",
+        "mep_project_manager",
+        "quantity_surveyor",
+        "site_supervisor",
+    ],
+)
+async def test_only_directors_can_add_priced_boq_items(role: str) -> None:
+    await skip_if_database_unavailable()
+    director = await create_user("operations_director")
+    other = await create_user(role)
+
+    async with create_test_client() as client:
+        director_token = await login_for_token(client, *director)
+        other_token = await login_for_token(client, *other)
+        project_payload_without_boq = project_payload()
+        project_payload_without_boq["boq_items"] = []
+        created = await client.post(
+            "/api/v1/projects",
+            json=project_payload_without_boq,
+            headers={"Authorization": f"Bearer {director_token}"},
+        )
+        assert created.status_code == 201, created.text
+        denied = await client.post(
+            f"/api/v1/projects/{created.json()['id']}/boq-items",
+            json=boq_item_payload(),
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert denied.status_code == 403
+
+
+async def test_manual_boq_addition_serializes_duplicate_codes_and_audits_once() -> None:
+    await skip_if_database_unavailable()
+    credentials = await create_user("operations_director")
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, *credentials)
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = project_payload()
+        payload["boq_items"] = []
+        created = await client.post("/api/v1/projects", json=payload, headers=headers)
+        assert created.status_code == 201, created.text
+        project = created.json()
+
+    async with AsyncSessionLocal() as session:
+        actor = await UserRepository(session).get_by_email(credentials[0])
+        assert actor is not None
+        project_id = UUID(project["id"])
+        command = BoqItemCreateRequest.model_validate(boq_item_payload())
+
+    async def add_item(session: AsyncSession):
+        return await ProjectService(session).add_boq_item(project_id, command, actor)
+
+    results = await race_sessions(add_item, add_item)
+    successes = [result for result in results if not isinstance(result, BaseException)]
+    failures = [result for result in results if isinstance(result, BaseException)]
+    assert len(successes) == len(failures) == 1
+    assert getattr(failures[0], "error_code", None) == "BOQ_DUPLICATE_ITEM_CODE"
+
+    async with AsyncSessionLocal() as session:
+        saved = await session.get(Project, project_id)
+        assert saved is not None and saved.revision == project["revision"] + 1
+        events = list(
+            (
+                await session.scalars(
+                    select(ActivityLog).where(
+                        ActivityLog.entity_id == project_id,
+                        ActivityLog.action == "projects.boq_item_added",
+                    )
+                )
+            ).all()
+        )
+        assert len(events) == 1
 
 
 async def test_assigned_engineer_can_read_assigned_project_only() -> None:
@@ -186,6 +437,8 @@ async def test_assigned_engineer_can_read_assigned_project_only() -> None:
         assert detail_response.status_code == 200
         assert detail_response.json()["revision"] == project["revision"] + 1
         assert detail_response.json()["members"][0]["user_name"] == "site_supervisor User"
+        assert detail_response.json()["boq_items"][0]["unit_rate"] is None
+        assert detail_response.json()["boq_items"][0]["planned_amount"] is None
 
         denied_edit = await client.patch(
             f"/api/v1/projects/{project['id']}",
@@ -351,6 +604,13 @@ async def test_closed_project_is_read_only(final_status: str) -> None:
         )
 
         assert update_response.status_code == 409
+        boq_update = await client.post(
+            f"/api/v1/projects/{project['id']}/boq-items",
+            json=boq_item_payload(item_code="CLOSED-001"),
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert boq_update.status_code == 409
+        assert boq_update.json()["error_code"] == "PROJECT_READ_ONLY"
         actor = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         assignment = await client.post(
             f"/api/v1/projects/{project['id']}/members",

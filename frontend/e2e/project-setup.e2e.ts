@@ -54,14 +54,12 @@ test('minimal project setup recovers validation, persists a renamed milestone, a
   const name = `Minimal project ${randomUUID().slice(0, 8)}`;
   await openSetup(page, name);
   await page.getByLabel('Milestone name').fill('Renamed site preparation');
-  await page.getByLabel('BOQ description').fill('Prepare the site');
   await page.getByLabel('Planned start').fill('2027-03-12');
   await page.getByLabel('Planned end').fill('2027-03-11');
   const create = page.getByRole('button', { name: 'Create project', exact: true });
   await create.click();
   await expect(page.getByText('End date precedes the start date.')).toBeVisible();
   await expect(page.getByLabel('Project name')).toHaveValue(name);
-  await expect(page.getByLabel('BOQ description')).toHaveValue('Prepare the site');
   await page.getByLabel('Planned start').fill('');
   await page.getByLabel('Planned end').fill('');
 
@@ -77,12 +75,35 @@ test('minimal project setup recovers validation, persists a renamed milestone, a
     button.click();
     button.click();
   });
-  expect((await created).status()).toBe(201);
+  const createdResponse = await created;
+  expect(createdResponse.status()).toBe(201);
+  const project = (await createdResponse.json()) as { id: string };
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  const detail = page.getByRole('region', { name: 'Project details', exact: true });
+  await expect(detail.getByText('No BOQ items added yet.')).toBeVisible();
+  await detail.getByRole('button', { name: 'Add BOQ Item', exact: true }).click();
+  await detail.getByLabel('Item code', { exact: true }).fill('LATER-001');
+  await detail.getByLabel('BOQ description', { exact: true }).fill('Prepare the site');
+  await detail
+    .getByLabel('Linked milestone', { exact: true })
+    .selectOption({ label: 'Renamed site preparation' });
+  await detail.getByLabel('Unit', { exact: true }).fill('lot');
+  await detail.getByLabel('Planned quantity', { exact: true }).fill('1');
+  await detail.getByLabel('Unit rate', { exact: true }).fill('1500');
+  const added = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/v1/projects/${project.id}/boq-items`) &&
+      response.request().method() === 'POST'
+  );
+  await detail.getByRole('button', { name: 'Save BOQ item', exact: true }).click();
+  expect((await added).status()).toBe(201);
+  await expect(detail.getByRole('row').filter({ hasText: 'LATER-001' })).toContainText(
+    'Renamed site preparation'
+  );
   await page.reload();
   await page.getByRole('button', { name, exact: true }).click();
   const boq = page.getByRole('table', { name: 'Bill of quantities' });
-  await expect(boq.getByRole('row').filter({ hasText: 'Prepare the site' })).toContainText(
+  await expect(boq.getByRole('row').filter({ hasText: 'LATER-001' })).toContainText(
     'Renamed site preparation'
   );
   expect(creates).toBe(1);
@@ -110,7 +131,7 @@ test('project teams and task dates persist through reload at narrow and desktop 
     await page.getByLabel('Milestone name').last().fill(milestone);
   }
   for (let index = 0; index < 6; index += 1) {
-    if (index) await page.getByRole('button', { name: 'Add BOQ item' }).click();
+    await page.getByRole('button', { name: 'Add BOQ item' }).click();
     const row = page.getByRole('group', { name: `BOQ item ${index + 1}`, exact: true });
     await row.getByLabel('Item code').fill(`ROW-${index}`);
     await row.getByLabel('BOQ description').fill(`Work item ${index}`);

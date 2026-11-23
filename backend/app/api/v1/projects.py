@@ -13,6 +13,7 @@ from app.schemas.hr import (
     HrProjectAssignmentResponse,
 )
 from app.schemas.projects import (
+    BoqItemCreateRequest,
     BoqItemResponse,
     MilestoneResponse,
     ProjectCreateRequest,
@@ -121,6 +122,21 @@ async def get_project(
         boq_items=_boq_responses(boq_items, current_user),
         is_read_only=project.status in READ_ONLY_STATUSES,
     )
+
+
+@router.post(
+    "/{project_id}/boq-items",
+    response_model=BoqItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_project_boq_item(
+    project_id: UUID,
+    payload: BoqItemCreateRequest,
+    current_user: CanManageProjects,
+    session: DbSession,
+) -> BoqItemResponse:
+    item = await ProjectService(session).add_boq_item(project_id, payload, current_user)
+    return _boq_responses([item], current_user)[0]
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)

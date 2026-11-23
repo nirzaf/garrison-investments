@@ -14,6 +14,8 @@ export type ProjectTimelineResponse = components['schemas']['ProjectTimelineResp
 export type ProjectTaskPayload = components['schemas']['ProjectTaskCreateRequest'];
 export type ProjectTaskRecord = components['schemas']['ProjectTaskResponse'];
 export type ProjectTaskUpdatePayload = components['schemas']['ProjectTaskUpdateRequest'];
+export type ProjectBoqItemPayload = components['schemas']['BoqItemCreateRequest'];
+export type ProjectBoqItem = components['schemas']['BoqItemResponse'];
 
 export async function listProjectHrAssignments(projectId: string, offset: number) {
   const { data } = await apiClient.get<components['schemas']['HrProjectAssignmentListResponse']>(
@@ -71,6 +73,17 @@ export async function createProject(payload: ProjectSetupDraft): Promise<Project
   const response = await apiClient.post<ProjectRecord>(
     '/projects',
     normalizeProjectCreate(payload)
+  );
+  return response.data;
+}
+
+export async function createProjectBoqItem(
+  projectId: string,
+  payload: ProjectBoqItemPayload
+): Promise<ProjectBoqItem> {
+  const response = await apiClient.post<ProjectBoqItem>(
+    `/projects/${projectId}/boq-items`,
+    payload
   );
   return response.data;
 }
