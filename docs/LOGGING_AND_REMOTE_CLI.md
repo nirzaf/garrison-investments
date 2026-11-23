@@ -171,6 +171,33 @@ Supply the profile digest from the approved release record. After a responder ha
 
 Generate the dedicated missing-ingestion rule with the same profile and digest and `--heartbeat-rule "$HEARTBEAT_RULE"`. Before provisioning that output, enable `LOG_HEALTHCHECKS` in the approved environment and verify the actual readiness completion stream in Loki at the approved cadence. The rule detects a missing readiness stream. The existing error-count rules retain their idle no-data behavior.
 
+## User feedback and triage
+
+In the business portal header, select **Feedback**, choose the type, and
+describe what happened and what you expected. Omit credentials, signed links,
+personal records, and client data. A successful submission returns a reference.
+A failed submission retains the text so the same report can be retried.
+
+Select **Include recent failed request summaries** to share up to eight
+matching failed API requests from the last 30 minutes. The browser keeps only
+the references in memory for the current signed-in session. The server
+validates each reference against the reporter's audit records and stores the
+request ID, timestamp, module, HTTP method, and status code. Request and
+response bodies, headers, cookies, IP addresses, full paths, queries, and
+stack traces are omitted. Requests that did not reach the API may have no
+summary. The receipt shows how many summaries matched.
+
+In Super Admin, open **Feedback inbox** or choose **Triage user feedback** on
+the overview. An operator with `operator.manage` can filter and page reports,
+expand the details and attached summaries, and move them between **New**,
+**Investigating**, and **Resolved**. Inbox reads and status changes are
+audited. Troubleshoot deeper using the request reference through the
+[scoped evidence workflow](#support-request-evidence) or an independently
+authorized log surface. Keep report text and diagnostics out of public issues.
+
+Use the report reference to tie the reproducer to the focused regression and
+release verification. Status changes affect only the feedback record.
+
 ## Support request evidence
 
 The draft [request evidence projection](../backend/app/services/support_request_logs.py)

@@ -88,6 +88,7 @@ from app.models.support_registration import (
 )
 from app.models.task_outbox import TaskOutbox
 from app.models.user import User
+from app.models.user_feedback import UserFeedback
 
 __all__ = [
     "ActivityLog",
@@ -170,4 +171,5 @@ __all__ = [
     "StorageLocation",
     "TaskOutbox",
     "User",
+    "UserFeedback",
 ]

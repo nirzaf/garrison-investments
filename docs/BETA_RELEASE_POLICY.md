@@ -12,19 +12,29 @@ integrity, migration, incident-response, or production authorization controls.
 
 ## Routine beta release
 
-For a change that does not alter persistent data or stateful infrastructure:
+An explicit owner request to release authorizes the routine beta workflow,
+including automatic deployment after push CI. No separate codeword or manual
+approval stage is required. Use the routine path for application changes and
+forward-compatible migrations supported by the installed launcher.
 
 1. Keep the change focused and review the affected behavior.
-2. Run focused regressions and require all existing CI jobs to pass for the
-   exact candidate SHA.
+2. Run focused regressions and require the applicable push CI jobs to pass for
+   the exact candidate SHA.
 3. Use the existing production workflow and its host-side configuration,
-   schema-compatibility, backup, and readiness checks.
+   schema compatibility, recovery-hold, and readiness checks.
 4. Check the deployed receipt and the user flow affected by the change. Record
    known limitations as beta follow-up work.
 
 The literal receipt status `Deployed — Formal Acceptance Pending` records that
 the optional formal-acceptance bundle was not completed. It does not mean the
 technical deployment failed or block the next beta iteration.
+
+## Iterate from user feedback
+
+Review the [Super Admin feedback inbox](LOGGING_AND_REMOTE_CLI.md#user-feedback-and-triage)
+for reproducible issues. Use the report's request references and timestamps to
+investigate within authorized logs. Add a focused regression for the failure,
+then track the report through the verified release before resolving it.
 
 ## When a change must stop
 
@@ -48,8 +58,7 @@ through the applicable existing authority.
 
 ## Stateful and security-sensitive changes
 
-Beta cadence does not authorize bypassing production controls. Database
-migrations, PostgreSQL or object-storage changes, destructive maintenance,
+Beta cadence does not authorize bypassing production controls. PostgreSQL major upgrades, object-storage changes, destructive maintenance,
 incident reconciliation, changes to ingress or secrets, and other stateful
 operations continue to use the technical checks and maintenance process in the
 [operations runbook](OPERATIONS_AND_DEPLOYMENT.md). Keep evidence, receipts,

@@ -41,8 +41,10 @@ async def get_bearer_token(
 BearerToken = Annotated[str, Depends(get_bearer_token)]
 
 
-async def get_current_user(session: DbSession, token: BearerToken) -> User:
-    return await AuthService(session).get_user_from_access_token(token)
+async def get_current_user(request: Request, session: DbSession, token: BearerToken) -> User:
+    user = await AuthService(session).get_user_from_access_token(token)
+    request.state.business_user_id = user.id
+    return user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

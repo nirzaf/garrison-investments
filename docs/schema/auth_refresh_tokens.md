@@ -58,5 +58,5 @@ sessions for the affected user.
 Legacy nontechnical JWTs without `sid` retain their original expiry and
 access-revision checks. The first use of an unexpired legacy refresh token
 creates a session without extending its existing expiry. The additive
-schema and records must be retained on rollback. Technical login remains
-disabled in this increment.
+schema and records must be retained on rollback. The [technical portal](support_identity.md)
+uses separate operator identities and session records.

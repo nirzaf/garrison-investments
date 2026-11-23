@@ -135,16 +135,19 @@ export function SupportLoginPage() {
     setMessage('Your support session expired. Sign in again.');
   }, []);
 
+  const showCockpit = Boolean(session && !cliReference);
   return (
-    <main className="flex min-h-screen items-center justify-center bg-theme-main px-4 py-6">
+    <main
+      className={`flex min-h-screen justify-center bg-theme-main px-4 py-6 ${showCockpit ? 'items-start sm:px-6' : 'items-center'}`}
+    >
       <section
         className={
-          session
-            ? 'w-full max-w-5xl space-y-4 rounded-lg border border-theme-border bg-theme-card p-6'
+          showCockpit
+            ? 'w-full max-w-7xl space-y-4'
             : 'w-full max-w-md space-y-4 rounded-lg border border-theme-border bg-theme-card p-6'
         }
       >
-        <h1 className="text-2xl font-semibold">Garrisons Super Admin</h1>
+        {!showCockpit && <h1 className="text-2xl font-semibold">Garrisons Super Admin</h1>}
         {message && <p role="alert">{message}</p>}
         {cliReference ? (
           cliReference[1] === 'register' ? (

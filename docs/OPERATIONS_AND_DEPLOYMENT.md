@@ -12,7 +12,7 @@ Use [production CD](#production-deployments-from-github-actions) for routine rel
 
 <a id="current-beta-release-snapshot"></a>
 
-## Current beta release snapshot — 2026-11-22
+## Historical beta release snapshot — 2026-11-22
 
 The inspected `main` tip is `4e03af324833509acef85d34d076084e6cfc473e`.
 [CI run 45046582618](https://github.com/nirzaf/garrison-investments/actions/runs/45046582618)
@@ -95,9 +95,14 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 ## Production deployments from GitHub Actions
 
-The prepared GitHub-hosted Hostinger transport and its not-yet-completed activation steps are documented in [GitHub-hosted production deployment](GITHUB_HOSTED_DEPLOYMENT.md).
-
-[CI](../.github/workflows/ci.yml) uses GitHub-hosted `ubuntu-24.04` runners for pull requests and pushes to `main`. Each job receives an isolated VM; disposable PostgreSQL, Redis, and object-storage test services run inside that job. Lockfile-based pip/npm caches avoid repeated dependency downloads, and all four suite shards can run concurrently. CI has no production credentials, production Docker socket, or production volumes. The local candidate [Deploy production](../.github/workflows/deploy.yml) also uses GitHub-hosted `ubuntu-24.04`, connecting to the existing Hostinger release entrypoint through a restricted Cloudflare Access SSH route and forced-command account. The published workflow is active and currently selects the Hostinger production runner. The restricted Access route and GitHub Production credentials are installed. The GitHub-hosted workflow awaits publication and a hosted probe. See [GitHub-hosted production deployment](GITHUB_HOSTED_DEPLOYMENT.md) for preparation and activation requirements. GitHub concurrency (`garrison-portal-production`) and the host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
+[CI](../.github/workflows/ci.yml) uses GitHub-hosted `ubuntu-24.04` runners,
+with isolated PostgreSQL, Redis, and object-storage fixtures and lockfile-based
+pip and npm caches. CI has no production credentials, Docker socket, or
+volumes. [Deploy production](../.github/workflows/deploy.yml) also runs on
+GitHub-hosted `ubuntu-24.04`. It invokes the Hostinger release entrypoint
+through the [restricted Cloudflare Access SSH transport](GITHUB_HOSTED_DEPLOYMENT.md).
+GitHub concurrency and the host `deploy.lock` serialize releases.
+Optional business acceptance remains tracked under [post-release actions](POST_RELEASE_ACTIONS.md).
 
 On 2026-11-23, [Deploy production](https://github.com/nirzaf/garrison-investments/actions/workflows/deploy.yml) was disabled before push CI run `45174272215`, so that green run did not trigger a deployment. The workflow was subsequently enabled. Push CI passed five jobs for `91d7aea` in 4m47s, and full regression run `45167599606` passed seven jobs on the same SHA. The Production environment now limits deployments to `main`. The host launcher accepts routine releases only for the current `main` tip, so publishing a new workflow commit requires new green push CI for that tip.
 
@@ -112,22 +117,18 @@ The installed [host release script](../deploy/hostinger-release.sh) checks root 
 
 ### Fast beta release path
 
-The five-job push policy was used for the [successful automatic deployment of `762254c`](https://github.com/nirzaf/garrison-investments/actions/runs/45058527452).
-The active host receipt identifies that commit, CI run `45056876940`, and schema
-`202605310098`. On 2026-11-23 the installed launcher SHA-256 matched the reviewed
-source and the file was owned by root with mode `0755`. The recorded release
-required no Alembic upgrade. The hosted transport described above still awaits
-activation.
+The routine path runs automatically after a successful push CI on `main`.
+An explicit owner release request authorizes the normal beta path. The pipeline
+requires no separate confirmation codeword or formal acceptance record.
 
-- A push to `main` runs backend lint/types and OpenAPI, frontend lint/types/tests/build,
-  Compose validation, and both backend integration shards. Open the **CI**
-  workflow and use **Run workflow** on the intended branch to run the full suite;
-  pull requests and manual CI also run both Chrome shards. Manual full CI is not
-  the qualifying push event for automatic deployment.
-- The published **Deploy production** workflow still selects the Hostinger
-  runner. The GitHub-hosted candidate uses the restricted SSH transport and
-  retains the existing host lock. Verify the GitHub-hosted probe, then confirm
-  the deployment run, active images, readiness, and host receipt.
+- Push CI runs backend lint and typing, OpenAPI verification, frontend
+  checks and build, Compose validation, and both backend integration shards.
+  Pull requests and manually dispatched full CI also run both Chrome shards.
+- The GitHub-hosted **Deploy production** workflow connects through restricted
+  Cloudflare Access SSH with the existing Hostinger lock and deployment checks.
+  Verify the successful job, host receipt, running images, and public readiness
+  for the exact SHA.
+
 - On verified PostgreSQL 19 with unchanged stateful Compose configuration and
   rollback generation, a changed single Alembic head must be reachable from the
   live revision. The launcher places a recovery hold, stops ingress and the three
@@ -286,6 +287,13 @@ via `garrison-cloudflared.service` and restricted `garrison-gh-deploy` account)
 is installed and configured with Production secrets, awaiting the GitHub-hosted
 `transport_check=true` verification and hosted CD cutover.
 
+Later on 2026-11-23, [CI run 45227241140](https://github.com/nirzaf/garrison-investments/actions/runs/45227241140)
+passed five jobs for `ecd3bd6` in 6m56s. Backend shard 2 was the critical
+path at 6m53s of job time. [Deploy run 45228521423](https://github.com/nirzaf/garrison-investments/actions/runs/45228521423)
+then completed the restricted Cloudflare Access SSH job successfully in 1m48s
+for that SHA. These are GitHub results for the PyJWT release. The feedback
+candidate requires its own exact-SHA CI and production verification.
+
 ### Historical runner availability — 2026-11-21 and earlier
 
 The following runner checks describe earlier states and do not supersede the
@@ -360,7 +368,7 @@ releases before changing concurrency again.
 
 ### Prior self-hosted CI measurements
 
-The following runs provide comparable baseline timings for the active self-hosted
+The following runs provide historical comparison timings for the former self-hosted
 `garrison-ci` workflow. The hosted fallback attempt was stopped before job startup
 by an account billing restriction, so it produced no timing or test evidence.
 
@@ -1020,6 +1028,16 @@ For an authorized rollback after a successful release, apply the same generation
 
 Use sample data only in a safe test environment. Follow the [seed setup](../README.md#getting-started) and the [roles and permissions reference](ROLES_AND_PERMISSIONS.md). Run desktop Chrome checks for the changed workflow, including relevant offline retries, file selection/downloads, or degraded-network behavior. Broader device and business UAT are useful beta feedback but are not universal release blockers. Record the browser version, role, scenario, result, and accepted issue when a focused check is run.
 
+### Verify the feedback release
+
+Feedback adds [Alembic revision 099](../backend/alembic/versions/202605310099_user_feedback.py)
+on top of 098. Rehearse both a fresh migration and the forward step in a
+disposable database. After an authorized release, verify the exact live
+schema and served build. With an approved test account, submit a labelled
+report, inspect it in the Super Admin inbox, and confirm the status and
+diagnostics survive reload. Use the [feedback guide](LOGGING_AND_REMOTE_CLI.md#user-feedback-and-triage)
+for correlation and triage. Preserve the additive table on application rollback.
+
 ## Optional formal-acceptance checklist — historical snapshot from 2026-11-15
 
 The following table is preserved from the 2026-11-15 acceptance review for the earlier `be61f5b` / schema `202605310013` candidate. It is historical evidence, not the current release status or a universal beta deployment gate. Open items may be completed as follow-up; only a concrete technical issue affecting a candidate invokes the stop conditions in the [beta release policy](BETA_RELEASE_POLICY.md).
@@ -1254,6 +1272,15 @@ and the source and time filters. A grant change requires a distinct
 reviewer and a fresh passkey for each review and execution. Operational
 grants persist until revoked. Changing a grant revokes the target's current
 sessions and advances the authorization epoch.
+
+The signed-in Overview loads a snapshot of dependency health, job delivery,
+backup and restore readiness, security signals, business workflow counts, and
+runtime configuration when the operator has the corresponding read grants.
+Check the observation time and source status on each card, and use **Refresh
+snapshot** for a new reading. The overview does not poll in the background.
+Cards link to the detailed tools. Operator shortcuts open the existing account,
+job, case audit, settings, and owner security workflows with the same capability
+checks and confirmation steps as their workspaces.
 
 | Capability | Proposed production authority | Local implementation |
 | --- | --- | --- |
@@ -1513,15 +1540,16 @@ digital signature. Leave unknown fields empty and keep the record in `pending`
 status until the evidence is verified.
 
 The record must capture the owner approval reference and timestamp; exact
-production candidate SHA and successful self-hosted CI run/attempt; current
+production candidate SHA and successful CI run and attempt; current
 deployed SHA and database revision; target Alembic head; verified encrypted
 backup and isolated restore/migration rehearsal references; recovery-forward
 and application rollback plan; and the approved maintenance start and end in
 `Asia/Qatar`, including operator, writer-drain, reviewer and abort criteria.
-It must also identify two separately verified custodians with dedicated,
-distinct mailboxes and two distinct registered passkeys each, the distinct
-preparer and independent reviewer, actual Nginx-observed office/VPN source
-CIDRs with explicit owner approval, the certificate fingerprint/SAN/expiry
+For paired custody, record two verified custodians, their distinct dedicated
+mailboxes, two registered passkeys per custodian, and the independent reviewer.
+For single-owner custody, record the sole verified identity and dedicated
+mailbox with two registered passkeys. In either mode, record the actual
+Nginx-observed office/VPN source CIDRs with explicit owner approval, the certificate fingerprint/SAN/expiry
 and chain/key checks, tested virtual-host and allowlist hashes, DNS-only A
 target, and allowed/denied access plus business-portal health results. Mark a
 check successful only after observing its result. Never put the confirmation

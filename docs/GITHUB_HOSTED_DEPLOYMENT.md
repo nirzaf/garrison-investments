@@ -1,6 +1,9 @@
 # GitHub-hosted production deployment channel
 
-**Status on 2026-11-23:** the restricted transport is installed on Hostinger and passed a direct live probe. GitHub's `Production` environment is limited to `main` and holds the deployment credentials. The published `Deploy production` workflow is active and still selects the Hostinger runner. The hosted workflow is local and awaits publication and a GitHub-hosted probe.
+**Verified workflow run, 2026-11-23.** The GitHub-hosted restricted SSH
+deployment job succeeded for `ecd3bd6` after its five-job CI run passed.
+See [the production workflow run](https://github.com/nirzaf/garrison-investments/actions/runs/45228521423)
+and [the operations timeline](OPERATIONS_AND_DEPLOYMENT.md#live-ci-and-deployment-snapshot-2026-11-23).
 
 ## Design
 
@@ -23,7 +26,7 @@ The administrator SSH policy is separate. The loopback-only deployment key rule 
 
 ## GitHub Production environment configuration
 
-Before adding credentials, restrict the `Production` environment to deployments from `main`. Manual reviewer approval is not required for the beta auto-deploy flow, but branch scope must be explicit.
+Before adding credentials, restrict the `Production` environment to deployments from `main`. The beta auto-deploy flow uses the protected main branch and exact-SHA CI. An explicit owner release request is sufficient authorization for a routine release.
 
 Create these `Production` environment values without putting them in source control:
 

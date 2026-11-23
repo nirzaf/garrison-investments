@@ -115,6 +115,11 @@ describe('support oversight UI helpers and gating', () => {
     expect(html).toContain('Recovery');
     expect(html).toContain('Settings');
     expect(html).toContain('Owner Security');
+    expect(html).toContain('Business workflow');
+    expect(html).toContain('Inspect account access');
+    expect(html).not.toContain('Dependencies');
+    expect(html).not.toContain('Prepare a job retry');
+    expect(html).not.toContain('Enterprise oversight');
   });
 
   it('enforces capability gates on People & Access directory and safe settings editor', () => {

@@ -10,9 +10,10 @@ import { SupportCaseReview } from './SupportCaseActionsPanel';
 import { SupportCaseAuditPanel } from './SupportCaseAuditPanel';
 import { SupportCasesPanel } from './SupportCasesPanel';
 import { SupportConfigPanel } from './SupportConfigPanel';
-import { SupportCustodyPanel } from './SupportCustodyPanel';
+import { SupportCockpit, type SupportTool } from './SupportCockpit';
 import { SupportDataInspectorPanel } from './SupportDataInspectorPanel';
 import { SupportEvidenceExportPanel } from './SupportEvidenceExportPanel';
+import { SupportFeedbackInbox } from './SupportFeedbackInbox';
 import { SupportHealthPanel } from './SupportHealthPanel';
 import { SupportIncidentsPanel } from './SupportIncidentsPanel';
 import { SupportJobsPanel } from './SupportJobsPanel';
@@ -30,22 +31,47 @@ type Session = components['schemas']['SupportProfile'];
 type CompanyContext = components['schemas']['SupportCompanyContextRead'];
 
 export type SupportSectionKey =
-  'overview' | 'people' | 'operations' | 'support' | 'recovery' | 'settings' | 'security';
+  | 'overview'
+  | 'people'
+  | 'operations'
+  | 'support'
+  | 'feedback'
+  | 'recovery'
+  | 'settings'
+  | 'security';
 
-function parseLocationRoute(): { section: SupportSectionKey; userId: string | null } {
-  if (typeof window === 'undefined') return { section: 'overview', userId: null };
-  const path = window.location.pathname;
-  const peopleUserMatch = /^\/people\/([0-9a-fA-F-]{36})\/?$/.exec(path);
-  if (peopleUserMatch) {
-    return { section: 'people', userId: peopleUserMatch[1] };
+const workspaceSections: ReadonlyArray<{ key: SupportSectionKey; label: string }> = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'people', label: 'People & Access' },
+  { key: 'operations', label: 'Projects & Operations' },
+  { key: 'support', label: 'Support & Audit' },
+  { key: 'feedback', label: 'Feedback inbox' },
+  { key: 'recovery', label: 'Recovery' },
+  { key: 'settings', label: 'Settings' },
+  { key: 'security', label: 'Owner Security' }
+];
+
+function parseLocationRoute(): {
+  section: SupportSectionKey;
+  userId: string | null;
+  tool: string | null;
+} {
+  if (typeof window === 'undefined') return { section: 'overview', userId: null, tool: null };
+  // The restricted Nginx virtual host only serves the app shell at "/".
+  // Separate workspace fragments from authentication links such as "#cli=".
+  const hash = window.location.hash;
+  const [name, detail] = (hash.startsWith('#/') ? hash.slice(1) : window.location.pathname)
+    .split('/')
+    .slice(1);
+  const section = workspaceSections.find(({ key }) => key === name)?.key ?? 'overview';
+  if (section === 'people') {
+    return {
+      section,
+      userId: detail && /^[0-9a-fA-F-]{36}$/.test(detail) ? detail : null,
+      tool: null
+    };
   }
-  if (path === '/people') return { section: 'people', userId: null };
-  if (path === '/operations') return { section: 'operations', userId: null };
-  if (path === '/support') return { section: 'support', userId: null };
-  if (path === '/recovery') return { section: 'recovery', userId: null };
-  if (path === '/settings') return { section: 'settings', userId: null };
-  if (path === '/security') return { section: 'security', userId: null };
-  return { section: 'overview', userId: null };
+  return { section, userId: null, tool: hash.startsWith('#/') ? (detail ?? null) : null };
 }
 
 export function SupportShell({
@@ -62,6 +88,7 @@ export function SupportShell({
   const initialRoute = parseLocationRoute();
   const [section, setSection] = useState<SupportSectionKey>(initialRoute.section);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(initialRoute.userId);
+  const [activeTool, setActiveTool] = useState(initialRoute.tool);
   const [context, setContext] = useState<CompanyContext | null>(null);
 
   // Safe job retry state (T-26)
@@ -83,7 +110,7 @@ export function SupportShell({
         setContext((await resp.json()) as CompanyContext);
       }
     } catch {
-      // Context banner degrades gracefully to defaults
+      // The context badges remain hidden when their source cannot be reached.
     }
   }, [onExpired]);
 
@@ -96,63 +123,66 @@ export function SupportShell({
       const next = parseLocationRoute();
       setSection(next.section);
       setSelectedUserId(next.userId);
+      setActiveTool(next.tool);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  function navigateTo(nextSection: SupportSectionKey, nextUserId: string | null = null) {
+  useEffect(() => {
+    if (!activeTool) return;
+    const target = document.getElementById('tool-' + activeTool);
+    target?.scrollIntoView({ block: 'start' });
+    target?.focus({ preventScroll: true });
+  }, [section, activeTool]);
+
+  function navigateTo(
+    nextSection: SupportSectionKey,
+    nextUserId: string | null = null,
+    tool?: SupportTool
+  ) {
     setSection(nextSection);
     setSelectedUserId(nextUserId);
     if (typeof window !== 'undefined') {
-      const targetPath =
-        nextSection === 'people' && nextUserId
-          ? `/people/${nextUserId}`
-          : nextSection === 'overview'
-            ? '/'
-            : `/${nextSection}`;
-      if (window.location.pathname !== targetPath) {
-        window.history.pushState({}, '', targetPath);
+      const detail = nextUserId ?? tool;
+      const hash =
+        nextSection === 'overview' ? '' : `#/${nextSection}${detail ? '/' + detail : ''}`;
+      if (window.location.pathname !== '/' || window.location.hash !== hash) {
+        window.history.pushState({}, '', '/' + hash);
+        setActiveTool(tool ?? null);
+        if (!tool) window.scrollTo(0, 0);
       }
     }
   }
 
   const caps = session.capabilities;
 
-  const sections: Array<{ key: SupportSectionKey; label: string }> = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'people', label: 'People & Access' },
-    { key: 'operations', label: 'Projects & Operations' },
-    { key: 'support', label: 'Support & Audit' },
-    { key: 'recovery', label: 'Recovery' },
-    { key: 'settings', label: 'Settings' },
-    { key: 'security', label: 'Owner Security' }
-  ];
-
   return (
     <div key={session.operator_id} className="space-y-4">
       <header
         aria-label="Company control centre header"
-        className="space-y-2 rounded-lg border border-theme-border bg-theme-main p-3 text-xs"
+        className="space-y-3 rounded-xl border border-theme-border bg-theme-card p-4 sm:px-5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="font-semibold text-sm">
-              {context?.company_name ?? 'Garrisons Investments'} · Company Control Centre
-            </p>
-            <p className="text-theme-text-secondary">
-              Technical session active · Single-company deployment · Policy{' '}
-              {context?.policy_version ?? '2026-11-v1'}
+            <h1 className="text-lg font-semibold tracking-tight">Garrisons Super Admin</h1>
+            <p className="text-xs text-theme-text-secondary">
+              Company Control Centre · Technical session active · Single-company deployment
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="rounded border border-theme-border px-2 py-0.5 font-mono uppercase">
-              Env: {context?.environment ?? 'production'}
-            </span>
-            <span className="rounded border border-theme-border px-2 py-0.5 font-mono">
-              Mode: {context?.custody_mode ?? 'single_owner'}
-            </span>
-            <button disabled={pending} onClick={onSignOut} type="button" className={buttonClass}>
+            {context && (
+              <p className="rounded-md border border-theme-border px-2 py-1 text-xs text-theme-text-secondary">
+                {context.environment} · {context.custody_mode.replace(/_/g, ' ')} · Policy{' '}
+                {context.policy_version}
+              </p>
+            )}
+            <button
+              disabled={pending}
+              onClick={onSignOut}
+              type="button"
+              className={`${buttonClass} min-h-11`}
+            >
               Sign out
             </button>
           </div>
@@ -171,117 +201,34 @@ export function SupportShell({
 
         <nav
           aria-label="Company control centre navigation"
-          className="flex flex-wrap gap-1.5 border-t border-theme-border pt-2"
+          className="flex flex-wrap gap-1 border-t border-theme-border pt-2"
         >
-          {sections.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              aria-current={section === item.key ? 'page' : undefined}
-              onClick={() => navigateTo(item.key, null)}
-              className={`${buttonClass} ${
-                section === item.key ? 'bg-brand-600 text-white border-brand-600' : ''
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+          {workspaceSections
+            .filter((item) => item.key !== 'feedback' || caps.includes('operator.manage'))
+            .map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                aria-current={section === item.key ? 'page' : undefined}
+                onClick={() => navigateTo(item.key, null)}
+                className={`min-h-11 rounded-md px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
+                  section === item.key
+                    ? 'bg-brand-600 text-white'
+                    : 'text-theme-text-secondary hover:bg-theme-main hover:text-theme-text'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
         </nav>
       </header>
 
       {section === 'overview' && (
-        <div className="space-y-4">
-          <section aria-label="Control centre quick actions" className={panelCardClass}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="font-semibold">Company Control Centre Overview</h2>
-                <p className="text-xs text-theme-text-secondary">
-                  Manage people, access, and operational issues for Garrisons from one place, with a
-                  clear explanation before every sensitive change.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  className={buttonClass}
-                  onClick={() => navigateTo('people', null)}
-                >
-                  Open People & Access
-                </button>
-                <button
-                  type="button"
-                  className={buttonClass}
-                  onClick={() => navigateTo('operations', null)}
-                >
-                  Inspect Operations & Jobs
-                </button>
-                <button
-                  type="button"
-                  className={buttonClass}
-                  onClick={() => navigateTo('recovery', null)}
-                >
-                  Check Recovery Posture
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <SupportOverviewPanel capabilities={caps} onExpired={onExpired} />
-          {caps.includes('jobs.read') && <SupportJobsPanel onExpired={onExpired} />}
-          {caps.includes('backups.read') && <SupportBackupsPanel onExpired={onExpired} />}
-          {caps.includes('config.read') && <SupportConfigPanel onExpired={onExpired} />}
-          {caps.includes('incidents.read') && <SupportIncidentsPanel onExpired={onExpired} />}
-          {caps.includes('cases.manage') && (
-            <SupportCasesPanel
-              onExpired={onExpired}
-              operatorId={session.operator_id}
-              canReadDirectory={caps.includes('directory.read')}
-              canReviewProjectScope={caps.includes('simulation.start')}
-              canReadTimeline={caps.includes('logs.runtime')}
-            />
-          )}
-          {caps.includes('operator.manage') && <SupportCustodyPanel onExpired={onExpired} />}
-          {(caps.includes('operator.manage') ||
-            (caps.includes('cases.manage') &&
-              (caps.includes('logs.runtime') || caps.includes('directory.read')))) && (
-            <SupportCaseReview onExpired={onExpired} />
-          )}
-          {caps.includes('directory.read') && (
-            <SupportAccountPanel
-              onExpired={onExpired}
-              canRequest={caps.includes('account.request')}
-              canExplain={caps.includes('simulation.start')}
-            />
-          )}
-          {(caps.includes('account.request') || caps.includes('simulation.start')) && (
-            <SupportBusinessActionReview
-              onExpired={onExpired}
-              canRecordContact={
-                caps.includes('operator.manage') && caps.includes('account.request')
-              }
-            />
-          )}
-          {caps.includes('simulation.start') && (
-            <>
-              <SupportPermissionViewPanel key={session.operator_id} onExpired={onExpired} />
-              <SupportPolicyExplainPanel onExpired={onExpired} />
-            </>
-          )}
-          {caps.includes('account.request') && (
-            <SupportRecoveryStatusPanel
-              key={'recovery-status:' + session.operator_id}
-              onExpired={onExpired}
-            />
-          )}
-          {caps.includes('logs.audit') && <SupportCaseAuditPanel onExpired={onExpired} />}
-          {caps.includes('health.read') && <SupportHealthPanel onExpired={onExpired} />}
-          {caps.includes('logs.runtime') && (
-            <SupportLogs onExpired={onExpired} canFollow={caps.includes('logs.stream')} />
-          )}
-          {caps.includes('logs.runtime') && caps.includes('logs.export') && (
-            <SupportEvidenceExportPanel onExpired={onExpired} />
-          )}
-        </div>
+        <SupportCockpit
+          capabilities={caps}
+          onExpired={onExpired}
+          onNavigate={(destination, tool) => navigateTo(destination, null, tool)}
+        />
       )}
 
       {section === 'people' && (
@@ -295,10 +242,23 @@ export function SupportShell({
 
       {section === 'operations' && (
         <div className="space-y-4">
-          <SupportOverviewPanel capabilities={caps} onExpired={onExpired} />
-          {caps.includes('jobs.read') && <SupportJobsPanel onExpired={onExpired} />}
+          {caps.some((capability) => capability.startsWith('overview.')) && (
+            <div id="tool-analytics" tabIndex={-1}>
+              <SupportOverviewPanel capabilities={caps} onExpired={onExpired} />
+            </div>
+          )}
+          {caps.includes('jobs.read') && (
+            <div id="tool-jobs" tabIndex={-1}>
+              <SupportJobsPanel onExpired={onExpired} />
+            </div>
+          )}
           {caps.includes('company.jobs.retry') && (
-            <section aria-label="Safe terminal job retry" className={panelCardClass}>
+            <section
+              id="tool-retry"
+              tabIndex={-1}
+              aria-label="Safe terminal job retry"
+              className={panelCardClass}
+            >
               <h3 className="font-semibold">Allowlisted terminal job re-queue</h3>
               <p className="text-xs text-theme-text-secondary">
                 Re-queues only eligible terminal failed outbox entries or unknown recovery
@@ -378,13 +338,21 @@ export function SupportShell({
           {caps.includes('company.data.inspect') && (
             <SupportDataInspectorPanel onExpired={onExpired} />
           )}
-          {caps.includes('health.read') && <SupportHealthPanel onExpired={onExpired} />}
+          {caps.includes('health.read') && (
+            <div id="tool-health" tabIndex={-1}>
+              <SupportHealthPanel onExpired={onExpired} />
+            </div>
+          )}
         </div>
       )}
 
       {section === 'support' && (
         <div className="space-y-4">
-          {caps.includes('incidents.read') && <SupportIncidentsPanel onExpired={onExpired} />}
+          {caps.includes('incidents.read') && (
+            <div id="tool-incidents" tabIndex={-1}>
+              <SupportIncidentsPanel onExpired={onExpired} />
+            </div>
+          )}
           {caps.includes('cases.manage') && (
             <SupportCasesPanel
               onExpired={onExpired}
@@ -420,7 +388,12 @@ export function SupportShell({
               <SupportPolicyExplainPanel onExpired={onExpired} />
             </>
           )}
-          {caps.includes('logs.audit') && <SupportCaseAuditPanel onExpired={onExpired} />}
+          {caps.includes('account.request') && <SupportRecoveryStatusPanel onExpired={onExpired} />}
+          {caps.includes('logs.audit') && (
+            <div id="tool-case-audit" tabIndex={-1}>
+              <SupportCaseAuditPanel onExpired={onExpired} />
+            </div>
+          )}
           {caps.includes('logs.runtime') && (
             <SupportLogs onExpired={onExpired} canFollow={caps.includes('logs.stream')} />
           )}
@@ -430,10 +403,21 @@ export function SupportShell({
         </div>
       )}
 
+      {section === 'feedback' &&
+        (caps.includes('operator.manage') ? (
+          <SupportFeedbackInbox onExpired={onExpired} />
+        ) : (
+          <p role="alert" className="text-sm text-theme-text-secondary">
+            Your session cannot read the feedback inbox.
+          </p>
+        ))}
+
       {section === 'recovery' && (
         <div className="space-y-4">
           {caps.includes('backups.read') ? (
-            <SupportBackupsPanel onExpired={onExpired} />
+            <div id="tool-backups" tabIndex={-1}>
+              <SupportBackupsPanel onExpired={onExpired} />
+            </div>
           ) : (
             <p role="alert" className="text-xs text-theme-text-secondary">
               Recovery monitoring requires the <code>backups.read</code> capability.
@@ -450,13 +434,19 @@ export function SupportShell({
 
       {section === 'settings' && (
         <div className="space-y-4">
-          {caps.includes('config.read') && <SupportConfigPanel onExpired={onExpired} />}
+          {caps.includes('config.read') && (
+            <div id="tool-configuration" tabIndex={-1}>
+              <SupportConfigPanel onExpired={onExpired} />
+            </div>
+          )}
           {(caps.includes('config.read') || caps.includes('company.settings.manage')) && (
-            <SupportSafeSettingsPanel
-              canManage={caps.includes('company.settings.manage')}
-              onExpired={onExpired}
-              onUpdated={() => void loadContext()}
-            />
+            <div id="tool-safe-settings" tabIndex={-1}>
+              <SupportSafeSettingsPanel
+                canManage={caps.includes('company.settings.manage')}
+                onExpired={onExpired}
+                onUpdated={() => void loadContext()}
+              />
+            </div>
           )}
         </div>
       )}

@@ -12,6 +12,7 @@ Hashed one-time codes for login and password reset, with expiry, attempts, and c
 | `user_id` | `uuid` | No | — |
 | `purpose` | `varchar(32)` | No | `'login'` |
 | `otp_hash` | `varchar(255)` | No | — |
+| `delivery_email_digest` | `varchar(64)` | Yes | — |
 | `expires_at` | `timestamptz` | No | — |
 | `consumed_at` | `timestamptz` | Yes | — |
 | `attempts` | `integer` | No | `0` |

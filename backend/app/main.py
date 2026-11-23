@@ -103,7 +103,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Total-Count", "X-Report-Revision", "X-HR-Case-Review"],
+        expose_headers=["X-Total-Count", "X-Report-Revision", "X-HR-Case-Review", "X-Request-ID"],
     )
 
     async def request_context_middleware(request: Request, call_next):
@@ -276,6 +276,8 @@ def create_app() -> FastAPI:
             async with AsyncSessionLocal() as session:
                 await AuditService(session).record(
                     action="http.unhandled_exception",
+                    user_id=getattr(request.state, "business_user_id", None),
+                    request_id=getattr(request.state, "request_id", None),
                     event_type="error",
                     severity="ERROR",
                     entity_type="request",

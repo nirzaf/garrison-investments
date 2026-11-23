@@ -20,6 +20,12 @@ The [portal architecture](../docs/ARCHITECTURE.md) covers runtime dependencies, 
 | Signed storage links and uploads | [Storage client](app/services/storage_service.py), [photo service](app/services/photo_service.py), [document service](app/services/document_service.py) |
 | Logging, audit, and request attribution | [Observability](app/observability/), [audit middleware](app/middleware/audit.py), [client IP resolution](app/utils/request.py), [log guide](../docs/LOGGING_AND_REMOTE_CLI.md) |
 
+Feedback submissions use the business actor from the standard bearer-token
+dependency. The service projects only reporter-owned failed API requests from
+the existing audit log and writes the feedback and its audit event together.
+The inbox lives on the restricted support router and uses technical sessions
+with `operator.manage`. See [feedback and triage](../docs/LOGGING_AND_REMOTE_CLI.md#user-feedback-and-triage).
+
 ## Verify a change
 
 Run the relevant [backend checks](../README.md#verification) against the disposable test services. The [Pytest suite](tests/) contains endpoint regressions and the [browser fixture module](tests/browser_fixtures.py) seeds isolated data for the Google Chrome suite.

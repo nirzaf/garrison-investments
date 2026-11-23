@@ -1,10 +1,14 @@
 # Support identity and case evidence
 
-The support schema is additive and has no production operator grants. Models live in [support identity](../../backend/app/models/support_identity.py),
+The support schema defines separate technical identities. Migrations preserve the existing operator grants. Models live in [support identity](../../backend/app/models/support_identity.py),
 [case access](../../backend/app/models/support_cases.py),
 [custody](../../backend/app/models/support_custody.py),
 [oversight and backup receipts](../../backend/app/models/support_oversight.py), and
 [company control commands](../../backend/app/models/support_admin_commands.py).
+
+The [feedback inbox](../LOGGING_AND_REMOTE_CLI.md#user-feedback-and-triage)
+uses the same technical ingress and session boundary with the `operator.manage`
+grant. User reports and triage status live in [`user_feedback`](user_feedback.md).
 
 | Tables | Purpose |
 | --- | --- |

@@ -483,6 +483,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Feedback */
+        post: operations["submit_feedback_api_v1_feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/finance/invoices": {
         parameters: {
             query?: never;
@@ -6308,6 +6325,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Feedback Inbox */
+        get: operations["support_feedback_inbox_api_v1_support_feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/feedback/{feedback_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Support Feedback Status */
+        patch: operations["support_feedback_status_api_v1_support_feedback__feedback_id__status_patch"];
+        trace?: never;
+    };
     "/api/v1/support/health": {
         parameters: {
             query?: never;
@@ -9942,6 +9993,111 @@ export interface components {
             total: number;
             /** Within Days */
             within_days: number;
+        };
+        /** FeedbackCreate */
+        FeedbackCreate: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "bug" | "suggestion" | "other";
+            /** Description */
+            description: string;
+            /** Request Ids */
+            request_ids?: string[];
+            /**
+             * Submission Id
+             * Format: uuid
+             */
+            submission_id: string;
+            /** Title */
+            title: string;
+        };
+        /** FeedbackDiagnostic */
+        FeedbackDiagnostic: {
+            /** Area */
+            area: string;
+            /** Method */
+            method: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Request Id */
+            request_id: string;
+            /** Status Code */
+            status_code: number;
+        };
+        /** FeedbackInboxItem */
+        FeedbackInboxItem: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "bug" | "suggestion" | "other";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Diagnostics */
+            diagnostics: components["schemas"]["FeedbackDiagnostic"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reporter Id */
+            reporter_id: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "new" | "investigating" | "resolved";
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FeedbackInboxPage */
+        FeedbackInboxPage: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["FeedbackInboxItem"][];
+        };
+        /** FeedbackReceipt */
+        FeedbackReceipt: {
+            /** Attached Diagnostics */
+            attached_diagnostics: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** FeedbackStatusChange */
+        FeedbackStatusChange: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "new" | "investigating" | "resolved";
         };
         /** GoalCreateRequest */
         GoalCreateRequest: {
@@ -20542,6 +20698,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_feedback_api_v1_feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackReceipt"];
                 };
             };
             /** @description Invalid request */
@@ -34319,6 +34508,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuspensionOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_feedback_inbox_api_v1_support_feedback_get: {
+        parameters: {
+            query?: {
+                status?: ("new" | "investigating" | "resolved") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackInboxPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_feedback_status_api_v1_support_feedback__feedback_id__status_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedback_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackStatusChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackInboxItem"];
                 };
             };
             /** @description Invalid request */

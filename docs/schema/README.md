@@ -2,9 +2,15 @@
 
 [Documentation index](../README.md) · [Architecture](../ARCHITECTURE.md) · [Operations and deployment](../OPERATIONS_AND_DEPLOYMENT.md)
 
-This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference was checked against production schema head `202605310013` on 2026-11-15. The local HR migrations begin at [revision 007](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and currently end at [revision 046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
+This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference uses a historical catalogue check at revision `202605310013` and describes subsequent source migrations. The current repository Alembic head is `202605310099`. The local HR migrations begin at [revision 007](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and currently end at [revision 046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
 
 A dash in the default column means the database has no server default. Application-side rules live in the linked model and service code. Many tables use `deleted_at` for soft deletion. Foreign-key delete actions describe physical row deletion.
+
+## Feedback
+
+| Table | Purpose |
+| --- | --- |
+| [`user_feedback`](user_feedback.md) | Business user reports, optional request summaries, and technical triage status. |
 
 ## Identity
 

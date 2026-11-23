@@ -13,6 +13,12 @@ from app.api.dependencies import DbSession
 from app.api.streaming import ManagedEventStream
 from app.config import get_settings
 from app.models.support_cases import SupportOperatorGrant
+from app.schemas.feedback import (
+    FeedbackInboxItem,
+    FeedbackInboxPage,
+    FeedbackStatus,
+    FeedbackStatusChange,
+)
 from app.schemas.support_business_actions import (
     ActionDigest,
     BusinessActionCreate,
@@ -65,6 +71,7 @@ from app.schemas.support_oversight import (
     SupportSuppliersOverviewRead,
     SupportWorkforceOverviewRead,
 )
+from app.services.feedback_service import FeedbackService
 from app.services.support_account_directory import (
     diagnose_or_link_user_case,
     list_company_users,
@@ -1630,4 +1637,37 @@ async def support_company_data_inspector_query(
         status=status,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/feedback", response_model=FeedbackInboxPage)
+async def support_feedback_inbox(
+    request: Request,
+    session: DbSession,
+    status: FeedbackStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> FeedbackInboxPage:
+    return await FeedbackService(session).list_inbox(
+        request.cookies.get(SESSION_COOKIE),
+        request.state.request_id,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch("/feedback/{feedback_id}/status", response_model=FeedbackInboxItem)
+async def support_feedback_status(
+    feedback_id: UUID,
+    payload: FeedbackStatusChange,
+    request: Request,
+    session: DbSession,
+) -> FeedbackInboxItem:
+    return await FeedbackService(session).change_status(
+        request.cookies.get(SESSION_COOKIE),
+        request.headers.get("x-support-csrf"),
+        request.state.request_id,
+        feedback_id,
+        payload,
     )

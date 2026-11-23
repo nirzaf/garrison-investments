@@ -20,7 +20,7 @@ evidence and the [optional follow-up ledger](docs/POST_RELEASE_ACTIONS.md).
 | Area | What the portal supports |
 | --- | --- |
 | Identity and account management | Password and emailed one-time code sign-in (with code restart and offline-storage prechecks before consuming an OTP), password reset and change, session refresh and logout, a read-only user profile, and authorized account controls for creating, deactivating, resetting, and changing the roles of other active users. |
-| Dashboards and projects | Company-wide or scoped dashboards, recent activity, searchable projects, multi-row bill of quantities (BOQ) and milestone setup, project editing and team assignments, and task timelines with an accessible Gantt view. |
+| Dashboards and projects | Company-wide or scoped dashboards, recent activity, searchable projects, optional initial bill of quantities (BOQ), director-only priced BOQ entry after setup, milestones, project editing and team assignments, and task timelines with an accessible Gantt view. |
 | Supervisor site updates | Capture attendance, overtime, work location, progress, delays, notes, and files. Supervisors can save, reopen, update, preview or download uploaded draft files (including original-only HEIC files), and submit drafts. |
 | Engineer daily reports | Capture work completed, next-day plans, progress, safety and inspections, manpower, equipment, materials, and media. Report submission verifies linked supervisor updates. Returned reports retain their verified evidence and report number. Engineers can reopen returned reports with reviewer feedback, revise them, and resubmit. Reviewers can approve or return reports, inspect approval history, and download approved report PDFs. |
 | Approvals | A report approval inbox, a workflow inbox, and an outbox for the current user’s submissions. Eligible actors can approve, reject with a reason, or delegate when the owning workflow permits. The active role policy denies generic overrides and invoice decisions. Reminders and notifications track pending work. |
@@ -31,8 +31,9 @@ evidence and the [optional follow-up ledger](docs/POST_RELEASE_ACTIONS.md).
 | Analytics and exports | Scoped analytics with filters for project, date range, location, and department where supported. Download project progress and material usage as XLSX files or a management summary as PDF. |
 | HR and workforce | Employee directory and organization, recruitment with private CV review, onboarding and probation decisions, personnel documents, letter previews, attendance and timesheets, leave, staff self-service, and controlled account provisioning and offboarding. See the [HR guide](docs/HR_WORKFORCE.md). |
 | Data imports | Downloadable templates, CSV and XLSX validation previews, synchronous and background processing, batch status, and import history for users, projects, suppliers, materials, BOQ, opening stock, and document metadata. Document binaries are uploaded through the document library. |
-| Notifications and guidance | Notification history with direct links to target workflows, unread counts, read and mute controls, email through useSend or SMTP, a permission-based in-app manual with dedicated HR Manager guidance, and Launch readiness information. |
+| Notifications and guidance | Notification history with direct links to target workflows, unread counts, read and mute controls, email through useSend or SMTP with Cloudflare fallback where enabled, a permission-based in-app manual with dedicated HR Manager guidance, and Launch readiness information. |
 | Offline and file reporting | Installable progressive web app (PWA), responsive screens, photo file selection, account-owned local drafts, and file uploads that resume after reconnecting. Valid daily report drafts can sync without files, and revision checks protect newer server changes. |
+| User feedback and Super Admin | Any signed-in user can report a bug or suggest an improvement from the portal header and opt in to redacted request diagnostics. Super Admin can triage submissions and inspect operational and business workflow snapshots. See [feedback and triage](docs/LOGGING_AND_REMOTE_CLI.md#user-feedback-and-triage). |
 | Audit and operations | Business and security audit records, an audit and security UI for authorized users, filtered operational log search and streaming through the API and remote CLI, structured application logs, Grafana dashboards and alerting, and encrypted backups with restore procedures. |
 
 ### Roles and access
@@ -49,6 +50,7 @@ Each account has one role. Route permissions, project membership, record ownersh
 | Senior Site Supervisor | Assigned-project viewing, scoped dashboard, report submission, inventory viewing, and document viewing. |
 | Site Supervisor | Assigned-project viewing, scoped dashboard, report submission, inventory viewing, and document viewing. |
 | HR Manager | Workforce oversight, HR reviews, protected employee records, company/scoped dashboards, and authorized site-report review. |
+| HR Executive | Directory reads and assigned-project dashboards, reports, and documents. |
 | Administrative Executive | User-directory reading, company/scoped dashboards, inventory viewing, supplier management, and document viewing. |
 
 ## Architecture
@@ -82,7 +84,7 @@ flowchart TB
         worker -->|"Store exports and backups"| objects
     end
 
-    mail["Mail provider<br/>useSend HTTPS API or SMTP"]
+    mail["Mail providers<br/>useSend HTTPS API or SMTP<br/>Cloudflare fallback when enabled"]
 
     browser -->|"HTTPS"| nginx
     api -->|"One-time codes and transactional mail"| mail

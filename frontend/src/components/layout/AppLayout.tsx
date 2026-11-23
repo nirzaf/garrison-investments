@@ -27,6 +27,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { getUnreadCount } from '../../api/notifications';
 import { useAuth } from '../../context/useAuth';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
+import { FeedbackButton } from '../shared/FeedbackButton';
 import { OfflineIndicator } from '../shared/OfflineIndicator';
 import { StatusBadge } from '../shared/StatusBadge';
 import navigationPolicy from './portalNavigation.json';
@@ -219,6 +220,7 @@ export function AppLayout() {
             </div>
 
             <div className="flex items-center gap-2">
+              <FeedbackButton key={user?.id} screen={screenTitle} />
               <Link
                 aria-label="Notifications"
                 className="relative rounded-md border border-theme-border p-2 text-theme-text-secondary hover:bg-theme-card-elevated"

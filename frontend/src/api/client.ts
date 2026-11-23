@@ -11,6 +11,7 @@ import {
   suspendBrowserSession,
   withSessionLock
 } from './browserSession';
+import { rememberFeedbackRequest } from './feedbackDiagnostics';
 import { sameScope, type OfflineScope } from './offlineDb';
 import type { components } from './schema';
 
@@ -95,6 +96,14 @@ apiClient.interceptors.response.use(
   async (error) => {
     const config = error.config as BrowserRequest | undefined;
     const current = getBrowserSession();
+    const status = error.response?.status;
+    if (
+      config?._sessionScope && current && sameScope(current.scope, config._sessionScope) &&
+      status >= 400 && status !== 401 && !config.url?.startsWith('/auth/') &&
+      !config.url?.startsWith('/feedback')
+    ) {
+      rememberFeedbackRequest(current, error.response?.headers['x-request-id']);
+    }
     if (
       !config?._sessionScope ||
       !current ||

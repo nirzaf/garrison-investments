@@ -40,6 +40,14 @@ write authority. Browser sessions use a host-only cookie and a separate
 server-side session. The [activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
 describes operator enrollment, ingress, oversight bounds, and production verification.
 
+## Feedback access
+
+All authenticated business roles can submit feedback from the portal header.
+Inbox reads and status changes require a technical session with
+`operator.manage` behind the dedicated support ingress. Status changes also
+require the support session's CSRF token and current report revision.
+See [feedback and triage](LOGGING_AND_REMOTE_CLI.md#user-feedback-and-triage).
+
 ## Project creation boundary
 
 Managing Directors and Operations Directors may create projects with zero or more initial BOQ items and add priced BOQ items later from editable project details. Each later item is validated and audited while the project row is locked; existing items are preserved. Existing director-only CSV/XLSX project and priced BOQ imports remain unchanged. Financial values continue to require `financial:view`.

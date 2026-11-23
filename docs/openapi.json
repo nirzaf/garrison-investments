@@ -10051,6 +10051,242 @@
         "title": "ExpiringComplianceResponse",
         "type": "object"
       },
+      "FeedbackCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "bug",
+              "suggestion",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 10,
+            "title": "Description",
+            "type": "string"
+          },
+          "request_ids": {
+            "items": {
+              "pattern": "^[a-f0-9]{32}$|^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Request Ids",
+            "type": "array"
+          },
+          "submission_id": {
+            "format": "uuid",
+            "title": "Submission Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 140,
+            "minLength": 3,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "submission_id",
+          "category",
+          "title",
+          "description"
+        ],
+        "title": "FeedbackCreate",
+        "type": "object"
+      },
+      "FeedbackDiagnostic": {
+        "properties": {
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "request_id": {
+            "pattern": "^[a-f0-9]{32}$|^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "occurred_at",
+          "area",
+          "method",
+          "status_code"
+        ],
+        "title": "FeedbackDiagnostic",
+        "type": "object"
+      },
+      "FeedbackInboxItem": {
+        "properties": {
+          "category": {
+            "enum": [
+              "bug",
+              "suggestion",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackDiagnostic"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reporter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reporter Id"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "new",
+              "investigating",
+              "resolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reporter_id",
+          "category",
+          "title",
+          "description",
+          "status",
+          "revision",
+          "created_at",
+          "updated_at",
+          "diagnostics"
+        ],
+        "title": "FeedbackInboxItem",
+        "type": "object"
+      },
+      "FeedbackInboxPage": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackInboxItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "FeedbackInboxPage",
+        "type": "object"
+      },
+      "FeedbackReceipt": {
+        "properties": {
+          "attached_diagnostics": {
+            "title": "Attached Diagnostics",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "attached_diagnostics"
+        ],
+        "title": "FeedbackReceipt",
+        "type": "object"
+      },
+      "FeedbackStatusChange": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "new",
+              "investigating",
+              "resolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "expected_revision"
+        ],
+        "title": "FeedbackStatusChange",
+        "type": "object"
+      },
       "GoalCreateRequest": {
         "properties": {
           "cycle_name": {
@@ -37892,6 +38128,60 @@
         ]
       }
     },
+    "/api/v1/feedback": {
+      "post": {
+        "operationId": "submit_feedback_api_v1_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Feedback Api V1 Feedback Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Feedback",
+        "tags": [
+          "Feedback"
+        ]
+      }
+    },
     "/api/v1/finance/invoices": {
       "get": {
         "operationId": "list_invoices_api_v1_finance_invoices_get",
@@ -65125,6 +65415,152 @@
           }
         },
         "summary": "Suspension Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/feedback": {
+      "get": {
+        "operationId": "support_feedback_inbox_api_v1_support_feedback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "new",
+                    "investigating",
+                    "resolved"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackInboxPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Feedback Inbox Api V1 Support Feedback Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Feedback Inbox",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/feedback/{feedback_id}/status": {
+      "patch": {
+        "operationId": "support_feedback_status_api_v1_support_feedback__feedback_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feedback_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Feedback Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackStatusChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackInboxItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Feedback Status Api V1 Support Feedback  Feedback Id  Status Patch"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Feedback Status",
         "tags": [
           "Support"
         ]

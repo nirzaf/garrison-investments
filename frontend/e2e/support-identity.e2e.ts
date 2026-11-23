@@ -69,6 +69,11 @@ async function signIn(page: Page, operator: string) {
   await expect(page.getByText('Technical session active')).toBeVisible();
 }
 
+async function openWorkspace(page: Page, name: string) {
+  await page.getByRole('navigation', { name: 'Company control centre navigation' })
+    .getByRole('button', { name, exact: true }).click();
+}
+
 test('synthetic operator signs in with a verified passkey and signs out', async ({ page, request }) => {
   const fixture = JSON.parse(execFileSync(
     env.BROWSER_TEST_PYTHON ?? 'python',
@@ -128,6 +133,7 @@ print(json.dumps({
   await signIn(page, fixture.operator);
   await page.reload();
   await expect(page.getByText('Technical session active')).toBeVisible();
+  await openWorkspace(page, 'Support & Audit');
   await page.getByLabel('Case reference').fill(fixture.case);
   await page.getByLabel('Request ID').fill('00000000000000000000000000000000');
   await page.getByRole('button', { name: 'Search request evidence' }).click();
@@ -158,10 +164,16 @@ print(json.dumps({
   await expect(evidence.getByRole('alert')).toHaveText('Access to this evidence ended.');
   await expect(evidence).not.toContainText('request · PATCH · 202');
   expect(connections).toBe(2);
+  await openWorkspace(page, 'Overview');
+  await expect(page.getByRole('region', { name: 'Dependencies' })).toContainText('operational');
+  await page.getByRole('button', { name: 'Inspect service health' }).click();
+  await expect(page).toHaveURL(/#\/operations\/health$/);
+  await expect(page.locator('#tool-health')).toBeFocused();
   const health = page.getByRole('region', { name: 'Service health' });
   await health.getByRole('button', { name: 'Check service health' }).click();
   await expect(health.getByText('Operational').first()).toBeVisible();
   await expect(health.getByText('Redis')).toBeVisible();
+  await openWorkspace(page, 'Support & Audit');
   const reference = 'incident-' + randomUUID();
   await expect(page.getByText('No assigned cases.')).toBeVisible();
   await page.getByLabel('Incident reference').fill(reference);
@@ -294,7 +306,13 @@ print(json.dumps(asyncio.run(seed())))
       signIn(requestPage, maker.operator), signIn(reviewPage, reviewer.operator),
       signIn(targetPage, target.operator)
     ]);
+    await Promise.all([
+      openWorkspace(requestPage, 'Owner Security'),
+      openWorkspace(reviewPage, 'Owner Security'),
+      openWorkspace(targetPage, 'Owner Security')
+    ]);
     await expect(targetPage.getByRole('region', { name: 'Operator custody' })).toHaveCount(0);
+    await openWorkspace(targetPage, 'Support & Audit');
     await expect(targetPage.getByRole('region', { name: 'Support cases' })).toHaveCount(0);
     await requestPage.getByLabel('Custody action').selectOption('grant-changes');
     await requestPage.getByLabel('Target operator reference').fill(target.operator);
@@ -323,8 +341,11 @@ print(json.dumps(asyncio.run(seed())))
     await targetPage.reload();
     await expect(targetPage.getByLabel('Operator reference')).toBeVisible();
     await signIn(targetPage, target.operator);
+    await openWorkspace(targetPage, 'Support & Audit');
     await expect(targetPage.getByRole('region', { name: 'Support cases' })).toBeVisible();
+    await openWorkspace(targetPage, 'Projects & Operations');
     await expect(targetPage.getByRole('region', { name: 'Service health' })).toHaveCount(0);
+    await openWorkspace(targetPage, 'Support & Audit');
 
     await requestPage.getByLabel('Custody action').selectOption('enroll');
     await requestPage.getByLabel('Target operator reference').fill(pendingOperator);
@@ -370,8 +391,11 @@ print(json.dumps(asyncio.run(seed())))
         : 'Both passkeys are registered.');
     }
     await signIn(firstDevice, pendingOperator);
+    await openWorkspace(firstDevice, 'Owner Security');
     await expect(firstDevice.getByRole('region', { name: 'Operator custody' })).toHaveCount(0);
 
+    await openWorkspace(requestPage, 'Support & Audit');
+    await openWorkspace(reviewPage, 'Support & Audit');
     const reference = 'reviewed-case-' + randomUUID();
     await requestPage.getByLabel('Incident reference').fill(reference);
     await requestPage.getByRole('button', { name: 'Create case' }).click();
@@ -447,6 +471,7 @@ print(json.dumps(asyncio.run(seed())))
     await approveAction(targetPage, await proposeAction('project_remove', 'Project reference', caseProject), caseProject);
     await reopen('Open');
     await approveAction(targetPage, await proposeAction('subject_set', 'Account reference', caseUser), caseUser);
+    await reviewPage.goto(supportOrigin + '/#/support');
     const directory = targetPage.getByRole('region', { name: 'Case account' });
     await directory.getByLabel('Case ID for account lookup').fill(caseId);
     await directory.getByLabel('Match approved account by').selectOption('name');
@@ -737,6 +762,29 @@ print(json.dumps({
   await setupOperator(page, fixture);
   await signIn(page, fixture.operator);
 
+  const snapshot = page.getByRole('region', { name: 'Operations overview' });
+  await expect(snapshot.getByRole('region', { name: 'Business workflow' })).toContainText('Active projects');
+  await expect(snapshot.getByRole('region', { name: 'Dependencies' })).toHaveCount(0);
+  await expect(snapshot.getByRole('region', { name: 'Backup readiness' })).toContainText('Isolated restore');
+  await expect(snapshot.getByRole('region', { name: 'Runtime configuration' })).toContainText('Audit retention');
+  await page.route('**/api/v1/support/incidents/summary?hours=24', (route) => route.fulfill({ status: 429 }));
+  await snapshot.getByRole('button', { name: 'Refresh snapshot' }).click();
+  await expect(snapshot.getByRole('region', { name: 'Security signals' })).toContainText('Read limit reached');
+  await expect(snapshot.getByRole('region', { name: 'Job delivery' })).toContainText('Failed outbox entries');
+  await page.unroute('**/api/v1/support/incidents/summary?hours=24');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await snapshot.getByRole('button', { name: 'Analyze business domains' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#\/operations\/analytics$/);
+  await page.goBack();
+  await expect(snapshot).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/#\/operations\/analytics$/);
+  await page.reload();
+  await expect(page.locator('#tool-analytics')).toBeFocused();
+  await page.setViewportSize({ width: 1280, height: 800 });
+
   const overview = page.getByRole('region', { name: 'Enterprise oversight' });
   await overview.getByRole('button', { name: 'Load company overview' }).click();
   await expect(overview).toContainText('Source status: operational');
@@ -751,14 +799,17 @@ print(json.dumps({
   await jobs.getByRole('button', { name: 'Check job status' }).click();
   await expect(jobs).toContainText('dispatch_task_outbox');
 
+  await openWorkspace(page, 'Recovery');
   const backups = page.getByRole('region', { name: 'Backup and recovery provenance' });
   await backups.getByRole('button', { name: 'Check recovery posture' }).click();
   await expect(backups).toContainText('Overall recovery posture');
 
+  await openWorkspace(page, 'Settings');
   const config = page.getByRole('region', { name: 'Safe runtime configuration status' });
   await config.getByRole('button', { name: 'Check configuration posture' }).click();
   await expect(config).toContainText('Audit purge disabled');
 
+  await openWorkspace(page, 'Support & Audit');
   const incidents = page.getByRole('region', { name: 'Security incidents summary' });
   await incidents.getByRole('button', { name: 'Load incident summary' }).click();
   await expect(incidents).toContainText('Support authentication failures');
@@ -849,6 +900,7 @@ print(json.dumps(asyncio.run(seed())))
   try {
     await setupOperator(ownerPage, first);
     await signIn(ownerPage, first.operator);
+    await openWorkspace(ownerPage, 'Support & Audit');
     const directory = ownerPage.getByRole('region', { name: 'Case account' });
     await directory.getByLabel('Case ID for account lookup').fill(caseId);
     await directory.getByLabel('Match approved account by').selectOption('reference');
@@ -881,6 +933,7 @@ print(json.dumps(asyncio.run(seed())))
     const disable = await propose('disable');
     await setupOperator(otherPage, second);
     await signIn(otherPage, second.operator);
+    await openWorkspace(otherPage, 'Support & Audit');
     await expect((await load(otherPage, disable, 403)).getByRole('alert')).toBeVisible();
 
     const section = await load(ownerPage, disable, 200);

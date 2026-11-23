@@ -2,9 +2,10 @@
 
 [Schema index](README.md) · [SQLAlchemy models](../../backend/app/models/hr.py) · [Alembic revisions](../../backend/alembic/versions/)
 
-This reference records the HR keys and relationships verified against the
-production PostgreSQL catalogue at revision `202605310013` on 2026-11-15, plus
-pending revision
+The baseline constraints in this reference were verified against the
+production PostgreSQL catalogue at revision `202605310013` on 2026-11-15.
+Later schema notes describe the checked-in migrations. For deployed schema
+state, use the host release receipt and read back the Alembic head. Revision
 [`202605310014`](../../backend/alembic/versions/202605310014_hr_recruitment_followups.py)
 (`hr_requisitions.rejection_reason` and `hr_offers` validity/versioning
 constraints). Revision `202605310013` adds an empty

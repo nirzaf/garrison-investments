@@ -30,6 +30,8 @@ it and revoke refresh sessions and pending login codes.
 | `locked_until` | `timestamptz` | Yes | — |
 | `last_login_at` | `timestamptz` | Yes | — |
 | `designation` | `varchar(100)` | Yes | — |
+| `recovery_email_digest` | `varchar(64)` | Yes | — |
+| `recovery_email_verified_at` | `timestamptz` | Yes | — |
 
 ## Keys and constraints
 
