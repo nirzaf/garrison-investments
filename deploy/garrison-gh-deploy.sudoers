@@ -1,0 +1,2 @@
+# Install with visudo -cf before activation. The root helper accepts no arguments.
+garrison-gh-deploy ALL=(root) NOPASSWD: /usr/local/sbin/garrison-gh-release-root ""

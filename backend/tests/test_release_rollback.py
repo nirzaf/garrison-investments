@@ -1294,8 +1294,10 @@ def test_production_workflow_triggers_without_predeploy_gate_variable() -> None:
         in deploy_source
     )
     assert "group: garrison-portal-production" in deploy_source
-    assert "runs-on: [self-hosted, linux, x64, garrison-production]" in deploy_source
-    assert "sudo -n /usr/local/sbin/garrison-deploy" in deploy_source
+    assert "runs-on: ubuntu-24.04" in deploy_source
+    assert "vars.HOSTED_PRODUCTION_RELEASES_ENABLED == 'true'" in deploy_source
+    assert 'ssh -n -F "$SSH_CONFIG" garrison-deploy probe' in deploy_source
+    assert "sudo -n /usr/local/sbin/garrison-deploy" not in deploy_source
 
 
 def test_production_workflow_can_read_deployment_history_with_minimal_scope() -> None:
@@ -1342,7 +1344,29 @@ def test_ci_uses_github_hosted_runners_and_production_stays_isolated() -> None:
     assert "cache-dependency-path: backend/requirements.txt" in ci_source
     assert "cache-dependency-path: frontend/package-lock.json" in ci_source
     assert "max-parallel: 4" in ci_source
-    assert "runs-on: [self-hosted, linux, x64, garrison-production]" in deploy_source
+    assert "runs-on: ubuntu-24.04" in deploy_source
+    assert "runs-on: [self-hosted" not in deploy_source
+    assert "secrets.HOSTINGER_DEPLOY_SSH_PRIVATE_KEY" not in ci_source
+
+
+@pytest.mark.parametrize(
+    "command", ["", "probe", "id", "probe\nid", "release 1 bad 2 1 technical-checks-v1"]
+)
+def test_hosted_deploy_command_accepts_only_probe_or_structured_release(command: str) -> None:
+    result = subprocess.run(
+        ["bash", str(SCRIPT.with_name("garrison-gh-force-command.sh"))],
+        env={"SSH_ORIGINAL_COMMAND": command},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if command == "probe":
+        assert result.returncode == 0
+        assert result.stdout.strip() == "restricted deployment transport ready"
+    else:
+        assert result.returncode == 1
+        assert "Only probe or a valid release command is accepted." in result.stderr
 
 
 @pytest.mark.parametrize(

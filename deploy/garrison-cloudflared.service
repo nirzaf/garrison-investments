@@ -1,0 +1,21 @@
+[Unit]
+Description=Garrisons GitHub production deployment tunnel
+Wants=network-online.target
+After=network-online.target ssh.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+LoadCredential=tunnel-token:/etc/garrison-github-deploy/tunnel-token
+ExecStart=/usr/local/sbin/garrison-cloudflared tunnel --no-autoupdate run --token-file %d/tunnel-token
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

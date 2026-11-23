@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      transport_check:
+        description: Verify the restricted SSH transport without running a release
+        type: boolean
+        default: false
       pinned_no_backup_093:
         description: Use the one-use host permit for the approved pinned 093 release
         type: boolean
@@ -28,9 +32,9 @@ on:
         type: boolean
         default: false
       ci_run_id:
-        description: Successful CI run for the selected release candidate
+        description: Successful CI run for the selected release candidate (not required for transport check)
         type: string
-        required: true
+        required: false
 
 permissions:
   actions: read
@@ -43,35 +47,60 @@ concurrency:
 
 jobs:
   production:
-    name: Deploy to Hostinger
+    name: Deploy to Hostinger via restricted Cloudflare Access SSH
     if: >-
       github.repository == 'nirzaf/garrison-investments' &&
       (
-        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+          inputs.transport_check == true) ||
         (
-          github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.event == 'push' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.head_repository.full_name == github.repository
+          vars.HOSTED_PRODUCTION_RELEASES_ENABLED == 'true' &&
+          (
+            (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.ci_run_id != '') ||
+            (github.event.workflow_run.conclusion == 'success' &&
+             github.event.workflow_run.event == 'push' &&
+             github.event.workflow_run.head_branch == 'main' &&
+             github.event.workflow_run.head_repository.full_name == github.repository)
+          )
         )
       )
-    runs-on: [self-hosted, linux, x64, garrison-production]
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment:
       name: Production
       url: https://portal.garrisons.lk
     steps:
-      - name: Deploy the tested commit
+      - name: Resolve transport check or release contract
+        id: candidate
         env:
+          TRANSPORT_CHECK: ${{ inputs.transport_check }}
+          PINNED_NO_BACKUP_093: ${{ inputs.pinned_no_backup_093 }}
           FORWARD_ONLY_093_TO_097: ${{ inputs.forward_only_093_to_097 }}
           INCIDENT_REPLACEMENT: ${{ inputs.incident_replacement }}
-          PINNED_NO_BACKUP_093: ${{ inputs.pinned_no_backup_093 }}
           POSTGRES19_MAINTENANCE: ${{ inputs.postgres19_maintenance }}
           POSTGRES19_MAINTENANCE_RETRY: ${{ inputs.postgres19_maintenance_retry }}
-          GH_TOKEN: ${{ github.token }}
           CI_RUN_ID: ${{ inputs.ci_run_id || github.event.workflow_run.id }}
           RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        shell: bash
         run: |
+          set -euo pipefail
+          if [[ "$TRANSPORT_CHECK" == true ]]; then
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main && -z "$CI_RUN_ID" &&
+               "$PINNED_NO_BACKUP_093" != true && "$FORWARD_ONLY_093_TO_097" != true &&
+               "$INCIDENT_REPLACEMENT" != true && "$POSTGRES19_MAINTENANCE" != true &&
+               "$POSTGRES19_MAINTENANCE_RETRY" != true ]] || {
+              echo "::error::Transport check is a standalone main-branch dispatch only."
+              exit 1
+            }
+            echo "release_mode=transport-check" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          [[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ && "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]] || {
+            echo "::error::A numeric CI run ID and full release SHA are required."
+            exit 1
+          }
+
           release_mode=technical-checks-v1
           if [[ "$INCIDENT_REPLACEMENT" == true ]]; then
             [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44734573582 &&
@@ -80,11 +109,13 @@ jobs:
             release_mode=incident-replacement
           fi
           if [[ "$FORWARD_ONLY_093_TO_097" == true ]]; then
-            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$PINNED_NO_BACKUP_093" != true && "$INCIDENT_REPLACEMENT" != true ]] || exit 1
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$PINNED_NO_BACKUP_093" != true &&
+               "$INCIDENT_REPLACEMENT" != true ]] || exit 1
             release_mode=forward-only-093-to-097
           fi
           if [[ "$PINNED_NO_BACKUP_093" == true ]]; then
-            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44163196512 && "$FORWARD_ONLY_093_TO_097" != true && "$INCIDENT_REPLACEMENT" != true ]] || exit 1
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44163196512 &&
+               "$FORWARD_ONLY_093_TO_097" != true && "$INCIDENT_REPLACEMENT" != true ]] || exit 1
             RELEASE_SHA=0d581001bd294f79a47021c7e30f75a1bf291d2a
             release_mode=pinned-no-backup-093
           fi
@@ -100,5 +131,98 @@ jobs:
                "$INCIDENT_REPLACEMENT" != true && "$POSTGRES19_MAINTENANCE" != true ]] || exit 1
             release_mode=postgres19-maintenance-retry
           fi
-          printf '%s\n' "$GH_TOKEN" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" |
-            sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2 "$release_mode"
+
+          printf 'release_mode=%s\nci_run_id=%s\nrelease_sha=%s\n' \
+            "$release_mode" "$CI_RUN_ID" "$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned cloudflared and prepare pinned SSH identity
+        env:
+          HOSTINGER_DEPLOY_SSH_HOST: ${{ vars.HOSTINGER_DEPLOY_SSH_HOST }}
+          HOSTINGER_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.HOSTINGER_DEPLOY_SSH_KNOWN_HOSTS }}
+          HOSTINGER_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.HOSTINGER_DEPLOY_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${HOSTINGER_DEPLOY_SSH_HOST:?Configure the Production variable HOSTINGER_DEPLOY_SSH_HOST.}"
+          : "${HOSTINGER_DEPLOY_SSH_KNOWN_HOSTS:?Configure the pinned Production secret HOSTINGER_DEPLOY_SSH_KNOWN_HOSTS.}"
+          : "${HOSTINGER_DEPLOY_SSH_PRIVATE_KEY:?Configure the restricted Production secret HOSTINGER_DEPLOY_SSH_PRIVATE_KEY.}"
+          [[ "$HOSTINGER_DEPLOY_SSH_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$HOSTINGER_DEPLOY_SSH_HOST" == *.* ]] || {
+            echo "::error::The deployment Access hostname is invalid."
+            exit 1
+          }
+
+          cloudflared_version=2026.10.7
+          cloudflared_sha256=1f99fb518b83dec2ba8d870a7cc991d82a77e6196295a3d2754ba17ab9f91872
+          cloudflared_path="$RUNNER_TEMP/cloudflared"
+          curl --fail --silent --show-error --location --retry 2 \
+            "https://github.com/cloudflare/cloudflared/releases/download/${cloudflared_version}/cloudflared-linux-amd64" \
+            --output "$cloudflared_path"
+          printf '%s  %s\n' "$cloudflared_sha256" "$cloudflared_path" | sha256sum --check --status
+          chmod 0755 "$cloudflared_path"
+          "$cloudflared_path" version | grep -Fq "$cloudflared_version" || {
+            echo "::error::The pinned cloudflared binary reported an unexpected version."
+            exit 1
+          }
+
+          umask 077
+          key_path="$RUNNER_TEMP/garrison-deploy-key"
+          known_hosts_path="$RUNNER_TEMP/garrison-known-hosts"
+          config_path="$RUNNER_TEMP/garrison-ssh-config"
+          printf '%s\n' "$HOSTINGER_DEPLOY_SSH_PRIVATE_KEY" > "$key_path"
+          printf '%s\n' "$HOSTINGER_DEPLOY_SSH_KNOWN_HOSTS" > "$known_hosts_path"
+          chmod 0600 "$key_path" "$known_hosts_path"
+          ssh-keygen -y -P '' -f "$key_path" >/dev/null
+          ssh-keygen -F "$HOSTINGER_DEPLOY_SSH_HOST" -f "$known_hosts_path" >/dev/null || {
+            echo "::error::The pinned known-hosts data does not include the configured Access hostname."
+            exit 1
+          }
+          cat > "$config_path" <<EOF
+          Host garrison-deploy
+            HostName $HOSTINGER_DEPLOY_SSH_HOST
+            User garrison-gh-deploy
+            Port 22
+            IdentityFile $key_path
+            IdentitiesOnly yes
+            BatchMode yes
+            RequestTTY no
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $known_hosts_path
+            GlobalKnownHostsFile /dev/null
+            ConnectTimeout 15
+            ServerAliveInterval 15
+            ServerAliveCountMax 3
+            ProxyCommand $cloudflared_path access ssh --hostname %h
+          EOF
+          chmod 0600 "$config_path"
+          echo "SSH_CONFIG=$config_path" >> "$GITHUB_ENV"
+
+      - name: Verify restricted deployment transport only
+        if: steps.candidate.outputs.release_mode == 'transport-check'
+        env:
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CLOUDFLARE_DEPLOY_SERVICE_TOKEN_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_DEPLOY_SERVICE_TOKEN_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${TUNNEL_SERVICE_TOKEN_ID:?Configure the Production secret CLOUDFLARE_DEPLOY_SERVICE_TOKEN_ID.}"
+          : "${TUNNEL_SERVICE_TOKEN_SECRET:?Configure the Production secret CLOUDFLARE_DEPLOY_SERVICE_TOKEN_SECRET.}"
+          ssh -n -F "$SSH_CONFIG" garrison-deploy probe
+
+      - name: Invoke the root-controlled release entrypoint
+        if: steps.candidate.outputs.release_mode != 'transport-check'
+        env:
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CLOUDFLARE_DEPLOY_SERVICE_TOKEN_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CLOUDFLARE_DEPLOY_SERVICE_TOKEN_SECRET }}
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ steps.candidate.outputs.ci_run_id }}
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          RELEASE_MODE: ${{ steps.candidate.outputs.release_mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${TUNNEL_SERVICE_TOKEN_ID:?Configure the Production secret CLOUDFLARE_DEPLOY_SERVICE_TOKEN_ID.}"
+          : "${TUNNEL_SERVICE_TOKEN_SECRET:?Configure the Production secret CLOUDFLARE_DEPLOY_SERVICE_TOKEN_SECRET.}"
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ && "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || exit 1
+          printf '%s\n' "$GH_TOKEN" |
+            ssh -F "$SSH_CONFIG" garrison-deploy \
+              "release $CI_RUN_ID $RELEASE_SHA $GITHUB_RUN_ID $GITHUB_RUN_ATTEMPT $RELEASE_MODE"
