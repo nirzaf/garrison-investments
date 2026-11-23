@@ -7,10 +7,11 @@ from typing import Any
 from uuid import UUID
 
 import bcrypt
+import jwt
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jose import JWTError, jwt
+from jwt.exceptions import InvalidTokenError
 
 from app.config import Settings, get_settings
 from app.utils.exceptions import AppException, ErrorDetail
@@ -169,8 +170,13 @@ def create_access_token(
 def decode_access_token(token: str, *, token_type: str = "access") -> dict[str, Any]:
     settings = get_settings()
     try:
-        payload = jwt.decode(token, _jwt_public_key(), algorithms=[settings.jwt_algorithm])
-    except JWTError as exc:
+        payload = jwt.decode(
+            token,
+            _jwt_public_key(),
+            algorithms=[settings.jwt_algorithm],
+            options={"require": ["exp", "sub"]},
+        )
+    except InvalidTokenError as exc:
         raise AppException(
             "Invalid or expired session.",
             status_code=401,

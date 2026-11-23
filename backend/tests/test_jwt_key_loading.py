@@ -1,16 +1,22 @@
 """JWT key loading for configured and disposable runtimes."""
 
+from datetime import timedelta
 from pathlib import Path
+from secrets import token_bytes
 from uuid import uuid4
 
+import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from pydantic import ValidationError
 
 from app.config import Settings
+from app.utils.exceptions import AppException
 from app.utils.security import (
     create_access_token,
     decode_access_token,
+    utc_now,
     validate_signing_keys,
 )
 
@@ -122,6 +128,64 @@ def test_hardened_env_with_real_keys_starts_and_signs(
     user_id = uuid4()
     token, _ = create_access_token(user_id, "managing_director")
     assert decode_access_token(token)["sub"] == str(user_id)
+
+
+@pytest.mark.parametrize("algorithm", ["HS256", "none"])
+def test_jwt_config_rejects_non_rsa_algorithms(
+    monkeypatch: pytest.MonkeyPatch, algorithm: str
+) -> None:
+    monkeypatch.setenv("JWT_ALGORITHM", algorithm)
+    with pytest.raises(ValidationError, match="jwt_algorithm"):
+        Settings()
+
+
+@pytest.mark.parametrize("algorithm", ["RS256", "RS384", "RS512"])
+def test_jwt_uses_the_configured_rsa_algorithm(
+    monkeypatch: pytest.MonkeyPatch, algorithm: str
+) -> None:
+    monkeypatch.setenv("JWT_ALGORITHM", algorithm)
+    use_settings(monkeypatch, Settings(app_env="test"))
+    user_id = uuid4()
+    token, _ = create_access_token(user_id, "operations_director")
+
+    assert jwt.get_unverified_header(token)["alg"] == algorithm
+    assert decode_access_token(token)["sub"] == str(user_id)
+
+
+@pytest.mark.parametrize("case", ["hmac", "wrong_rsa_algorithm", "expired", "missing_expiration"])
+def test_configured_rsa_verifier_rejects_invalid_tokens(
+    monkeypatch: pytest.MonkeyPatch, key_pair: tuple[Path, Path], case: str
+) -> None:
+    private_path, public_path = key_pair
+    use_settings(
+        monkeypatch,
+        Settings(
+            app_env="production",
+            jwt_algorithm="RS256",
+            jwt_private_key_path=str(private_path),
+            jwt_public_key_path=str(public_path),
+        ),
+    )
+    claims: dict[str, object] = {
+        "sub": str(uuid4()),
+        "type": "access",
+        "exp": utc_now() + timedelta(minutes=5),
+    }
+    algorithm = "RS256"
+    key = private_path.read_bytes()
+    if case == "hmac":
+        algorithm, key = "HS256", token_bytes(32)
+    elif case == "wrong_rsa_algorithm":
+        algorithm = "RS512"
+    elif case == "expired":
+        claims["exp"] = utc_now() - timedelta(minutes=5)
+    elif case == "missing_expiration":
+        del claims["exp"]
+
+    with pytest.raises(AppException) as exc:
+        decode_access_token(jwt.encode(claims, key, algorithm=algorithm))
+    assert exc.value.status_code == 401
+    assert exc.value.error_code == "INVALID_TOKEN"
 
 
 @pytest.mark.parametrize("app_env", ["development", "test", "local"])

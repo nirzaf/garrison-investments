@@ -86,7 +86,7 @@ class Settings(BaseSettings, BusinessPolicy):
     audit_retention_policy_sha256: str | None = None
     log_stream_poll_seconds: float = 1.0
 
-    jwt_algorithm: str = "RS256"
+    jwt_algorithm: Literal["RS256", "RS384", "RS512"] = "RS256"
     jwt_private_key_path: str | None = None
     jwt_public_key_path: str | None = None
     access_token_expire_minutes: int = 15
