@@ -1028,6 +1028,17 @@ For an authorized rollback after a successful release, apply the same generation
 
 Use sample data only in a safe test environment. Follow the [seed setup](../README.md#getting-started) and the [roles and permissions reference](ROLES_AND_PERMISSIONS.md). Run desktop Chrome checks for the changed workflow, including relevant offline retries, file selection/downloads, or degraded-network behavior. Broader device and business UAT are useful beta feedback but are not universal release blockers. Record the browser version, role, scenario, result, and accepted issue when a focused check is run.
 
+### Verify People & Access
+
+The restricted Super Admin host serves both the cockpit at `/` and the
+previous People & Access bookmark at `/people`. Migration
+[100](../backend/alembic/versions/202605310100_single_owner_directory_grant.py)
+adds and audits the existing directory read grant for an eligible single owner
+and revokes older technical sessions if a grant was added. Verify HTTPS and
+unauthenticated API denial, then sign in again as the enrolled owner and
+check that the directory loads. Preserve the audit record and schema revision
+if rolling back application images.
+
 ### Verify the feedback release
 
 Feedback adds [Alembic revision 099](../backend/alembic/versions/202605310099_user_feedback.py)

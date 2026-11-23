@@ -40,6 +40,16 @@ write authority. Browser sessions use a host-only cookie and a separate
 server-side session. The [activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
 describes operator enrollment, ingress, oversight bounds, and production verification.
 
+## Super Admin People & Access
+
+Single-owner activation includes the existing `company.directory.read` grant.
+Revision `202605310100` adds it to an already activated, active single owner
+with `operator.manage` when missing, records the grant in the audit log, and
+revokes that operator's older technical sessions. Sign in again to open
+People & Access. Paired operators still receive this grant through the
+existing custody workflow. Account changes, session actions, and project
+assignments require their own capabilities.
+
 ## Feedback access
 
 All authenticated business roles can submit feedback from the portal header.

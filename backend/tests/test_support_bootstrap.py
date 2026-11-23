@@ -327,7 +327,7 @@ async def test_single_owner_issue_is_serialized(monkeypatch: pytest.MonkeyPatch)
                 assert activated == (device == 2)
             await session.flush()
             assert set(await session.scalars(select(SupportOperatorGrant.capability))) == set(
-                ALL_SUPPORT_CAPABILITIES
+                (*ALL_SUPPORT_CAPABILITIES, "company.directory.read")
             )
             with pytest.raises(ValueError, match="already exists"):
                 await issue_first_custodian_invitations(

@@ -30,6 +30,8 @@ def test_production_nginx_uses_patched_digest_pinned_stable_image() -> None:
     support = (ROOT / "nginx" / "support.prod.conf").read_text()
     assert "include /etc/nginx/ssl/support-allowlist.conf;" in support
     assert "    deny all;" in support
+    assert "location = /people { try_files /index.html =404; }" in support
+    assert "location / { return 404; }" in support
 
 
 def test_observability_images_are_digest_pinned_and_ports_are_private() -> None:

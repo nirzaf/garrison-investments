@@ -144,9 +144,10 @@ print(json.dumps(asyncio.run(seed())))
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
   await expect(page.getByText('Technical session active')).toBeVisible();
 
-  // Navigate to People & Access without typing any UUID
+  // The previous People & Access bookmark opens the real directory with a technical session.
   const nav = page.getByRole('navigation', { name: 'Company control centre navigation' });
-  await nav.getByRole('button', { name: 'People & Access' }).click();
+  await page.goto(supportOrigin + '/people');
+  await expect(nav.getByRole('button', { name: 'People & Access' })).toHaveAttribute('aria-current', 'page');
   const directory = page.getByRole('region', { name: 'People and access directory' });
   await directory.getByLabel('Search accounts').fill(fixture.userName);
   await directory.getByRole('button', { name: 'Search directory' }).click();

@@ -19,6 +19,7 @@ from app.services.support_identity import _digest
 from app.utils.security import utc_now
 
 BOOTSTRAP_ID = 1
+SINGLE_OWNER_BOOTSTRAP_CAPABILITIES = (*ALL_SUPPORT_CAPABILITIES, "company.directory.read")
 _DEVICES_PER_CUSTODIAN = 2
 
 
@@ -145,7 +146,7 @@ async def finish_first_custodian_registration(
             raise ValueError("The approved custodian registry changed.")
         operator.status = "active"
         capabilities = (
-            ALL_SUPPORT_CAPABILITIES
+            SINGLE_OWNER_BOOTSTRAP_CAPABILITIES
             if entry.custody_mode == "single_owner"
             else ("operator.manage",)
         )
