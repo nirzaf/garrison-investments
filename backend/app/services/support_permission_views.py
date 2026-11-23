@@ -14,6 +14,7 @@ from app.models.support_identity import SupportOperator, SupportSession
 from app.models.support_permission_view import SupportPermissionView, SupportPermissionViewEvent
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.audit_service import AuditService
 from app.services.support_custody import _CUSTODY_LOCK
 from app.services.support_identity import SupportIdentity, _digest, support_session_deadline
 from app.services.support_project_projection import (
@@ -21,11 +22,13 @@ from app.services.support_project_projection import (
     MaskedProjectDetail,
     MaskedProjects,
     masked_projects,
+    portal_preview_projects,
 )
 from app.services.support_request_projection import RequestSummary, read_linked_request_summary
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     ALL_PERMISSIONS,
+    BUSINESS_ROLE_LABELS,
     BUSINESS_ROLES,
     HR_PERMISSIONS,
     permissions_for_role,
@@ -91,6 +94,20 @@ class SupportProjectDetail(SupportProjectView):
     project: MaskedProjectDetail
 
 
+PortalPreviewPage = Literal["home", "projects", "project"]
+
+
+class SupportPortalPreview(BaseModel):
+    view_id: UUID
+    subject_name: str
+    role_label: str
+    case_reference: str
+    expires_at: datetime
+    routes: list[str]
+    projects: list[MaskedProject]
+    project: MaskedProjectDetail | None = None
+
+
 class SupportPermissionViews:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -127,10 +144,18 @@ class SupportPermissionViews:
         self, token: str | None, view_id: UUID, kind: str
     ) -> tuple[SupportOperator, SupportSession, SupportBusinessAction, SupportPermissionView, str]:
         operator, active, action, view = await self._load(token, view_id)
+        if kind == "portal_preview" and active.auth_method != "passkey":
+            raise AppException(
+                "A passkey-authenticated technical session is required.", status_code=403
+            )
         case = await self.session.get(SupportCase, action.case_id, with_for_update=True)
         subject = await self.session.get(SupportCaseSubject, action.case_id)
         if (
             action.kind != kind
+            or (
+                kind == "portal_preview"
+                and (action.permission_session_id != active.id or action.applied_at is None)
+            )
             or operator.grant_epoch != action.requester_epoch
             or await self.session.get(SupportOperatorGrant, (operator.id, _CAPABILITY)) is None
             or case is None
@@ -338,10 +363,103 @@ class SupportPermissionViews:
         await self._record_read(operator, active, view, request_id)
         return result
 
-    async def end(
-        self, token: str | None, csrf: str | None, view_id: UUID, request_id: str
+    async def read_portal_preview(
+        self, token: str | None, view_id: UUID, request_id: str, page: PortalPreviewPage,
+        project_label: str | None = None,
+    ) -> SupportPortalPreview:
+        try:
+            operator, active, action, view, role = await self._authorize_read(
+                token, view_id, "portal_preview"
+            )
+        except AppException as exc:
+            await self.record_portal_preview_denial(token, view_id, request_id, page, exc)
+            raise
+        projects = await portal_preview_projects(
+            self.session, action.case_id, action.user_id, role
+        )
+        if projects.scope_digest != action.project_scope_digest:
+            await self._preview_audit(operator, action, page, "scope_changed", request_id)
+            await self._end_view(operator, view, request_id)
+            raise NotFoundException("Support preview")
+
+        navigation = navigation_visibility(role)
+        detail: MaskedProjectDetail | None = None
+        try:
+            if page in {"projects", "project"} and not navigation.get("projects"):
+                raise NotFoundException("Support project")
+            if page == "project":
+                if project_label is None:
+                    raise NotFoundException("Support project")
+                projected = await masked_projects(
+                    self.session, action.case_id, action.user_id, role, project_label=project_label
+                )
+                assert isinstance(projected, MaskedProjectDetail)
+                detail = projected
+        except NotFoundException:
+            await self._preview_audit(operator, action, page, "denied", request_id)
+            await self.session.commit()
+            raise
+
+        subject = await self.session.get(User, action.user_id)
+        case = await self.session.get(SupportCase, action.case_id)
+        assert subject is not None and case is not None
+        result = SupportPortalPreview(
+            view_id=view.id,
+            subject_name=subject.full_name,
+            role_label=BUSINESS_ROLE_LABELS[role],
+            case_reference=case.external_ref or str(case.id),
+            expires_at=min(view.expires_at, active.expires_at, utc_now() + _IDLE),
+            routes=[route for route, visible in navigation.items() if visible],
+            projects=projects.projects if page == "projects" else [],
+            project=detail,
+        )
+        await self._preview_audit(operator, action, page, "returned", request_id)
+        await self._record_read(operator, active, view, request_id)
+        return result
+
+    async def record_portal_preview_denial(
+        self, token: str | None, view_id: UUID, request_id: str, page: str, error: AppException,
     ) -> None:
-        operator, active, _, view = await self._load(token, view_id)
+        # Only attribute a denial to an authenticated operator's own reviewed preview.
+        try:
+            operator, _, action, view = await self._load(token, view_id)
+        except AppException:
+            return
+        if action.kind != "portal_preview":
+            return
+        outcome = (
+            "expired" if error.error_code == "SUPPORT_VIEW_EXPIRED" else
+            "invalidated" if error.status_code == 404 else
+            "denied"
+        )
+        await self._preview_audit(operator, action, page, outcome, request_id)
+        if outcome in {"expired", "invalidated"}:
+            await self._end_view(operator, view, request_id)
+        else:
+            await self.session.commit()
+
+    async def _preview_audit(
+        self, operator: SupportOperator, action: SupportBusinessAction, page: str, outcome: str,
+        request_id: str,
+    ) -> None:
+        await AuditService(self.session).record(
+            action="support.portal_preview",
+            entity_type="support_business_action",
+            entity_id=action.id,
+            request_id=request_id,
+            context_payload={
+                "operator_id": str(operator.id), "case_id": str(action.case_id),
+                "subject_id": str(action.user_id), "page": page, "outcome": outcome,
+            },
+        )
+
+    async def end(
+        self, token: str | None, csrf: str | None, view_id: UUID, request_id: str,
+        *, expected_kind: str | None = None,
+    ) -> None:
+        operator, active, action, view = await self._load(token, view_id)
+        if expected_kind is not None and action.kind != expected_kind:
+            raise NotFoundException("Support view")
         if not csrf or len(csrf) != 43 or not compare_digest(active.csrf_hash, _digest(csrf)):
             raise AppException("The support request could not be verified.", status_code=403)
         await self._end_view(operator, view, request_id)

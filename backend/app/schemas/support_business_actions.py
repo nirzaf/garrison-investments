@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 BusinessActionKind = Literal[
     "revoke_sessions", "unlock", "disable", "reactivate", "permission_view", "recover",
-    "request_summary", "navigation_view", "project_list", "project_detail",
+    "request_summary", "navigation_view", "project_list", "project_detail", "portal_preview",
 ]
 BusinessActionStage = Literal["review", "execute"]
 ActionDigest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]

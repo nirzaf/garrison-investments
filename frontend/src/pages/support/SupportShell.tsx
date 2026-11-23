@@ -21,6 +21,7 @@ import { SupportLogs } from './SupportLogs';
 import { SupportOverviewPanel } from './SupportOverviewPanel';
 import { SupportOwnerSecurityPanel } from './SupportOwnerSecurityPanel';
 import { SupportPermissionViewPanel } from './SupportPermissionViewPanel';
+import { SupportPortalPreview } from './SupportPortalPreview';
 import { SupportPolicyExplainPanel } from './SupportPolicyExplainPanel';
 import { SupportRecoveryStatusPanel } from './SupportRecoveryStatusPanel';
 import { SupportSafeSettingsPanel } from './SupportSafeSettingsPanel';
@@ -88,6 +89,7 @@ export function SupportShell({
   const initialRoute = parseLocationRoute();
   const [section, setSection] = useState<SupportSectionKey>(initialRoute.section);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(initialRoute.userId);
+  const [portalPreview, setPortalPreview] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState(initialRoute.tool);
   const [context, setContext] = useState<CompanyContext | null>(null);
 
@@ -156,6 +158,17 @@ export function SupportShell({
   }
 
   const caps = session.capabilities;
+
+  if (portalPreview && caps.includes('simulation.start')) {
+    return (
+      <SupportPortalPreview
+        key={portalPreview}
+        viewId={portalPreview}
+        onExit={() => setPortalPreview(null)}
+        onExpired={onExpired}
+      />
+    );
+  }
 
   return (
     <div key={session.operator_id} className="space-y-4">
@@ -236,6 +249,7 @@ export function SupportShell({
           capabilities={caps}
           selectedUserId={selectedUserId}
           onSelectUser={(uid) => navigateTo('people', uid)}
+          onPortalPreview={setPortalPreview}
           onExpired={onExpired}
         />
       )}
@@ -377,6 +391,7 @@ export function SupportShell({
           {(caps.includes('account.request') || caps.includes('simulation.start')) && (
             <SupportBusinessActionReview
               onExpired={onExpired}
+              onPortalPreview={setPortalPreview}
               canRecordContact={
                 caps.includes('operator.manage') && caps.includes('account.request')
               }

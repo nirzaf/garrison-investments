@@ -98,7 +98,7 @@ async def seed():
             id=1, first_id=operator, custody_mode="single_owner",
             approval_digest="e" * 64, started_at=utc_now(), activated_at=utc_now(),
         ))
-        for cap in (*COMPANY_CONTROL_CAPABILITIES, "config.read"):
+        for cap in (*COMPANY_CONTROL_CAPABILITIES, "config.read", "simulation.start", "cases.manage"):
             session.add(SupportOperatorGrant(operator_id=operator, capability=cap))
         session.add(User(
             id=user_id,
@@ -159,6 +159,22 @@ print(json.dumps(asyncio.run(seed())))
   await expect(profile.getByText(fixture.userName)).toBeVisible();
   await expect(profile.getByText('***-5555')).toBeVisible();
   await expect(profile.getByText('0774445555')).toHaveCount(0);
+
+  if (env.SUPPORT_CUSTODY_MODE === 'single_owner') {
+    await profile.getByRole('button', { name: 'View as User', exact: true }).click();
+    const previewRequest = profile.getByRole('region', { name: 'Request read-only portal preview' });
+    await previewRequest.getByLabel('Investigation reason').fill('Inspect the supervisor’s available project navigation.');
+    await previewRequest.getByRole('button', { name: 'Request reviewed preview' }).click();
+    await expect(previewRequest.getByRole('status')).toContainText('Awaiting your passkey confirmation');
+    await previewRequest.getByRole('button', { name: 'Load account action' }).click();
+    await previewRequest.getByRole('button', { name: 'Execute account action with passkey' }).click();
+    const banner = page.getByRole('banner', { name: 'Read-only support session' });
+    await expect(banner).toContainText(fixture.userName);
+    await page.getByRole('navigation', { name: 'Preview navigation' }).getByRole('button', { name: 'Projects' }).click();
+    await expect(page.getByText(/No projects match the account/)).toBeVisible();
+    await banner.getByRole('button', { name: 'Exit User View' }).click();
+    await expect(profile.getByText(fixture.userName)).toBeVisible();
+  }
 
   // Switch to Access tab and confirm effective access explanations
   await profile.getByRole('tab', { name: 'Access' }).click();

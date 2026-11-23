@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { components } from '../../api/schema';
 import { supportPost, supportRequest } from '../../api/support';
+import { SupportPortalPreviewRequest } from './SupportPortalPreviewRequest';
 import { SupportAdminActionDialog } from './SupportAdminActionDialog';
 import { buttonClass, formatObserved, panelCardClass } from './supportPanelUtils';
 
@@ -15,13 +16,20 @@ type TabKey = 'overview' | 'access' | 'sessions' | 'security' | 'activity' | 'su
 
 export function SupportUserDetailPage({
   userId,
+  canPreview,
+  canLinkCase,
+  onPortalPreview,
   onBack,
   onExpired
 }: {
   userId: string;
+  canPreview: boolean;
+  canLinkCase: boolean;
+  onPortalPreview?: (viewId: string) => void;
   onBack: () => void;
   onExpired: () => void;
 }) {
+  const [requestingPreview, setRequestingPreview] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [access, setAccess] = useState<AccessRead | null>(null);
@@ -231,6 +239,27 @@ export function SupportUserDetailPage({
                 </span>
               </div>
             </div>
+
+            {canPreview && profile.is_active && onPortalPreview && (
+              <div className="space-y-3">
+                <button
+                  className={buttonClass}
+                  type="button"
+                  aria-expanded={requestingPreview}
+                  onClick={() => setRequestingPreview((current) => !current)}
+                >
+                  View as User
+                </button>
+                {requestingPreview && (
+                  <SupportPortalPreviewRequest
+                    profile={profile}
+                    canLinkCase={canLinkCase}
+                    onExpired={onExpired}
+                    onPortalPreview={onPortalPreview}
+                  />
+                )}
+              </div>
+            )}
 
             <nav
               aria-label="User 360 tabs"

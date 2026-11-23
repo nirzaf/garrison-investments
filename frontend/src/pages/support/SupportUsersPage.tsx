@@ -26,11 +26,13 @@ export function SupportUsersPage({
   capabilities,
   selectedUserId,
   onSelectUser,
+  onPortalPreview,
   onExpired
 }: {
   capabilities: string[];
   selectedUserId: string | null;
   onSelectUser: (userId: string | null) => void;
+  onPortalPreview?: (viewId: string) => void;
   onExpired: () => void;
 }) {
   const canReadDirectory = capabilities.includes('company.directory.read');
@@ -126,7 +128,11 @@ export function SupportUsersPage({
   if (selectedUserId) {
     return (
       <SupportUserDetailPage
+        key={selectedUserId}
         userId={selectedUserId}
+        canPreview={capabilities.includes('simulation.start')}
+        canLinkCase={capabilities.includes('cases.manage')}
+        onPortalPreview={onPortalPreview}
         onBack={() => onSelectUser(null)}
         onExpired={onExpired}
       />

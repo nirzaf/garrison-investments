@@ -56,6 +56,7 @@ async def masked_projects(
     role: str,
     *,
     project_id: UUID | None = None,
+    project_label: str | None = None,
 ) -> MaskedProjects | MaskedProjectDetail:
     if PERMISSION_PROJECTS_READ not in permissions_for_role(role):
         raise NotFoundException("Support project")
@@ -71,6 +72,10 @@ async def masked_projects(
             start=1,
         )
     }
+    if project_label is not None:
+        project_id = next((key for key, label in approved.items() if label == project_label), None)
+        if project_id is None:
+            raise NotFoundException("Support project")
     if project_id is not None and project_id not in approved:
         raise NotFoundException("Support project")
 
@@ -112,3 +117,13 @@ async def masked_projects(
 
 def _safe_status(status: str) -> str:
     return status if status in PROJECT_STATUSES else "unknown"
+
+
+async def portal_preview_projects(
+    session: AsyncSession, case_id: UUID, user_id: UUID, role: str
+) -> MaskedProjects:
+    if PERMISSION_PROJECTS_READ not in permissions_for_role(role):
+        return MaskedProjects(projects=[], scope_digest=sha256(b"").hexdigest())
+    result = await masked_projects(session, case_id, user_id, role)
+    assert isinstance(result, MaskedProjects)
+    return result

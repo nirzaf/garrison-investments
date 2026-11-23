@@ -133,9 +133,11 @@ from app.services.support_overview import (
     read_workforce_overview,
 )
 from app.services.support_permission_views import (
+    PortalPreviewPage,
     SupportNavigationProjection,
     SupportPermissionExplanation,
     SupportPermissionViews,
+    SupportPortalPreview,
     SupportProjectDetail,
     SupportProjectList,
     SupportRequestSummary,
@@ -1262,6 +1264,47 @@ async def support_project_detail(
     return await SupportPermissionViews(session).read_project_detail(
         request.cookies.get(SESSION_COOKIE), view_id, request.state.request_id
     )
+
+
+@router.get("/portal-preview/{view_id}", response_model=SupportPortalPreview)
+async def read_portal_preview(
+    view_id: UUID,
+    request: Request,
+    session: DbSession,
+    page: PortalPreviewPage = "home",
+    project: Annotated[str | None, Query(pattern=r"^Project [0-9]{2}$")] = None,
+) -> SupportPortalPreview:
+    return await SupportPermissionViews(session).read_portal_preview(
+        request.cookies.get(SESSION_COOKIE), view_id, request.state.request_id, page, project
+    )
+
+
+@router.api_route(
+    "/portal-preview/{view_id}", methods=["POST", "PUT", "PATCH", "DELETE"],
+    include_in_schema=False,
+)
+async def refuse_portal_preview_mutation(
+    view_id: UUID, request: Request, session: DbSession,
+) -> Response:
+    error = AppException(
+        "Portal previews are read-only.", status_code=403, error_code="SUPPORT_PREVIEW_READ_ONLY"
+    )
+    await SupportPermissionViews(session).record_portal_preview_denial(
+        request.cookies.get(SESSION_COOKIE), view_id, request.state.request_id, "mutation", error
+    )
+    raise error
+
+
+@router.post("/portal-preview/{view_id}/end", status_code=204, response_class=Response)
+async def end_portal_preview(view_id: UUID, request: Request, session: DbSession) -> Response:
+    await SupportPermissionViews(session).end(
+        request.cookies.get(SESSION_COOKIE),
+        request.headers.get("x-support-csrf"),
+        view_id,
+        request.state.request_id,
+        expected_kind="portal_preview",
+    )
+    return Response(status_code=204)
 
 
 @router.post("/views/{view_id}/end", status_code=204, response_class=Response)

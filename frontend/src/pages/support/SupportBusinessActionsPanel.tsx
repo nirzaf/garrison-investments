@@ -19,10 +19,11 @@ const actions: Record<Request['kind'], string> = {
   navigation_view: 'Inspect portal navigation',
   project_list: 'Inspect masked project list',
   project_detail: 'Inspect masked project detail',
+  portal_preview: 'View as User (read-only)',
   request_summary: 'Summarize a linked request'
 };
 const viewKinds = new Set<Request['kind']>([
-  'permission_view', 'navigation_view', 'request_summary', 'project_list', 'project_detail'
+  'permission_view', 'navigation_view', 'request_summary', 'project_list', 'project_detail', 'portal_preview'
 ]);
 const uuidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
@@ -134,8 +135,13 @@ export function SupportBusinessActionRequest({ account, onExpired, canChangeAcco
   );
 }
 
-export function SupportBusinessActionReview({ onExpired, canRecordContact }: {
-  onExpired: () => void; canRecordContact: boolean;
+export function SupportBusinessActionReview({
+  onExpired, canRecordContact, portalRequest, onPortalPreview
+}: {
+  onExpired: () => void;
+  canRecordContact: boolean;
+  portalRequest?: { caseId: string; actionId: string };
+  onPortalPreview?: (viewId: string) => void;
 }) {
   const [preview, setPreview] = useState<{ path: string; stage: Stage; proof: Proof } | null>(null);
   const [error, setError] = useState('');
@@ -159,7 +165,14 @@ export function SupportBusinessActionReview({ onExpired, canRecordContact }: {
       const response = await supportPost(path + '/options', contactRef ? { contact_ref: contactRef } : {});
       if (response.status === 401) onExpired();
       else if (!response.ok) setError(actionError(response.status));
-      else setPreview({ path, stage, proof: await response.json() as Proof });
+      else {
+        const proof = await response.json() as Proof;
+        if (portalRequest && proof.proposal.kind !== 'portal_preview') {
+          setError('This authorization does not cover a portal preview.');
+        } else {
+          setPreview({ path, stage, proof });
+        }
+      }
     } catch {
       setError('The account action could not be prepared.');
     } finally {
@@ -181,7 +194,10 @@ export function SupportBusinessActionReview({ onExpired, canRecordContact }: {
       if (response.status === 401) onExpired();
       else if (!response.ok) setError(actionError(response.status));
       else if (preview.stage === 'review') setResult('Independent account review recorded.');
-      else if (preview.proof.proposal.kind === 'recover') setResult('Recovery queued. Delivery is pending.');
+      else if (preview.proof.proposal.kind === 'portal_preview') {
+        onPortalPreview?.(preview.proof.proposal.id);
+        setResult('Portal preview authorized.');
+      } else if (preview.proof.proposal.kind === 'recover') setResult('Recovery queued. Delivery is pending.');
       else setResult('Account action applied.');
     } catch {
       setError('The account action could not be confirmed. Prepare a fresh proof.');
@@ -196,16 +212,16 @@ export function SupportBusinessActionReview({ onExpired, canRecordContact }: {
       <form className="space-y-2" onSubmit={(event) => void prepare(event)} onChange={() => setPreview(null)}>
         <label className="block">
           Case ID for account action
-          <input name="business_case_id" required maxLength={36} className="block w-full rounded border p-2" />
+          <input name="business_case_id" readOnly={Boolean(portalRequest)} defaultValue={portalRequest?.caseId} required maxLength={36} className="block w-full rounded border p-2" />
         </label>
         <label className="block">
           Account action reference
-          <input name="business_action_id" required maxLength={36} className="block w-full rounded border p-2" />
+          <input name="business_action_id" readOnly={Boolean(portalRequest)} defaultValue={portalRequest?.actionId} required maxLength={36} className="block w-full rounded border p-2" />
         </label>
         <label className="block">
           Account action stage
           <select name="business_stage" className="block rounded border p-2">
-            <option value="review">Independently review</option>
+            {!portalRequest && <option value="review">Independently review</option>}
             <option value="execute">Execute approved or owner-authorized action</option>
           </select>
         </label>

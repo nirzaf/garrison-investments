@@ -1039,6 +1039,17 @@ unauthenticated API denial, then sign in again as the enrolled owner and
 check that the directory loads. Preserve the audit record and schema revision
 if rolling back application images.
 
+### Verify View as User
+
+Revision [101](../backend/alembic/versions/202605310101_support_portal_preview.py)
+allows the reviewed `portal_preview` action in the existing constraint.
+It adds no credentials or business sessions. On an authorized release,
+rehearse the case-to-passkey flow on the supported custody mode, verify
+case-scoped project masking and server-side mutation denial, and confirm
+that exiting preserves the underlying technical session. Retain the schema
+revision and audited preview records on application rollback. See
+[View as User](LOGGING_AND_REMOTE_CLI.md#view-as-user).
+
 ### Verify the feedback release
 
 Feedback adds [Alembic revision 099](../backend/alembic/versions/202605310099_user_feedback.py)
@@ -1301,7 +1312,7 @@ checks and confirmation steps as their workspaces.
 | `health.read` | Check fixed dependency health, with timestamp and bounded status. | PostgreSQL, Redis and object-bucket checks verified. No mail message or host command is issued. |
 | `directory.read` | Inspect masked identity, access and authentication history for an approved subject in an assigned case. | Account reference, verified email, employee code, name and role match only the approved subject. The response includes masked identity, permission keys, bounded authentication history and membership IDs for approved case projects. The separate project-list projection requires its own approval. |
 | `account.request` | Request reviewed recovery, unlock, session revocation, disable or reactivation through existing business safeguards. Protected subjects require two independent reviews and a verified offline owner-contact receipt. | Reviewed recovery issuance, queued delivery, status, reset confirmation, session revocation, unlock, disable and reactivation are implemented locally. The separately approved owner-notification channel and production delivery evidence remain open. |
-| `simulation.start` | Start a short-lived, read-only, consented or independently approved support projection with explicit case, subject, adapter and project limits. | The five independently reviewed adapters are implemented locally: role permission, navigation, request summary, project list and project detail. |
+| `simulation.start` | Start a short-lived, read-only, consented or independently approved support projection with explicit case, subject, adapter and project limits. | The five focused adapters are available: role permission, navigation, request summary, project list and project detail. |
 | `logs.audit`, `logs.stream`, `logs.export` | Inspect approved audit evidence, follow bounded redacted streams, or export a reviewed immutable result. Export requires independent approval. | Assigned-case audit reads, request streaming and reviewed export are implemented locally. Streaming and export each require `logs.runtime` and their own grant. |
 | `overview.company.read`, `overview.workforce.read`, `overview.suppliers.read`, `overview.documents.read`, `overview.finance.read`, `overview.approvals.read` | Inspect company-wide bounded operational status without PII, individual salaries/cases, invoice IDs/amounts, or write access. | Implemented locally as fixed read-only projections. `overview.workforce.read` enforces small-cell suppression (threshold 5 with single-complement total suppression) and omits compensation, medical, disciplinary and payroll tables; `overview.finance.read` returns workflow state counts and `finance_writes_policy` (`blocked`) only. |
 | `overview.projects.read`, `overview.inventory.read` | Inspect bounded project and inventory health, constrained to explicitly reviewed case project scope when scoped by case or project. | Implemented locally. Intersects requested case/project boundaries with `support_case_projects`, returning progress bands, item/request counts and zero supplier/invoice figures. |

@@ -50,6 +50,18 @@ People & Access. Paired operators still receive this grant through the
 existing custody workflow. Account changes, session actions, and project
 assignments require their own capabilities.
 
+## View as User
+
+People & Access offers **View as User** for active accounts to operators with
+`company.directory.read` and `simulation.start`. The reviewed preview requires
+an open or investigating case assigned to the operator and bound to the
+account. Creating a case from the profile also requires `cases.manage`.
+Paired custody requires an independent eligible reviewer. Single-owner
+custody uses the enrolled owner's passkey in the proposing session.
+The preview uses the subject's current business role and the intersection of
+the subject's project access and the reviewed case scope. See [the support
+preview workflow](LOGGING_AND_REMOTE_CLI.md#view-as-user).
+
 ## Feedback access
 
 All authenticated business roles can submit feedback from the portal header.

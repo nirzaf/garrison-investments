@@ -18,14 +18,14 @@ from app.models.support_cases import (
     SupportOperatorGrant,
 )
 from app.models.support_directory import SupportCaseSubject
-from app.models.support_permission_view import SupportPermissionViewEvent
+from app.models.support_permission_view import SupportPermissionView, SupportPermissionViewEvent
 from app.models.user import User
 from app.utils.permissions import (
     ROLE_GROUP_PROJECT_MANAGER,
     ROLE_HR_EXECUTIVE,
     ROLE_MANAGING_DIRECTOR,
 )
-from app.utils.security import utc_now
+from app.utils.security import create_access_token, utc_now
 from tests.test_auth import skip_if_database_unavailable
 from tests.test_support_custody import login
 from tests.test_support_identity import API, client, sign
@@ -262,6 +262,8 @@ async def test_support_view_requires_live_review_and_the_requesters_session(kind
         ("project_list", ROLE_GROUP_PROJECT_MANAGER),
         ("project_list", ROLE_MANAGING_DIRECTOR),
         ("project_detail", ROLE_GROUP_PROJECT_MANAGER),
+        ("portal_preview", ROLE_GROUP_PROJECT_MANAGER),
+        ("portal_preview", ROLE_MANAGING_DIRECTOR),
     ],
 )
 async def test_reviewed_project_projection_intersects_live_scope(kind: str, role: str) -> None:
@@ -272,35 +274,54 @@ async def test_reviewed_project_projection_intersects_live_scope(kind: str, role
         case_id, subject_id = uuid4(), uuid4()
         project_id, hidden_id, outside_id = sorted([uuid4(), uuid4(), uuid4()])
         async with AsyncSessionLocal() as db:
-            db.add_all([
-                User(id=subject_id, full_name="Private person", email=f"{subject_id}@example.com",
-                     role=role, password_hash="synthetic-password-hash"),
-                SupportCase(
-                    id=case_id, owner_id=maker_key[0], external_ref=f"case-{case_id}",
-                    reason_code="access", status="open", severity="medium",
-                ),
-                *[
-                    Project(
-                        id=pid, name="Private project name", code=pid.hex[:12],
-                        scope_of_work="Private scope", target_end_date=date(2030, 1, 1),
-                        status=status,
-                    )
-                    for pid, status in [(project_id, "active"), (hidden_id, "on_hold"),
-                                        (outside_id, "planning")]
-                ],
-            ])
+            db.add_all(
+                [
+                    User(
+                        id=subject_id,
+                        full_name="Private person",
+                        email=f"{subject_id}@example.com",
+                        role=role,
+                        password_hash="synthetic-password-hash",
+                    ),
+                    SupportCase(
+                        id=case_id,
+                        owner_id=maker_key[0],
+                        external_ref=f"case-{case_id}",
+                        reason_code="access",
+                        status="open",
+                        severity="medium",
+                    ),
+                    *[
+                        Project(
+                            id=pid,
+                            name="Private project name",
+                            code=pid.hex[:12],
+                            scope_of_work="Private scope",
+                            target_end_date=date(2030, 1, 1),
+                            status=status,
+                        )
+                        for pid, status in [
+                            (project_id, "active"),
+                            (hidden_id, "on_hold"),
+                            (outside_id, "planning"),
+                        ]
+                    ],
+                ]
+            )
             await db.flush()
-            db.add_all([
-                SupportCaseSubject(case_id=case_id, user_id=subject_id),
-                SupportCaseProject(case_id=case_id, project_id=project_id),
-                SupportCaseProject(case_id=case_id, project_id=hidden_id),
-                ProjectMember(project_id=project_id, user_id=subject_id),
-                ProjectMember(project_id=outside_id, user_id=subject_id),
-                ProjectMilestone(project_id=project_id, name="Private milestone"),
-                ProjectMilestone(project_id=project_id, name="Removed", deleted_at=utc_now()),
-                ProjectMilestone(project_id=outside_id, name="Unrelated milestone"),
-                *[ProjectTask(project_id=project_id, name="Private task") for _ in range(101)],
-            ])
+            db.add_all(
+                [
+                    SupportCaseSubject(case_id=case_id, user_id=subject_id),
+                    SupportCaseProject(case_id=case_id, project_id=project_id),
+                    SupportCaseProject(case_id=case_id, project_id=hidden_id),
+                    ProjectMember(project_id=project_id, user_id=subject_id),
+                    ProjectMember(project_id=outside_id, user_id=subject_id),
+                    ProjectMilestone(project_id=project_id, name="Private milestone"),
+                    ProjectMilestone(project_id=project_id, name="Removed", deleted_at=utc_now()),
+                    ProjectMilestone(project_id=outside_id, name="Unrelated milestone"),
+                    *[ProjectTask(project_id=project_id, name="Private task") for _ in range(101)],
+                ]
+            )
             for operator, _, _ in (maker_key, reviewer_key):
                 db.add(SupportCaseMember(case_id=case_id, operator_id=operator))
                 db.add(SupportOperatorGrant(operator_id=operator, capability="simulation.start"))
@@ -308,13 +329,25 @@ async def test_reviewed_project_projection_intersects_live_scope(kind: str, role
 
         root = f"{API}/cases/{case_id}/account-actions"
         payload = {
-            "kind": kind, "case_revision": 1, "user_revision": 0, "user_id": str(subject_id),
-            "reason": "Review visible project boundaries", "reason_code": "permission_triage",
+            "kind": kind,
+            "case_revision": 1,
+            "user_revision": 0,
+            "user_id": str(subject_id),
+            "reason": "Review visible project boundaries",
+            "reason_code": "permission_triage",
         }
+        if kind == "portal_preview":
+            denied = await maker.post(
+                root,
+                json={**payload, "user_id": str(uuid4())},
+                headers={"Idempotency-Key": str(uuid4())},
+            )
+            assert denied.status_code == 404
         if kind == "project_detail":
             for inaccessible in (hidden_id, outside_id, uuid4()):
                 denied = await maker.post(
-                    root, json={**payload, "project_id": str(inaccessible)},
+                    root,
+                    json={**payload, "project_id": str(inaccessible)},
                     headers={"Idempotency-Key": str(uuid4())},
                 )
                 assert denied.status_code == 404
@@ -324,8 +357,10 @@ async def test_reviewed_project_projection_intersects_live_scope(kind: str, role
         view_id = opened.json()["id"]
         proof_path = f"{root}/{view_id}"
         digest = opened.json()["digest"]
-        for actor, key, stage in [(reviewer, reviewer_key, "review"),
-                                  (maker, maker_key, "execute")]:
+        for actor, key, stage in [
+            (reviewer, reviewer_key, "review"),
+            (maker, maker_key, "execute"),
+        ]:
             options = await actor.post(f"{proof_path}/{stage}/options")
             assert options.status_code == 200, options.text
             confirmed = await actor.post(
@@ -334,46 +369,117 @@ async def test_reviewed_project_projection_intersects_live_scope(kind: str, role
             )
             assert confirmed.status_code == 200, confirmed.text
 
-        projection = f"{API}/views/{view_id}/projection"
-        chosen = "project-detail-summary" if kind == "project_detail" else "project-list"
-        wrong = "project-list" if kind == "project_detail" else "project-detail-summary"
-        assert (await maker.get(f"{projection}/{wrong}")).status_code == 404
-        assert (await reviewer.get(f"{projection}/{chosen}")).status_code == 404
-        response = await maker.get(f"{projection}/{chosen}")
-        assert response.status_code == 200, response.text
-        assert response.headers["cache-control"] == "no-store"
-        for marker in ("Private", str(project_id), str(hidden_id), str(outside_id)):
-            assert marker not in response.text
-        result = response.json()
-        assert result["adapter"] == chosen
-
-        project = {"label": "Project 01", "status": "active"}
-        if kind == "project_detail":
-            assert result["project"] == {
-                **project, "milestones": 1, "tasks": 100, "counts_capped": True,
+        if kind == "portal_preview":
+            preview = f"{API}/portal-preview/{view_id}"
+            chosen_path = f"{preview}?page=projects"
+            assert (await reviewer.get(chosen_path)).status_code == 404
+            token, _ = create_access_token(subject_id, role)
+            async with client() as business:
+                denied = await business.get(
+                    preview, headers={"Authorization": f"Bearer {token}"}
+                )
+                assert denied.status_code == 401
+            home = await maker.get(preview)
+            assert home.status_code == 200, home.text
+            assert home.json()["subject_name"] == "Private person"
+            assert "projects" in home.json()["routes"]
+            assert (await maker.patch(preview, json={"name": "Forbidden"})).status_code == 403
+            absent = await maker.get(preview, params={"page": "project", "project": "Project 03"})
+            assert absent.status_code == 404
+            detail = await maker.get(preview, params={"page": "project", "project": "Project 01"})
+            assert detail.status_code == 200, detail.text
+            assert detail.json()["project"] == {
+                "label": "Project 01",
+                "status": "active",
+                "milestones": 1,
+                "tasks": 100,
+                "counts_capped": True,
             }
-        else:
-            assert result["projects"] == (
-                [project, {"label": "Project 02", "status": "on_hold"}]
-                if role == ROLE_MANAGING_DIRECTOR else [project]
+            result = (await maker.get(chosen_path)).json()
+            assert len(result["projects"]) == (2 if role == ROLE_MANAGING_DIRECTOR else 1)
+            assert all(str(pid) not in str(result) for pid in (project_id, hidden_id, outside_id))
+            assert "Private project name" not in str(result)
+            async with AsyncSessionLocal() as db:
+                audit = list(
+                    await db.scalars(
+                        select(ActivityLog).where(
+                            ActivityLog.action == "support.portal_preview",
+                            ActivityLog.entity_id == UUID(view_id),
+                        )
+                    )
+                )
+            assert audit
+            assert all(
+                row.context_payload
+                and row.context_payload["operator_id"] == str(maker_key[0])
+                and row.context_payload["subject_id"] == str(subject_id)
+                for row in audit
             )
+        else:
+            projection = f"{API}/views/{view_id}/projection"
+            chosen = "project-detail-summary" if kind == "project_detail" else "project-list"
+            wrong = "project-list" if kind == "project_detail" else "project-detail-summary"
+            assert (await maker.get(f"{projection}/{wrong}")).status_code == 404
+            assert (await reviewer.get(f"{projection}/{chosen}")).status_code == 404
+            response = await maker.get(f"{projection}/{chosen}")
+            assert response.status_code == 200, response.text
+            assert response.headers["cache-control"] == "no-store"
+            for marker in ("Private", str(project_id), str(hidden_id), str(outside_id)):
+                assert marker not in response.text
+            result = response.json()
+            assert result["adapter"] == chosen
+
+            project = {"label": "Project 01", "status": "active"}
+            if kind == "project_detail":
+                assert result["project"] == {
+                    **project,
+                    "milestones": 1,
+                    "tasks": 100,
+                    "counts_capped": True,
+                }
+            else:
+                assert result["projects"] == (
+                    [project, {"label": "Project 02", "status": "on_hold"}]
+                    if role == ROLE_MANAGING_DIRECTOR
+                    else [project]
+                )
+
+            chosen_path = f"{projection}/{chosen}"
 
         async with AsyncSessionLocal() as db:
             await db.execute(
-                update(ProjectMember).where(ProjectMember.project_id == project_id)
+                update(ProjectMember)
+                .where(ProjectMember.project_id == project_id)
                 .values(deleted_at=utc_now())
             )
             await db.commit()
-        after_revocation = await maker.get(f"{projection}/{chosen}")
+        after_revocation = await maker.get(chosen_path)
         if role == ROLE_GROUP_PROJECT_MANAGER:
             assert after_revocation.status_code == 404
             async with AsyncSessionLocal() as db:
                 await db.execute(
-                    update(ProjectMember).where(ProjectMember.project_id == project_id)
+                    update(ProjectMember)
+                    .where(ProjectMember.project_id == project_id)
                     .values(deleted_at=None)
                 )
                 await db.commit()
-            assert (await maker.get(f"{projection}/{chosen}")).status_code == 409
+            assert (await maker.get(chosen_path)).status_code == 409
         else:
             assert after_revocation.status_code == 200
             assert after_revocation.json()["projects"] == result["projects"]
+            if kind == "portal_preview":
+                async with AsyncSessionLocal() as db:
+                    await db.execute(
+                        update(SupportPermissionView)
+                        .where(SupportPermissionView.id == UUID(view_id))
+                        .values(last_seen_at=utc_now() - timedelta(minutes=11))
+                    )
+                    await db.commit()
+                assert (await maker.get(chosen_path)).status_code == 409
+                assert (await maker.post(f"{API}/portal-preview/{view_id}/end")).status_code == 204
+                assert (await maker.get(chosen_path)).status_code == 409
+                assert (await maker.get(f"{API}/me")).status_code == 200
+                async with AsyncSessionLocal() as db:
+                    subject = await db.get(User, subject_id)
+                    assert subject is not None and subject.last_login_at is None
+                    assert subject.access_revision == 0

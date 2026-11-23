@@ -66,6 +66,16 @@ The normal API prefix is `/api/v1`. Application and validation errors carry `det
 - Document uploads start a version awaiting approval. Approval locks the parent document, validates and activates the selected version, supersedes the previous active version, and updates the cached document list and detail immediately in the UI. Download link responses set `Cache-Control: no-store` after document scope checks. The library normalizes type filters, shows the matching document total, and provides **Refresh preview** to request a new five-minute link for the version already open and check access again. [Document routes](../backend/app/api/v1/documents.py) · [Document service](../backend/app/services/document_service.py) · [Document library](../frontend/src/pages/documents/DocumentsPage.tsx)
 - Imports validate template rows and show a preview before execution. Background processing locks the existing batch and commits imported rows with the completion marker. Document imports create metadata, including the supplied filename. Use the document upload flow for binaries. [Import templates](import_templates/README.md) · [Import service](../backend/app/services/import_service.py) · [Import tasks](../backend/app/tasks/imports.py)
 
+### Read-only support preview
+
+**View as User** uses the distinct `portal_preview` reviewed case action.
+The passkey-confirmed execution binds an existing support view to the
+technical session, target access revision, case revision and approved
+project scope digest. Its bounded read adapter reuses the effective
+navigation policy and masked project projection. The isolated support UI
+renders these results without a business token, login, offline queue or
+business API client. See [the operator workflow](LOGGING_AND_REMOTE_CLI.md#view-as-user).
+
 ## Implementation map
 
 | Area | API entry | Primary implementation |

@@ -198,6 +198,34 @@ authorized log surface. Keep report text and diagnostics out of public issues.
 Use the report reference to tie the reproducer to the focused regression and
 release verification. Status changes affect only the feedback record.
 
+## View as User
+
+In **People & Access**, open an active user's profile and select **View as
+User**. Choose an assigned case for that subject or open a case with the
+existing case workflow. Give the investigation reason, complete the review
+required by the custody mode, then execute the reviewed action with a
+passkey. To approve a paired-custody request, the independent reviewer uses
+the case and authorization references in **Support & Audit**.
+
+The preview shows effective navigation, masked project status, and bounded
+milestone and task counts for projects approved in the case and visible to
+the selected role. Other pages are listed only when the role can navigate
+to them and their data is labelled unavailable. The dashboard shows
+navigation and access diagnostics. The subject’s full dashboard, forms,
+HR, payroll, finance, private files, credentials, and sessions stay outside
+the preview scope.
+
+The banner identifies the user, role and case and shows the current expiry.
+The preview lives on the technical origin and has a 20-minute absolute cap
+and 10-minute idle limit, subject to the technical session's earlier expiry.
+One reviewed support view can be active per technical session.
+**Exit User View** ends the preview and returns to the operator's workspace.
+The existing support audit links start, read and end events to the reviewed
+action. Preview read and denial audit events record the operator, subject,
+case, route class and outcome. Project scope, case, subject or technical
+grant changes invalidate access. Mutation attempts against the preview
+adapter are rejected by the API.
+
 ## Support request evidence
 
 The draft [request evidence projection](../backend/app/services/support_request_logs.py)

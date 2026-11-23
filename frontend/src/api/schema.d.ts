@@ -6597,6 +6597,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/portal-preview/{view_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Portal Preview */
+        get: operations["read_portal_preview_api_v1_support_portal_preview__view_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/portal-preview/{view_id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End Portal Preview */
+        post: operations["end_portal_preview_api_v1_support_portal_preview__view_id__end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/registration/options": {
         parameters: {
             query?: never;
@@ -8039,7 +8073,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "revoke_sessions" | "unlock" | "disable" | "reactivate" | "permission_view" | "recover" | "request_summary" | "navigation_view" | "project_list" | "project_detail";
+            kind: "revoke_sessions" | "unlock" | "disable" | "reactivate" | "permission_view" | "recover" | "request_summary" | "navigation_view" | "project_list" | "project_detail" | "portal_preview";
             /** Permission Key */
             permission_key?: string | null;
             /** Project Id */
@@ -8121,7 +8155,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "revoke_sessions" | "unlock" | "disable" | "reactivate" | "permission_view" | "recover" | "request_summary" | "navigation_view" | "project_list" | "project_detail";
+            kind: "revoke_sessions" | "unlock" | "disable" | "reactivate" | "permission_view" | "recover" | "request_summary" | "navigation_view" | "project_list" | "project_detail" | "portal_preview";
             /** Permission Key */
             permission_key: string | null;
             /** Project Id */
@@ -18086,6 +18120,30 @@ export interface components {
              * @constant
              */
             source: "permission_matrix";
+        };
+        /** SupportPortalPreview */
+        SupportPortalPreview: {
+            /** Case Reference */
+            case_reference: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            project?: components["schemas"]["MaskedProjectDetail"] | null;
+            /** Projects */
+            projects: components["schemas"]["MaskedProject"][];
+            /** Role Label */
+            role_label: string;
+            /** Routes */
+            routes: string[];
+            /** Subject Name */
+            subject_name: string;
+            /**
+             * View Id
+             * Format: uuid
+             */
+            view_id: string;
         };
         /** SupportProfile */
         SupportProfile: {
@@ -35000,6 +35058,69 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SupportPolicyExplainRead"];
                 };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_portal_preview_api_v1_support_portal_preview__view_id__get: {
+        parameters: {
+            query?: {
+                page?: "home" | "projects" | "project";
+                project?: string | null;
+            };
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportPortalPreview"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    end_portal_preview_api_v1_support_portal_preview__view_id__end_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Invalid request */
             422: {

@@ -37,7 +37,7 @@ class SupportBusinessAction(UUIDPrimaryKeyMixin, Base):
             " OR (kind = 'navigation_view' AND permission_key IS NULL"
             " AND permission_session_id IS NOT NULL AND recovery_destination_digest IS NULL"
             " AND source_event_id IS NULL AND project_id IS NULL AND project_scope_digest IS NULL)"
-            " OR (kind = 'project_list' AND permission_key IS NULL"
+            " OR (kind IN ('project_list','portal_preview') AND permission_key IS NULL"
             " AND permission_session_id IS NOT NULL AND recovery_destination_digest IS NULL"
             " AND source_event_id IS NULL AND project_id IS NULL"
             " AND project_scope_digest IS NOT NULL)"

@@ -275,6 +275,7 @@ async def seed():
         await session.flush()
         session.add(ProjectMember(project_id=project, user_id=project_user))
         session.add(SupportOperatorGrant(operator_id=UUID(fixtures[0]["operator"]), capability="cases.manage"))
+        session.add(SupportOperatorGrant(operator_id=UUID(fixtures[2]["operator"]), capability="company.directory.read"))
         for fixture in (fixtures[0], fixtures[2]):
             for capability in ("directory.read", "account.request", "logs.audit", "simulation.start",
                                "logs.runtime", "logs.export"):
@@ -685,6 +686,41 @@ print(asyncio.run(seed()))
       await view.getByRole('button', { name: 'End support view' }).click();
       await expect(view.getByText('Support view ended.')).toBeVisible();
     }
+    await openWorkspace(targetPage, 'People & Access');
+    const people = targetPage.getByRole('region', { name: 'People and access directory' });
+    await people.getByLabel('Search accounts').fill('Synthetic Project Manager');
+    await people.getByRole('button', { name: 'Search directory' }).click();
+    await people.getByRole('button', { name: 'Open User 360' }).first().click();
+    await targetPage.getByRole('button', { name: 'View as User', exact: true }).click();
+    const previewRequest = targetPage.getByRole('region', { name: 'Request read-only portal preview' });
+    await previewRequest.getByLabel('Support case').selectOption(caseId);
+    await previewRequest.getByLabel('Investigation reason').fill('Reproduce restricted project navigation.');
+    await previewRequest.getByRole('button', { name: 'Request reviewed preview' }).click();
+    await expect(previewRequest.getByRole('status')).toContainText('An independent operator must review');
+    const actionReference = await previewRequest.getByLabel('Account action reference', { exact: true }).inputValue();
+    await accountDecision(requestPage, 'review', actionReference, 'View as User (read-only)', projectUser);
+    await previewRequest.getByRole('button', { name: 'Load account action' }).click();
+    await previewRequest.getByRole('button', { name: 'Execute account action with passkey' }).click();
+
+    const previewBanner = targetPage.getByRole('banner', { name: 'Read-only support session' });
+    await expect(previewBanner).toContainText('Viewing as: Synthetic Project Manager');
+    await expect(previewBanner).toContainText(reference);
+    const previewNav = targetPage.getByRole('navigation', { name: 'Preview navigation' });
+    await previewNav.getByRole('button', { name: 'Projects', exact: true }).click();
+    await targetPage.getByRole('button', { name: 'Project 01', exact: true }).click();
+    await expect(targetPage.getByText('Milestones 0 · Tasks 0')).toBeVisible();
+    await expect(previewBanner).toBeVisible();
+    await expect(targetPage.getByText('Private synthetic project')).toHaveCount(0);
+    expect(await targetPage.evaluate(async (id) => (
+      await fetch('/api/v1/support/portal-preview/' + id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      })
+    ).status, actionReference)).toBe(403);
+    await previewBanner.getByRole('button', { name: 'Exit User View' }).click();
+    await expect(targetPage.getByRole('region', { name: 'User 360 profile' })).toBeVisible();
+    await openWorkspace(targetPage, 'Support & Audit');
+    await reopen('Investigating');
+
     await approveAction(targetPage,
       await proposeAction('subject_set', 'Account reference', caseUser), caseUser);
     await reopen('Investigating');

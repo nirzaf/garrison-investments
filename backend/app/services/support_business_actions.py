@@ -47,6 +47,7 @@ from app.services.support_project_projection import (
     PROJECT_VIEW_KINDS,
     MaskedProjects,
     masked_projects,
+    portal_preview_projects,
 )
 from app.services.support_request_projection import read_linked_request_summary
 from app.utils.exceptions import AppException, NotFoundException
@@ -68,7 +69,9 @@ from app.utils.security import utc_now
 
 _CAPABILITY = "account.request"
 _SIMULATION = "simulation.start"
-_VIEW_KINDS = {"permission_view", "request_summary", "navigation_view"} | PROJECT_VIEW_KINDS
+_VIEW_KINDS = {
+    "permission_view", "request_summary", "navigation_view", "portal_preview"
+} | PROJECT_VIEW_KINDS
 
 
 def _required_capability(kind: str) -> str:
@@ -210,6 +213,8 @@ class SupportBusinessActions:
             is None
         ):
             raise NotFoundException("Support account action")
+        if payload.kind == "portal_preview":
+            await self.identity.current(token, require_passkey_assurance=True)
         if payload.kind == "permission_view" and payload.permission_key not in (
             ALL_PERMISSIONS | HR_PERMISSIONS
         ):
@@ -231,6 +236,12 @@ class SupportBusinessActions:
                 await read_linked_request_summary(
                     self.session, case.id, target.id, payload.source_event_id
                 )
+            if payload.kind == "portal_preview":
+                if not target.is_active:
+                    raise _stale()
+                project_scope_digest = (
+                    await portal_preview_projects(self.session, case.id, target.id, target.role)
+                ).scope_digest
             if payload.kind in PROJECT_VIEW_KINDS:
                 project_view = await masked_projects(
                     self.session, case.id, target.id, target.role, project_id=payload.project_id
@@ -395,6 +406,13 @@ class SupportBusinessActions:
             await read_linked_request_summary(
                 self.session, case.id, target.id, action.source_event_id
             )
+        if action.kind == "portal_preview":
+            active = await self.session.get(SupportSession, session_id)
+            if active is None or active.auth_method != "passkey" or not target.is_active:
+                raise _denied()
+            projects = await portal_preview_projects(self.session, case.id, target.id, target.role)
+            if projects.scope_digest != action.project_scope_digest:
+                raise _stale()
         if action.kind in PROJECT_VIEW_KINDS:
             project_view = await masked_projects(
                 self.session, case.id, target.id, target.role, project_id=action.project_id

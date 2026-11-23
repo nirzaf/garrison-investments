@@ -3827,7 +3827,8 @@
               "request_summary",
               "navigation_view",
               "project_list",
-              "project_detail"
+              "project_detail",
+              "portal_preview"
             ],
             "title": "Kind",
             "type": "string"
@@ -4042,7 +4043,8 @@
               "request_summary",
               "navigation_view",
               "project_list",
-              "project_detail"
+              "project_detail",
+              "portal_preview"
             ],
             "title": "Kind",
             "type": "string"
@@ -31879,6 +31881,67 @@
           "is_business_role"
         ],
         "title": "SupportPolicyExplainRead",
+        "type": "object"
+      },
+      "SupportPortalPreview": {
+        "properties": {
+          "case_reference": {
+            "title": "Case Reference",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaskedProjectDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/MaskedProject"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "role_label": {
+            "title": "Role Label",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
+          "subject_name": {
+            "title": "Subject Name",
+            "type": "string"
+          },
+          "view_id": {
+            "format": "uuid",
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view_id",
+          "subject_name",
+          "role_label",
+          "case_reference",
+          "expires_at",
+          "routes",
+          "projects"
+        ],
+        "title": "SupportPortalPreview",
         "type": "object"
       },
       "SupportProfile": {
@@ -66304,6 +66367,133 @@
           }
         },
         "summary": "Support Policy Explain",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/portal-preview/{view_id}": {
+      "get": {
+        "operationId": "read_portal_preview_api_v1_support_portal_preview__view_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": "home",
+              "enum": [
+                "home",
+                "projects",
+                "project"
+              ],
+              "title": "Page",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^Project [0-9]{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportPortalPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Portal Preview Api V1 Support Portal Preview  View Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Read Portal Preview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/portal-preview/{view_id}/end": {
+      "post": {
+        "operationId": "end_portal_preview_api_v1_support_portal_preview__view_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 End Portal Preview Api V1 Support Portal Preview  View Id  End Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "End Portal Preview",
         "tags": [
           "Support"
         ]
