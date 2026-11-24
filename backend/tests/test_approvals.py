@@ -243,3 +243,25 @@ async def test_approval_amounts_follow_financial_permission_and_current_project_
                 assert detail.status_code == 200
                 for row in (rows[record_id], detail.json()):
                     assert (row["amount"], row["currency"]) == expected
+
+
+async def test_material_director_threshold_settings_reject_invalid_values(monkeypatch) -> None:
+    from pydantic import ValidationError
+
+    from app.config import Settings
+    from app.services.approval_service import required_material_stages
+
+    monkeypatch.setenv("MATERIAL_OPERATIONS_APPROVAL_THRESHOLD", "")
+    monkeypatch.setenv("MATERIAL_MD_APPROVAL_THRESHOLD", "")
+    assert Settings().material_operations_approval_threshold is None
+    with pytest.raises(ValidationError):
+        Settings(material_operations_approval_threshold=Decimal("-1"))
+    with pytest.raises(ValidationError):
+        Settings(
+            material_operations_approval_threshold=Decimal("5000"),
+            material_md_approval_threshold=Decimal("1000"),
+        )
+    policy = Settings(material_operations_approval_threshold=Decimal("1000"))
+    monkeypatch.setattr("app.services.approval_service.get_settings", lambda: policy)
+    assert required_material_stages(None) == (1, 2)
+    assert required_material_stages(Decimal("0")) == (1, 2)

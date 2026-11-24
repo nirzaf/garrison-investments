@@ -667,7 +667,8 @@ export function InventoryPage() {
                       {request.request_number} · {request.lines.length} lines
                     </p>
                     <StatusBadge tone={request.status === 'issued' ? 'success' : 'warning'}>
-                      {request.status}
+                      {request.status === 'pending_operations' ? 'Pending Operations approval'
+                        : request.status === 'pending_md' ? 'Pending MD approval' : request.status}
                     </StatusBadge>
                   </div>
                   <MaterialRequestReview

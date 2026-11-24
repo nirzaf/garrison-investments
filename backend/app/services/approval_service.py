@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -41,6 +42,7 @@ from app.utils.permissions import (
     PERMISSION_REPORTS_SUBMIT,
     REPORT_APPROVER_ROLES,
     ROLE_GROUP_PROJECT_MANAGER,
+    ROLE_MANAGING_DIRECTOR,
     ROLE_MEP_PROJECT_MANAGER,
     ROLE_OPERATIONS_DIRECTOR,
     ensure_permission,
@@ -52,8 +54,19 @@ from app.utils.security import utc_now
 APPROVAL_PENDING_STATUSES = {"pending", "delegated", "escalated"}
 ENTITY_BACKED_REQUEST_TYPES = {"material_request", "invoice", "daily_report", "document"}
 OPERATING_CURRENCY_APPROVAL_TYPES = {"material_request", "invoice"}
-MATERIAL_STAGE_ROLES = {1: ROLE_MEP_PROJECT_MANAGER, 2: ROLE_GROUP_PROJECT_MANAGER}
-MATERIAL_STAGE_STATES = {1: "pending_engineer", 2: "pending_gpm"}
+MATERIAL_STAGE_ROLES = {
+    1: ROLE_MEP_PROJECT_MANAGER,
+    2: ROLE_GROUP_PROJECT_MANAGER,
+    3: ROLE_OPERATIONS_DIRECTOR,
+    4: ROLE_MANAGING_DIRECTOR,
+}
+MATERIAL_STAGE_STATES = {
+    1: "pending_engineer",
+    2: "pending_gpm",
+    3: "pending_operations",
+    4: "pending_md",
+}
+MATERIAL_STAGE_TITLES = {2: "GPM approval", 3: "Operations approval", 4: "MD approval"}
 APPROVAL_REMINDER_TITLE = "Approval reminder"
 APPROVAL_ESCALATION_TITLE = "Approval escalated"
 MATERIAL_OVERDUE_TITLE = "Material approval overdue"
@@ -68,6 +81,20 @@ DELEGATION_ELIGIBLE_ROLES: dict[str, frozenset[str]] = {
     "document": frozenset(roles_with_permission(PERMISSION_DOCUMENTS_MANAGE)),
     "material_request": frozenset(roles_with_permission(PERMISSION_INVENTORY_MANAGE)),
 }
+
+
+def required_material_stages(total: Decimal | None) -> tuple[int, ...]:
+    if total is None:
+        return (1, 2)
+    settings = get_settings()
+    return (1, 2) + tuple(
+        stage
+        for stage, threshold in (
+            (3, settings.material_operations_approval_threshold),
+            (4, settings.material_md_approval_threshold),
+        )
+        if threshold is not None and total >= threshold
+    )
 
 
 class ApprovalService:
@@ -106,17 +133,37 @@ class ApprovalService:
                 error_code="APPROVAL_ALREADY_PENDING",
             )
         if material_submission is not None:
-            approver_id = (
-                material_submission.engineer_id
-                if step_order == 1
-                else material_submission.manager_id
-            )
-            approver = await self.require_project_reviewer(
-                payload.project_id,
-                MATERIAL_STAGE_ROLES[step_order],
-                approver_id=approver_id,
-                excluded_user_ids={material_submission.submitted_by, actor.id},
-            )
+            if step_order == 1:
+                material_submission.requirements = {
+                    **material_submission.requirements,
+                    "approval_stages": list(required_material_stages(payload.amount)),
+                }
+            excluded = {material_submission.submitted_by, actor.id}
+            role = MATERIAL_STAGE_ROLES[step_order]
+            if step_order in (1, 2):
+                approver = await self.require_project_reviewer(
+                    payload.project_id,
+                    role,
+                    approver_id={
+                        1: material_submission.engineer_id,
+                        2: material_submission.manager_id,
+                    }[step_order],
+                    excluded_user_ids=excluded,
+                )
+            else:
+                earlier = await self._material_deciders(
+                    payload.request_id, material_submission.submission_revision, step_order
+                )
+                director = await self._first_active_scoped_approver(
+                    payload.project_id, {role}, excluded_user_ids=excluded | set(earlier.values())
+                )
+                if director is None:
+                    raise AppException(
+                        "An active independent director must be available for this stage.",
+                        status_code=409,
+                        error_code="APPROVER_NOT_CONFIGURED",
+                    )
+                approver = director
             escalation_user = None
         else:
             approver = await self._resolve_approver(payload, actor)
@@ -1271,6 +1318,22 @@ class ApprovalService:
                 comments=comments,
             )
 
+    async def _material_deciders(
+        self, request_id: UUID, revision: int, before_stage: int
+    ) -> dict[int, UUID]:
+        rows = await self.session.execute(
+            select(Approval.step_order, Approval.decided_by).where(
+                Approval.request_type == "material_request",
+                Approval.request_id == request_id,
+                Approval.submission_revision == revision,
+                Approval.step_order < before_stage,
+                Approval.status == "approved",
+                Approval.decided_by.is_not(None),
+                Approval.deleted_at.is_(None),
+            )
+        )
+        return {stage: user_id for stage, user_id in rows if user_id is not None}
+
     async def _apply_material_submission_decision(
         self, request: MaterialRequest, approval: Approval, actor: User, decision: str
     ) -> None:
@@ -1283,51 +1346,67 @@ class ApprovalService:
                 status_code=409,
                 error_code="REQUEST_STATUS_INVALID",
             )
-        await self.require_project_reviewer(
-            request.project_id,
-            MATERIAL_STAGE_ROLES[approval.step_order],
-            approver_id=actor.id,
-            excluded_user_ids={submission.submitted_by},
-        )
+        stages = tuple(submission.requirements.get("approval_stages", (1, 2)))
+        stage = approval.step_order
+        if stage not in stages:
+            raise AppException(
+                "This review stage is not required.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
+        earlier = await self._material_deciders(request.id, submission.submission_revision, stage)
+        if set(earlier) != set(stages[: stages.index(stage)]) or actor.id in earlier.values():
+            raise AppException(
+                "Engineer verification is required before manager approval."
+                if stage == 2
+                else "Independent approval at every earlier stage is required.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
+        role = MATERIAL_STAGE_ROLES[stage]
+        if stage in (1, 2):
+            await self.require_project_reviewer(
+                request.project_id,
+                role,
+                approver_id=actor.id,
+                excluded_user_ids={submission.submitted_by},
+            )
+        elif not await self.session.scalar(
+            select(User.id).where(
+                User.id == actor.id,
+                User.role == role,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                User.id != submission.submitted_by,
+            )
+        ):
+            raise AppException(
+                "This director is not eligible to decide the stage.",
+                status_code=403,
+                error_code="APPROVAL_FORBIDDEN",
+            )
         request.revision += 1
         if decision != "approved":
             request.status = decision
             return
-        if approval.step_order == 1:
-            request.status = MATERIAL_STAGE_STATES[2]
+        if stage != stages[-1]:
+            next_stage = stages[stages.index(stage) + 1]
+            request.status = MATERIAL_STAGE_STATES[next_stage]
             await self.create_approval(
                 ApprovalCreateRequest(
                     request_type="material_request",
                     request_id=request.id,
                     project_id=request.project_id,
-                    title=f"{request.request_number} · GPM approval",
+                    title=f"{request.request_number} · {MATERIAL_STAGE_TITLES[next_stage]}",
                     amount=request.total_estimated_cost,
                 ),
                 actor,
                 commit=False,
                 internal=True,
                 material_submission=submission,
-                step_order=2,
+                step_order=next_stage,
             )
             return
-        engineer_decision = await self.session.scalar(
-            select(Approval.id).where(
-                Approval.request_type == "material_request",
-                Approval.request_id == request.id,
-                Approval.submission_revision == request.submission_revision,
-                Approval.step_order == 1,
-                Approval.status == "approved",
-                Approval.decided_by.is_not(None),
-                Approval.decided_by != actor.id,
-                Approval.deleted_at.is_(None),
-            )
-        )
-        if engineer_decision is None:
-            raise AppException(
-                "Engineer verification is required before manager approval.",
-                status_code=409,
-                error_code="REQUEST_STATUS_INVALID",
-            )
         request.status = "approved"
         if submission.processor_id is not None:
             await self.notifications.create(

@@ -9,7 +9,7 @@ import pytest
 from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
-from app.models.inventory import StorageLocation
+from app.models.inventory import InventoryItem, StorageLocation
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -1009,3 +1009,178 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
         assert movement is not None
         assert movement.movement_type == "adjustment"
         assert movement.quantity == Decimal("1")
+
+
+@pytest.mark.parametrize(
+    "op_threshold,md_threshold,cost,stages,scenario",
+    [
+        (None, None, "10000", (1, 2), ""),
+        ("1000", None, "999.99", (1, 2), ""),
+        ("1000", None, "1000", (1, 2, 3), ""),
+        (None, "5000", "5000", (1, 2, 4), ""),
+        ("1000", "5000", "5000", (1, 2, 3, 4), ""),
+        ("1000", None, "1000", (1, 2, 3), "frozen"),
+        ("1000", None, "1000", (1, 2, 3), "correct"),
+        ("1000", None, "1000", (1, 2, 3), "unavailable"),
+        ("1000", None, "1000", (1, 2, 3), "return"),
+        ("1000", None, "1000", (1, 2, 3), "reject"),
+    ],
+    ids=[
+        "default",
+        "below",
+        "operations-boundary",
+        "md-only",
+        "all",
+        "frozen",
+        "correct",
+        "unavailable",
+        "return",
+        "reject",
+    ],
+)
+async def test_material_director_stage_sequence(
+    monkeypatch, op_threshold, md_threshold, cost, stages, scenario
+):
+    await skip_if_database_unavailable()
+    policy = Settings(
+        material_operations_approval_threshold=op_threshold,
+        material_md_approval_threshold=md_threshold,
+    )
+    monkeypatch.setattr("app.services.approval_service.get_settings", lambda: policy)
+    operations, ops_password = await create_user("operations_director")
+    director, md_password = await create_user("managing_director")
+    engineer, engineer_password = await create_user("mep_project_manager")
+    manager, manager_password = await create_user("group_project_manager")
+    supervisor, supervisor_password = await create_user("site_supervisor")
+    project = await create_project(manager, engineer)
+    async with AsyncSessionLocal.begin() as session:
+        session.add(ProjectMember(project_id=project.id, user_id=supervisor.id))
+    if scenario == "unavailable":
+        from app.services.approval_service import ApprovalService
+
+        async def no_director(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(ApprovalService, "_first_active_scoped_approver", no_director)
+    async with create_test_client() as client:
+        ops = await login_for_token(client, operations, ops_password)
+        headers = {"Authorization": f"Bearer {ops}"}
+        location = await client.post(
+            "/api/v1/inventory/locations",
+            json={
+                "name": "Stage test warehouse",
+                "code": uuid4().hex,
+                "location_type": "warehouse",
+            },
+            headers=headers,
+        )
+        assert location.status_code == 201, location.text
+        item_id = uuid4()
+        async with AsyncSessionLocal.begin() as session:
+            session.add(
+                InventoryItem(
+                    id=item_id,
+                    name="Stage test item",
+                    unit="Nos",
+                    item_type="consumable",
+                    category="Civil",
+                    unit_cost=Decimal(cost),
+                )
+            )
+        owner = await login_for_token(client, supervisor, supervisor_password)
+        payload = {
+            "project_id": str(project.id),
+            "from_location_id": location.json()["id"],
+            "requirements": material_requirements(),
+            "lines": [{"item_id": str(item_id), "quantity": "1"}],
+        }
+        owner_headers = {"Authorization": f"Bearer {owner}"}
+        created = await client.post(
+            "/api/v1/inventory/requests",
+            json=payload,
+            headers=owner_headers,
+        )
+        assert created.status_code == 201, created.text
+        request_id = created.json()["id"]
+        if scenario == "frozen":
+            policy = Settings(
+                material_operations_approval_threshold=None, material_md_approval_threshold=None
+            )
+        tokens = {
+            1: await login_for_token(client, engineer, engineer_password),
+            2: await login_for_token(client, manager, manager_password),
+            3: ops,
+            4: await login_for_token(client, director, md_password),
+        }
+        statuses = {
+            1: "pending_engineer",
+            2: "pending_gpm",
+            3: "pending_operations",
+            4: "pending_md",
+        }
+        for stage in stages:
+            current = await client.get(
+                "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
+            )
+            assert current.json()[0]["status"] == statuses[stage]
+            if stage == 2 and scenario == "unavailable":
+                pending = await material_inbox_item(client, tokens[2], request_id)
+                rejected = await client.post(
+                    f"/api/v1/approvals/{pending['id']}/approve",
+                    json={"expected_submission_revision": 1},
+                    headers={"Authorization": f"Bearer {tokens[2]}"},
+                )
+                assert rejected.status_code == 409, rejected.text
+                assert rejected.json()["error_code"] == "APPROVER_NOT_CONFIGURED"
+                remaining = await material_inbox_item(client, tokens[2], request_id)
+                assert remaining["id"] == pending["id"]
+                return
+            if stage > 2:
+                outbox = await client.get(
+                    "/api/v1/approvals",
+                    params={"box": "outbox"},
+                    headers={"Authorization": f"Bearer {owner}"},
+                )
+                masked = next(row for row in outbox.json()["items"] if row["step_order"] == stage)
+                assert masked["amount"] is None and masked["currency"] is None
+                assigned = await material_inbox_item(client, tokens[stage], request_id)
+                assert Decimal(assigned["amount"]) == Decimal(cost)
+                forbidden = await client.post(
+                    f"/api/v1/approvals/{assigned['id']}/approve",
+                    json={"expected_submission_revision": 1},
+                    headers={"Authorization": f"Bearer {tokens[2]}"},
+                )
+                assert forbidden.status_code in (403, 409)
+            if stage == 3 and scenario in {"return", "reject"}:
+                acted = await client.post(
+                    f"/api/v1/approvals/{assigned['id']}/{scenario}",
+                    json={"expected_submission_revision": 1, "comments": "Check delivery date."},
+                    headers=headers,
+                )
+                assert acted.status_code == 200, acted.text
+                decided = await client.get(
+                    "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
+                )
+                assert decided.json()[0]["status"] == {"return": "returned", "reject": "rejected"}[
+                    scenario
+                ]
+                return
+            await approve_material_stage(client, tokens[stage], request_id, stage)
+        final = await client.get(
+            "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
+        )
+        assert final.json()[0]["status"] == "approved"
+        if scenario == "correct":
+            corrected = await client.post(
+                f"/api/v1/inventory/requests/{request_id}/resubmit",
+                json={
+                    **payload,
+                    "expected_revision": final.json()[0]["revision"],
+                    "reason": "Change delivery requirements",
+                },
+                headers=owner_headers,
+            )
+            assert corrected.status_code == 200, corrected.text
+            assert corrected.json()["status"] == "pending_engineer"
+            assert corrected.json()["submission_revision"] == 2
+            await approve_material_stage(client, tokens[1], request_id, 1, revision=2)

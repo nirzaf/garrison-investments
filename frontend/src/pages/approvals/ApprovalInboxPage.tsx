@@ -473,7 +473,11 @@ export function ApprovalInboxPage() {
                       <h3 className="text-base font-semibold text-theme-text-primary">
                         {approval.title}
                       </h3>
-                      <StatusBadge tone="info">{approval.status}</StatusBadge>
+                      <StatusBadge tone="info">
+                        {approval.submission_revision != null && ['pending', 'delegated'].includes(approval.status)
+                          ? ({ 3: 'Pending Operations approval', 4: 'Pending MD approval' } as Record<number, string>)[approval.step_order] ?? approval.status
+                          : approval.status}
+                      </StatusBadge>
                       {approval.submission_revision != null && approval.escalated_at &&
                         ['pending', 'delegated'].includes(approval.status) && (
                           <StatusBadge tone="warning">Overdue · Operations notified</StatusBadge>

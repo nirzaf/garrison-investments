@@ -1,8 +1,17 @@
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 from uuid import UUID
 
-from pydantic import EmailStr, Field, HttpUrl, IPvAnyAddress, SecretStr, model_validator
+from pydantic import (
+    EmailStr,
+    Field,
+    HttpUrl,
+    IPvAnyAddress,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.business_policy import DEFAULT_BUSINESS_CURRENCY, BusinessPolicy, BusinessPolicyResponse
@@ -97,6 +106,24 @@ class Settings(BaseSettings, BusinessPolicy):
     dev_expose_otp: bool | None = None
     staging_login_otp: str | None = None
     trusted_proxy_ips: str = "127.0.0.1,::1"
+
+    material_operations_approval_threshold: Decimal | None = Field(default=None, ge=0)
+    material_md_approval_threshold: Decimal | None = Field(default=None, ge=0)
+
+    @field_validator(
+        "material_operations_approval_threshold", "material_md_approval_threshold", mode="before"
+    )
+    @classmethod
+    def blank_material_threshold(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def validate_material_threshold_order(self) -> "Settings":
+        operations = self.material_operations_approval_threshold
+        director = self.material_md_approval_threshold
+        if operations is not None and director is not None and director < operations:
+            raise ValueError("The MD approval threshold must be at least the Operations threshold.")
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",

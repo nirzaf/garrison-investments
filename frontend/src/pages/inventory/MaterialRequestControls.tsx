@@ -34,6 +34,13 @@ function unissuedQuantity(quantity: string, issued: string) {
   return `${remainder / 1000n}.${String(remainder % 1000n).padStart(3, '0')}`;
 }
 
+const materialStageLabels: Record<number, string> = {
+  1: 'Site Engineer',
+  2: 'Group Project Manager',
+  3: 'Operations Director',
+  4: 'Managing Director'
+};
+
 const newLine = () => ({ key: crypto.randomUUID(), item_id: '', quantity: '' });
 
 type MaterialCorrection = {
@@ -496,7 +503,7 @@ export function MaterialRequestReview({
                 (decision) => decision.submission_revision === submission.submission_revision
               ).map((decision) => (
                 <li key={decision.id}>
-                  {decision.step_order === 1 ? 'Site Engineer' : 'Group Project Manager'} · {decision.status}
+                  {materialStageLabels[decision.step_order] ?? `Stage ${decision.step_order}`} · {decision.status}
                   {decision.decision_comments && ` · ${decision.decision_comments}`}
                 </li>
               ))}

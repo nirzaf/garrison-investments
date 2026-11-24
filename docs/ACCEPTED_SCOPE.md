@@ -28,7 +28,7 @@ requirements and the corresponding local gap-closure work.
 | --- | --- | --- |
 | 2 and 10 · Role scope | Ten business roles. Site supervisors submit for assigned projects, assigned MEP Project Managers provide technical reviews, assigned Quantity Surveyors verify measurements, and HR Managers check attendance. | [Role rules](ROLES_AND_PERMISSIONS.md#authorization-rules), [authorization tests](../backend/tests/test_authorization_matrix.py) |
 | 3 and 7 · Daily progress and QS | Supervisor submissions retain structured progress and photos. Required QS review precedes technical confirmation. Management totals include technically confirmed reviews. | [Supervisor service](../backend/app/services/reporting_service.py), [progress tests](../backend/tests/test_supervisor_updates.py), [report browser regression](../frontend/e2e/daily-report.e2e.ts) |
-| 4 and 8 · Material workflow | Site Engineer verification then Group Project Manager approval bind to an immutable submission revision. Correction restarts the sequence. Authorized stock processing uses a separate operational revision. | [Inventory service](../backend/app/services/inventory_service.py), [approval service](../backend/app/services/approval_service.py), [inventory tests](../backend/tests/test_inventory.py) |
+| 4 and 8 · Material workflow | Site Engineer verification then Group Project Manager approval bind to an immutable submission revision. Correction restarts the sequence. Authorized stock processing uses a separate operational revision. When configured thresholds are met, Operations Director and Managing Director stages follow GPM approval. | [Inventory service](../backend/app/services/inventory_service.py), [approval service](../backend/app/services/approval_service.py), [inventory tests](../backend/tests/test_inventory.py) |
 | 5 · Inventory registration | Supervisors stage materials, tools and equipment with photographs. Authorized engineer approval records confirmed inventory and a single stock receipt in one transaction. | [Registration service](../backend/app/services/inventory_registration_service.py), [inventory tests](../backend/tests/test_inventory.py) |
 | 6 · Attendance | Assigned worker attendance progresses through engineer and HR decisions. Corrections preserve history. Payroll preparation checks the current submitted version for both decisions. | [Site attendance service](../backend/app/services/hr_site_attendance_service.py), [attendance tests](../backend/tests/test_site_attendance.py) |
 | 9 · Financial access | Directors have company-wide financial reads. Group Project Managers have assigned-project financial reads. Financial mutations and company-wide cost tools retain their own authorization boundaries. | [Role rules](ROLES_AND_PERMISSIONS.md#authorization-rules), [finance tests](../backend/tests/test_finance.py), [analytics tests](../backend/tests/test_analytics.py) |
@@ -44,8 +44,8 @@ requirements and the corresponding local gap-closure work.
   [D11](BUSINESS-ROLE-DECISIONS.md#decision-register).
 - Overdue staged material approvals notify Operations Directors once. Directors
   can read the flagged approvals while the assigned engineer and Group Project
-  Manager retain sole stage authority. Additional Operations or Managing Director
-  decision stages await an approved business policy.
+  Manager retain authority over their assigned stages. Optional Operations and
+  Managing Director decisions require configured thresholds, which default to disabled.
 - Site attendance shows eligible, recorded, missing and independently confirmed
   workers. Missing required site attendance and unreconciled site overtime block
   payroll time preparation. [HR workforce guide](HR_WORKFORCE.md#site-attendance)
