@@ -187,3 +187,15 @@ validates the reference. Existing offers retain their terms without a file link.
 adds opt-in calendar-day proration and receipt bounds.
 [202605310046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py)
 validates those bounds.
+
+
+### Approved site workflow corrections
+
+[Revision 106](../../backend/alembic/versions/202605310106_approved_site_corrections.py)
+adds nullable `previous_id` links to supervisor updates and material requests.
+Each link references the existing aggregate and permits one immediate successor.
+Progress keeps the previous confirmed submission effective until the correction
+is independently confirmed. A material replacement leaves prior issues on the
+original request and binds new decisions to the replacement's own submission.
+Material evidence file IDs and document versions are retained in the existing
+submission requirements JSON, with an empty file list for older submissions.

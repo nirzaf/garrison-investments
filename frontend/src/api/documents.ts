@@ -65,6 +65,15 @@ export async function uploadDocumentVersion(documentId: string, file: File, idem
   return response.data;
 }
 
+export async function getDocumentVersionDownloadUrl(documentId: string, versionNumber: number) {
+  const { data: versions } = await apiClient.get<DocumentVersionRecord[]>(
+    `/documents/${documentId}/versions`
+  );
+  const version = versions.find((entry) => entry.version === versionNumber);
+  if (!version) throw new Error('This submitted document version is unavailable.');
+  return getDocumentDownloadUrl(documentId, version.id);
+}
+
 export async function getDocumentDownloadUrl(
   documentId: string,
   versionId?: string

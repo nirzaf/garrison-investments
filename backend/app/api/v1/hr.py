@@ -270,6 +270,7 @@ from app.schemas.hr import (
     ShiftAssignmentCreateRequest,
     ShiftAssignmentListResponse,
     ShiftAssignmentResponse,
+    SiteAttendanceCompleteness,
     SiteAttendanceCorrectionRequest,
     SiteAttendanceCreateRequest,
     SiteAttendanceDecisionRequest,
@@ -3770,6 +3771,20 @@ async def list_site_attendance_workers(
 ) -> SiteAttendanceWorkerPage:
     return await HrSiteAttendanceService(session).list_workers(
         project_id, work_date, actor, search=search, limit=limit, offset=offset
+    )
+
+
+@router.get("/site-attendance/completeness", response_model=SiteAttendanceCompleteness)
+async def site_attendance_completeness(
+    project_id: UUID,
+    work_date: date,
+    actor: CurrentUser,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> SiteAttendanceCompleteness:
+    return await HrSiteAttendanceService(session).completeness(
+        project_id, work_date, actor, limit=limit, offset=offset
     )
 
 

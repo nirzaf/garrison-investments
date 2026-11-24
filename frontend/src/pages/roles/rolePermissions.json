@@ -148,7 +148,6 @@
     "hr_executive_reader": [
       "users:read",
       "dashboard:scoped",
-      "reports:view",
       "documents:view"
     ],
     "administrative_executive": [

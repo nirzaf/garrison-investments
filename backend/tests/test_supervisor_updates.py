@@ -248,6 +248,61 @@ async def test_supervisor_requires_photo_and_separate_site_confirmations(
         assert other.status_code == 404
 
 
+async def test_confirmed_progress_correction_preserves_original() -> None:
+    await skip_if_database_unavailable()
+    from tests.test_daily_reports import setup_project_team
+    from tests.test_photos import jpeg_bytes
+
+    async with create_test_client() as client:
+        team = await setup_project_team(client)
+        owner = {"Authorization": f"Bearer {team['supervisor_token']}"}
+        engineer = {"Authorization": f"Bearer {team['progress_reviewer_token']}"}
+        director = {"Authorization": f"Bearer {team['op_token']}"}
+        update_id = team["supervisor_update_id"]
+        base = "/api/v1/supervisor-updates"
+        lookup = await client.get(base, params={"update_id": update_id}, headers=owner)
+        original = lookup.json()["items"][0]
+        correction = {
+            **original,
+            "expected_revision": original["revision"],
+            "reason": "Correct completed work description",
+            "progress_notes": "Corrected progress",
+        }
+        created = await client.post(
+            f"{base}/{update_id}/correction", json=correction, headers=owner
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["previous_id"] == update_id
+        duplicate = await client.post(
+            f"{base}/{update_id}/correction", json=correction, headers=owner
+        )
+        assert duplicate.status_code == 409, duplicate.text
+        draft = created.json()
+        uploaded = await client.post(
+            "/api/v1/photos/upload",
+            data={"entity_type": "supervisor_update", "entity_id": draft["id"]},
+            files={"files": ("corrected.jpg", jpeg_bytes(), "image/jpeg")},
+            headers=owner,
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        submitted = await client.post(
+            f"{base}/{draft['id']}/submit",
+            json={"expected_revision": draft["revision"]},
+            headers=owner,
+        )
+        assert submitted.status_code == 200, submitted.text
+        verified = await client.post(
+            f"{base}/{draft['id']}/review",
+            json={"decision": "approved", "stage": "engineer", "expected_submission_revision": 1},
+            headers=engineer,
+        )
+        assert verified.status_code == 200, verified.text
+        retained = await client.get(base, params={"update_id": update_id}, headers=owner)
+        assert retained.json()["items"][0]["progress_notes"] == original["progress_notes"]
+        summary = await client.get("/api/v1/dashboard/summary", headers=director)
+        assert summary.status_code == 200, summary.text
+
+
 async def test_supervisor_can_autosave_existing_draft_update() -> None:
     await skip_if_database_unavailable()
 

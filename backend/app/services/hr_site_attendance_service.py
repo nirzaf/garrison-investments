@@ -16,6 +16,7 @@ from app.models.hr import (
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.hr import (
+    SiteAttendanceCompleteness,
     SiteAttendanceCorrectionRequest,
     SiteAttendanceCreateRequest,
     SiteAttendanceDecisionRequest,
@@ -91,6 +92,61 @@ class HrSiteAttendanceService:
                 for id_, code, name in rows
             ],
             total=int(total or 0),
+        )
+
+    async def completeness(
+        self, project_id: UUID, work_date: date, actor: User, *, limit: int, offset: int
+    ) -> SiteAttendanceCompleteness:
+        self._ensure_reader(actor)
+        await self._ensure_active_project(project_id, actor)
+        entry = HrAttendanceEntry
+        review = HrSiteAttendanceSubmission
+        recorded = select(entry.id).where(
+            entry.employee_id == HrEmployee.id,
+            entry.project_id == project_id,
+            entry.work_date == work_date,
+            entry.source == "site",
+        )
+        confirmed = recorded.join(
+            review,
+            (review.entry_id == entry.id)
+            & (review.submission_revision == entry.site_submission_revision),
+        ).where(
+            entry.status == "approved",
+            review.engineer_decision == "approved",
+            review.hr_decision == "approved",
+            review.hr_id == entry.approved_by_id,
+        )
+        scope = self._worker_eligibility(project_id, work_date)
+        expected, entered, verified = (
+            await self.session.execute(
+                select(
+                    func.count(),
+                    func.count().filter(recorded.exists()),
+                    func.count().filter(confirmed.exists()),
+                )
+                .select_from(HrEmployee)
+                .where(*scope)
+            )
+        ).one()
+        rows = await self.session.execute(
+            select(HrEmployee.id, HrEmployee.employee_code, HrEmployee.full_name)
+            .where(*scope, ~recorded.exists())
+            .order_by(HrEmployee.full_name, HrEmployee.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return SiteAttendanceCompleteness(
+            expected_workers=expected,
+            recorded_workers=entered,
+            confirmed_workers=verified,
+            missing_workers=expected - entered,
+            is_complete=expected > 0 and expected == verified,
+            empty_roster=expected == 0,
+            items=[
+                SiteAttendanceWorker(id=id_, employee_code=code, full_name=name)
+                for id_, code, name in rows
+            ],
         )
 
     async def list_entries(

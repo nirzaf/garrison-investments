@@ -4129,6 +4129,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/site-attendance/completeness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Site Attendance Completeness */
+        get: operations["site_attendance_completeness_api_v1_hr_site_attendance_completeness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/site-attendance/workers": {
         parameters: {
             query?: never;
@@ -4718,6 +4735,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/requests/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Material Request Draft */
+        post: operations["create_material_request_draft_api_v1_inventory_requests_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/requests/{request_id}/cancel": {
         parameters: {
             query?: never;
@@ -4746,6 +4780,23 @@ export interface paths {
         put?: never;
         /** Issue Material Request */
         post: operations["issue_material_request_api_v1_inventory_requests__request_id__issue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/requests/{request_id}/replacement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace Material Request Remainder */
+        post: operations["replace_material_request_remainder_api_v1_inventory_requests__request_id__replacement_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5467,6 +5518,23 @@ export interface paths {
         /** Update Supervisor Update */
         put: operations["update_supervisor_update_api_v1_supervisor_updates__update_id__put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supervisor-updates/{update_id}/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Verified Supervisor Update */
+        post: operations["correct_verified_supervisor_update_api_v1_supervisor_updates__update_id__correction_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11352,6 +11420,8 @@ export interface components {
             project_id: string;
             /** Quantity */
             quantity: number | string;
+            /** Reason */
+            reason?: string | null;
             /**
              * Received Date
              * Format: date
@@ -11359,6 +11429,8 @@ export interface components {
             received_date: string;
             /** Remarks */
             remarks?: string | null;
+            /** Remove Asset Ids */
+            remove_asset_ids?: string[];
             /** Serial Number */
             serial_number?: string | null;
             /** Source */
@@ -12780,6 +12852,14 @@ export interface components {
             /** Quantity */
             quantity: number | string;
         };
+        /** MaterialRequestDraftCreate */
+        MaterialRequestDraftCreate: {
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
         /** MaterialRequestLineCreate */
         MaterialRequestLineCreate: {
             /**
@@ -12811,6 +12891,28 @@ export interface components {
             /** Unit Cost */
             unit_cost: string | null;
         };
+        /** MaterialRequestReplacementRequest */
+        MaterialRequestReplacementRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * From Location Id
+             * Format: uuid
+             */
+            from_location_id: string;
+            /** Lines */
+            lines: components["schemas"]["MaterialRequestLineCreate"][];
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            requirements: components["schemas"]["MaterialSubmissionRequirements"];
+        };
         /** MaterialRequestResponse */
         MaterialRequestResponse: {
             /** From Location Id */
@@ -12824,6 +12926,8 @@ export interface components {
             lines: components["schemas"]["MaterialRequestLineResponse"][];
             /** Notes */
             notes: string | null;
+            /** Previous Id */
+            previous_id?: string | null;
             /**
              * Project Id
              * Format: uuid
@@ -12860,6 +12964,8 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Reason */
+            reason?: string | null;
             requirements: components["schemas"]["MaterialSubmissionRequirements"];
         };
         /** MaterialRequestSubmitRequest */
@@ -12952,6 +13058,8 @@ export interface components {
         };
         /** MaterialSubmissionSnapshot */
         MaterialSubmissionSnapshot: {
+            /** Evidence File Ids */
+            evidence_file_ids?: string[];
             /** Evidence Versions */
             evidence_versions: {
                 [key: string]: number;
@@ -14778,7 +14886,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "missing_locked_timesheet" | "timesheet_crosses_period" | "timesheet_not_locked" | "overlapping_timesheets" | "pending_attendance" | "attendance_without_schedule" | "attendance_without_timesheet" | "pending_attendance_correction" | "pending_overtime" | "overtime_without_timesheet" | "duplicate_approved_overtime" | "overtime_hours_mismatch";
+            code: "missing_locked_timesheet" | "timesheet_crosses_period" | "timesheet_not_locked" | "overlapping_timesheets" | "pending_attendance" | "missing_site_attendance" | "site_overtime_mismatch" | "attendance_without_schedule" | "attendance_without_timesheet" | "pending_attendance_correction" | "pending_overtime" | "overtime_without_timesheet" | "duplicate_approved_overtime" | "overtime_hours_mismatch";
             /**
              * Employee Id
              * Format: uuid
@@ -16859,6 +16967,23 @@ export interface components {
              */
             start_time: string;
         };
+        /** SiteAttendanceCompleteness */
+        SiteAttendanceCompleteness: {
+            /** Confirmed Workers */
+            confirmed_workers: number;
+            /** Empty Roster */
+            empty_roster: boolean;
+            /** Expected Workers */
+            expected_workers: number;
+            /** Is Complete */
+            is_complete: boolean;
+            /** Items */
+            items: components["schemas"]["SiteAttendanceWorker"][];
+            /** Missing Workers */
+            missing_workers: number;
+            /** Recorded Workers */
+            recorded_workers: number;
+        };
         /** SiteAttendanceCorrectionRequest */
         SiteAttendanceCorrectionRequest: {
             /**
@@ -17158,6 +17283,57 @@ export interface components {
              */
             expires_at: string;
         };
+        /** SupervisorUpdateCorrectionRequest */
+        SupervisorUpdateCorrectionRequest: {
+            /** Activity Scope */
+            activity_scope?: string | null;
+            /** Attachment Refs */
+            attachment_refs?: components["schemas"]["AttachmentRef"][];
+            /** Attendance Count */
+            attendance_count: number;
+            /** Completed Area */
+            completed_area?: string | null;
+            /** Completed Quantity */
+            completed_quantity?: number | string | null;
+            /**
+             * Day Type
+             * @default weekday
+             */
+            day_type: string;
+            /** Delay Notes */
+            delay_notes?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Overtime Hours
+             * @default 0
+             */
+            overtime_hours: number | string;
+            /** Progress Notes */
+            progress_notes: string;
+            /** Progress Percentage */
+            progress_percentage?: number | string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Quantity Unit */
+            quantity_unit?: string | null;
+            /** Reason */
+            reason: string;
+            /** Remaining Work */
+            remaining_work?: string | null;
+            /** Required Notes */
+            required_notes: string;
+            /**
+             * Update Date
+             * Format: date
+             */
+            update_date: string;
+            /** Work Location */
+            work_location: string;
+        };
         /** SupervisorUpdateCreateRequest */
         "SupervisorUpdateCreateRequest-Input": {
             /** Activity Scope */
@@ -17307,6 +17483,8 @@ export interface components {
             overtime_hours: string;
             /** Pending Reviewer Id */
             pending_reviewer_id?: string | null;
+            /** Previous Id */
+            previous_id?: string | null;
             /** Progress Notes */
             progress_notes: string;
             /** Progress Percentage */
@@ -30644,6 +30822,40 @@ export interface operations {
             };
         };
     };
+    site_attendance_completeness_api_v1_hr_site_attendance_completeness_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                work_date: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendanceCompleteness"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_site_attendance_workers_api_v1_hr_site_attendance_workers_get: {
         parameters: {
             query: {
@@ -32122,6 +32334,39 @@ export interface operations {
             };
         };
     };
+    create_material_request_draft_api_v1_inventory_requests_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialRequestDraftCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     cancel_material_request_api_v1_inventory_requests__request_id__cancel_post: {
         parameters: {
             query?: never;
@@ -32172,6 +32417,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    replace_material_request_remainder_api_v1_inventory_requests__request_id__replacement_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialRequestReplacementRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -33814,6 +34094,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupervisorUpdateResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    correct_verified_supervisor_update_api_v1_supervisor_updates__update_id__correction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                update_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupervisorUpdateCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

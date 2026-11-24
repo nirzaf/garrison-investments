@@ -8,6 +8,7 @@ import pytest
 from app.database import AsyncSessionLocal, engine
 from app.models.hr import (
     HrEmployee,
+    HrOvertimeRequest,
     HrPayrollPeriod,
     HrShiftAssignment,
     HrTimesheet,
@@ -132,7 +133,28 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
         assert manual.status_code == 409, manual.text
         assert manual.json()["error_code"] == "SITE_ATTENDANCE_WORKFLOW_REQUIRED"
 
+        async with AsyncSessionLocal() as session:
+            missing, csv_content = await reconcile_payroll_time_inputs(
+                session, period, {employee.id}
+            )
+            assert any(issue.code == "missing_site_attendance" for issue in missing.issues)
+            assert csv_content is None
+
         site_path = "/api/v1/hr/site-attendance"
+        counts_path = f"{site_path}/completeness"
+        counts_params = {"project_id": str(project.id), "work_date": day.isoformat()}
+        counts = await client.get(counts_path, params=counts_params, headers=writer)
+        assert counts.status_code == 200, counts.text
+        assert counts.json()["missing_workers"] == 1
+        assert counts.json()["items"][0]["id"] == str(employee.id)
+        outside = await client.get(counts_path, params=counts_params, headers=outsider)
+        assert outside.status_code in (403, 404)
+        empty = await client.get(
+            counts_path,
+            params={**counts_params, "work_date": (day - timedelta(days=1)).isoformat()},
+            headers=hr,
+        )
+        assert empty.json()["empty_roster"] is True
         created = await client.post(site_path, json=payload, headers=writer)
         assert created.status_code == 201, created.text
         entry = created.json()
@@ -229,6 +251,9 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
         assert sorted(check.status_code for check in checks) == [200, 409]
         approved = next(check.json() for check in checks if check.status_code == 200)
         assert approved["stage"] == "approved"
+        complete = await client.get(counts_path, params=counts_params, headers=hr)
+        assert complete.json()["is_complete"] is True
+        assert complete.json()["confirmed_workers"] == 1
         confirmed_summary = await client.get(dashboard, headers=reviewer)
         foreign_summary = await client.get(dashboard, headers=outsider)
         hr_summary = await client.get(dashboard, headers=hr)
@@ -236,9 +261,11 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
         assert foreign_summary.json()["site_operations"]["confirmed_present_today"] == 0
         assert hr_summary.json()["site_operations"] is None
 
+        sheet_id = uuid4()
         async with AsyncSessionLocal() as session:
             session.add(
                 HrTimesheet(
+                    id=sheet_id,
                     employee_id=employee.id,
                     project_id=project.id,
                     period_start=day,
@@ -246,6 +273,27 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
                     status="locked",
                     regular_hours=Decimal("8"),
                     approved_at=utc_now(),
+                )
+            )
+            await session.commit()
+            result, csv_content = await reconcile_payroll_time_inputs(
+                session, period, {employee.id}
+            )
+            assert any(issue.code == "site_overtime_mismatch" for issue in result.issues)
+            assert csv_content is None
+            sheet = await session.get(HrTimesheet, sheet_id)
+            assert sheet is not None
+            sheet.overtime_hours = Decimal("1")
+            session.add(
+                HrOvertimeRequest(
+                    employee_id=employee.id,
+                    project_id=project.id,
+                    work_date=day,
+                    requested_hours=Decimal("1"),
+                    approved_hours=Decimal("1"),
+                    reason="Approved site overtime",
+                    status="approved",
+                    decided_at=utc_now(),
                 )
             )
             await session.commit()

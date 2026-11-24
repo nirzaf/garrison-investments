@@ -3060,6 +3060,8 @@ PayrollTimeIssueCode = Literal[
     "timesheet_not_locked",
     "overlapping_timesheets",
     "pending_attendance",
+    "missing_site_attendance",
+    "site_overtime_mismatch",
     "attendance_without_schedule",
     "attendance_without_timesheet",
     "pending_attendance_correction",
@@ -3534,6 +3536,16 @@ class SiteAttendanceWorker(BaseModel):
     id: UUID
     employee_code: str
     full_name: str
+
+
+class SiteAttendanceCompleteness(BaseModel):
+    expected_workers: int
+    recorded_workers: int
+    missing_workers: int
+    confirmed_workers: int
+    is_complete: bool
+    empty_roster: bool
+    items: list[SiteAttendanceWorker]
 
 
 class SiteAttendanceWorkerPage(BaseModel):

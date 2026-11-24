@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.daily_report import DailyReport
-from app.models.inventory import InventoryRegistration
+from app.models.inventory import InventoryRegistration, MaterialRequest
 from app.models.photo import Photo
 from app.models.project import Project
 from app.models.supervisor_update import SupervisorUpdate, SupervisorUpdateSubmission
@@ -43,8 +43,13 @@ from app.utils.security import utc_now
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
 MAX_REPORT_PHOTOS = 5
-UPLOAD_OWNER_TYPES = {"daily_report", "supervisor_update", "inventory_registration"}
-type PhotoOwner = DailyReport | SupervisorUpdate | InventoryRegistration
+UPLOAD_OWNER_TYPES = {
+    "daily_report",
+    "supervisor_update",
+    "inventory_registration",
+    "material_request",
+}
+type PhotoOwner = DailyReport | SupervisorUpdate | InventoryRegistration | MaterialRequest
 PHOTO_RECOVERY_DAYS = 30
 SIGNED_URL_SECONDS = 300
 ALLOWED_MAGIC = {
@@ -482,6 +487,14 @@ class PhotoService:
             )
             if owner is None:
                 raise NotFoundException("Supervisor update")
+        elif entity_type == "material_request":
+            owner = await self.session.scalar(
+                select(MaterialRequest)
+                .where(MaterialRequest.id == entity_id, MaterialRequest.deleted_at.is_(None))
+                .with_for_update()
+            )
+            if owner is None:
+                raise NotFoundException("Material request")
         elif entity_type == "inventory_registration":
             owner = await self.session.scalar(
                 select(InventoryRegistration)
@@ -514,6 +527,16 @@ class PhotoService:
                 and has_permission(actor, PERMISSION_REPORTS_SUBMIT)
                 and owner.supervisor_id == actor.id
             )
+        elif isinstance(owner, MaterialRequest):
+            owns_draft = actor.role in SUPERVISOR_ROLES and owner.requester_id == actor.id
+            if owns_draft and not await self.session.scalar(
+                select(Project.id).where(
+                    Project.id == owner.project_id,
+                    Project.status == "active",
+                    Project.deleted_at.is_(None),
+                )
+            ):
+                raise NotFoundException("Active project")
         elif isinstance(owner, InventoryRegistration):
             owns_draft = actor.role in SUPERVISOR_ROLES and owner.created_by == actor.id
         else:
@@ -563,6 +586,7 @@ class PhotoService:
                 "daily_report": "report",
                 "supervisor_update": "site update",
                 "inventory_registration": "registration",
+                "material_request": "material request",
             }[entity_type]
             raise AppException(
                 f"This {owner_label} already has {MAX_REPORT_PHOTOS} active photos.",

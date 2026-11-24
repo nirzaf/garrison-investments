@@ -557,7 +557,7 @@ async def test_oversight_authorization_suppression_redaction_and_degraded_fallba
             params={"role_key": "hr_executive_reader", "permission_key": "reports:view"},
         )
         assert explain.status_code == 200
-        assert explain.json()["allowed"] is True and explain.json()["is_business_role"] is True
+        assert explain.json()["allowed"] is False and explain.json()["is_business_role"] is True
         assert (
             await actor.get(
                 f"{API}/policy/explain",

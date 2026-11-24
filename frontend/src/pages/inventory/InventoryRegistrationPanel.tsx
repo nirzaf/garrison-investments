@@ -106,6 +106,8 @@ function RegistrationForm({ items, locations, previous, onClose, onSuccess }: In
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const [reason, setReason] = useState('');
+  const [assetReferences, setAssetReferences] = useState('');
   const [search, setSearch] = useState('');
   const term = useDebouncedSearch(search);
   const [draft, setDraft] = useState<InventoryRegistrationDraft>(
@@ -120,7 +122,7 @@ function RegistrationForm({ items, locations, previous, onClose, onSuccess }: In
     enabled: !previous
   });
   const save = useMutation({
-    mutationFn: () => createInventoryRegistration(draft, previous),
+    mutationFn: () => createInventoryRegistration(draft, previous, reason, assetReferences.split(/[,\s]+/).filter(Boolean)),
     onSuccess
   });
 
@@ -219,6 +221,19 @@ function RegistrationForm({ items, locations, previous, onClose, onSuccess }: In
               onChange={(event) => setDraft({ ...draft, [key]: event.target.value || null })} />
           </label>
         ))}
+        {previous?.status === 'approved' && (
+          <label>Correction reason
+            <textarea className="form-field" required maxLength={2000} value={reason}
+              onChange={(event) => setReason(event.target.value)} />
+          </label>
+        )}
+        {previous && previous.requirements.category !== 'material' &&
+          Number(draft.quantity) < Number(previous.requirements.quantity) && (
+            <label>Asset IDs to remove
+              <input className="form-field" required value={assetReferences}
+                onChange={(event) => setAssetReferences(event.target.value)} />
+            </label>
+          )}
         <p className="text-sm">Upload a photograph and any delivery documents after saving the draft.</p>
         <div className="flex gap-3">
           <button type="submit" className="form-button">{save.isPending ? 'Saving…' : 'Save registration draft'}</button>
@@ -329,7 +344,7 @@ function RegistrationDetails({ record, isOwner, canReview, onCorrection, refresh
               onClick={() => submit.mutate()}>Submit registration</button>
           </div>
         )}
-        {isOwner && ['returned', 'rejected'].includes(record.status) && (
+        {isOwner && ['approved', 'returned', 'rejected'].includes(record.status) && (
           <button type="button" className="form-button" onClick={onCorrection}>Correct registration</button>
         )}
         {canReview && record.status === 'pending_engineer' && (

@@ -5,6 +5,15 @@ export type SiteAttendanceRecord = components['schemas']['SiteAttendanceResponse
 export type SiteAttendanceDraft = components['schemas']['SiteAttendanceCreateRequest-Input'];
 export type SiteAttendanceWorker = components['schemas']['SiteAttendanceWorker'];
 
+export async function getSiteAttendanceCompleteness(params: {
+  project_id: string; work_date: string; limit: number; offset: number;
+}) {
+  const { data } = await apiClient.get<components['schemas']['SiteAttendanceCompleteness']>(
+    '/hr/site-attendance/completeness', { params }
+  );
+  return data;
+}
+
 export async function listSiteAttendance(params: {
   project_id?: string;
   work_date?: string;

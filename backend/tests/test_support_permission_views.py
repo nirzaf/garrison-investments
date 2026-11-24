@@ -230,8 +230,7 @@ async def test_support_view_requires_live_review_and_the_requesters_session(kind
             assert set(result) == fields | {"routes"}
             assert all(set(route) == {"route_id", "visible"} for route in result["routes"])
             assert {route["route_id"] for route in result["routes"] if route["visible"]} == {
-                "dashboard", "reports", "supervisor-updates", "documents", "my-hr",
-                "photos", "approvals", "roles", "manual", "users",
+                "dashboard", "documents", "my-hr", "approvals", "roles", "manual", "users",
             }
             assert {"projects", "hr-workforce", "employee-relations", "security"} <= {
                 route["route_id"] for route in result["routes"] if not route["visible"]

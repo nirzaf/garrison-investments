@@ -33,6 +33,19 @@ export async function listReportSupervisorUpdates(
   return response.data;
 }
 
+export async function correctVerifiedSupervisorUpdate(
+  record: SupervisorUpdateRecord,
+  reason: string,
+  scope?: OfflineScope
+): Promise<SupervisorUpdateRecord> {
+  const { data } = await apiClient.post<SupervisorUpdateRecord>(
+    `/supervisor-updates/${record.id}/correction`,
+    { ...record, reason, expected_revision: record.revision },
+    sessionRequestConfig(scope)
+  );
+  return data;
+}
+
 export async function createSupervisorUpdate(
   payload: SupervisorUpdatePayload,
   scope?: OfflineScope

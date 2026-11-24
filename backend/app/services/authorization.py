@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.document import Document
-from app.models.inventory import InventoryRegistration
+from app.models.inventory import InventoryRegistration, MaterialRequest
 from app.models.supervisor_update import SupervisorUpdate, SupervisorUpdateSubmission
 from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
@@ -25,6 +25,7 @@ from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     BUSINESS_ROLES,
     COMPANY_RESOURCE_ROLES,
+    PERMISSION_INVENTORY_VIEW,
     PERMISSION_REPORTS_SUBMIT,
     PERMISSION_REPORTS_VIEW,
     ROLE_GROUP_PROJECT_MANAGER,
@@ -107,6 +108,17 @@ async def ensure_entity_access(
         return
     if entity_type == "project":
         await ensure_project_access(session, entity_id, actor)
+        return
+    if entity_type == "material_request":
+        request = await session.get(MaterialRequest, entity_id)
+        if (
+            request is None
+            or request.deleted_at is not None
+            or not has_permission(actor, PERMISSION_INVENTORY_VIEW)
+            or (request.status == "draft" and request.requester_id != actor.id)
+        ):
+            raise NotFoundException("Material request")
+        await ensure_project_access(session, request.project_id, actor)
         return
     if entity_type == "inventory_registration":
         registration = await session.get(InventoryRegistration, entity_id)

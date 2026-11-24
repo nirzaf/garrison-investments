@@ -33,7 +33,11 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.inventory import LocationCreateRequest, MaterialQuantityCommand
+from app.schemas.inventory import (
+    LocationCreateRequest,
+    MaterialQuantityCommand,
+    MaterialRequestReplacementRequest,
+)
 from app.services.approval_service import ApprovalService
 from app.services.email_service import EmailDeliveryError
 from app.services.inventory_service import InventoryService
@@ -669,6 +673,51 @@ async def test_cancel_after_partial_issue_releases_only_the_remainder() -> None:
     assert stock.reserved_qty == ZERO
     assert stock.on_hand_qty == Decimal("2"), "already-issued stock must not be returned"
     assert line.reserved_quantity == ZERO
+    assert line.issued_quantity == Decimal("3")
+
+
+async def test_replacement_releases_unissued_reservations_and_preserves_issues() -> None:
+    await skip_if_database_unavailable()
+    fx = await seed(
+        on_hand=Decimal("2"),
+        quantity=Decimal("5"),
+        status="partially_issued",
+        issued=Decimal("3"),
+        line_reserved=Decimal("2"),
+        stock_reserved=Decimal("2"),
+    )
+    payload = MaterialRequestReplacementRequest.model_validate(
+        {
+            "project_id": fx.project.id,
+            "from_location_id": fx.location.id,
+            "reason": "Correct the unissued remainder",
+            "expected_revision": fx.request.revision,
+            "requirements": {
+                "required_date": date.today(),
+                "urgency": "routine",
+                "purpose": "Complete site work",
+                "specification": "Rechecked cement",
+            },
+            "lines": [{"item_id": fx.item.id, "quantity": "2"}],
+        }
+    )
+    async with AsyncSessionLocal() as session:
+        replacement = await InventoryService(session).replace_material_remainder(
+            fx.request.id, payload, fx.store
+        )
+        assert replacement.previous_id == fx.request.id
+        assert replacement.status == "pending_engineer"
+        assert replacement.submission_revision == 1
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(AppException) as repeated:
+            await InventoryService(session).replace_material_remainder(
+                fx.request.id, payload, fx.store
+            )
+        assert repeated.value.status_code == 409
+    stock = await read_stock(fx.item.id, fx.location.id)
+    line = await read_line(fx.request.id)
+    assert stock.reserved_qty == line.reserved_quantity == ZERO
+    assert stock.on_hand_qty == Decimal("2")
     assert line.issued_quantity == Decimal("3")
 
 

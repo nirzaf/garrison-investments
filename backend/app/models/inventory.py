@@ -162,6 +162,9 @@ class MaterialRequest(TimestampMixin, SoftDeleteMixin, Base):
     )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     submission_revision: Mapped[int | None] = mapped_column(Integer)
+    previous_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("material_requests.id", ondelete="RESTRICT")
+    )
     total_estimated_cost: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,

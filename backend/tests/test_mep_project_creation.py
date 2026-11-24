@@ -47,7 +47,7 @@ def service():
 async def test_creation_without_automatic_membership(role):
     svc = service()
     actor = User(id=uuid4(), role=role)
-    project = await svc.create_project(payload(), actor)
+    project = await svc.create_project(payload().model_copy(update={"boq_items": []}), actor)
     assert project.created_by == actor.id
     svc.session.commit.assert_awaited_once()
     svc.projects.add_member.assert_not_awaited()
@@ -56,19 +56,16 @@ async def test_creation_without_automatic_membership(role):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "rate,budget", [("12.34", Decimal("123.45")), ("0", Decimal("0")), ("10.01", None)]
-)
-async def test_mep_financial_creation_preserves_validated_amounts(rate, budget):
+@pytest.mark.parametrize("with_boq", [False, True])
+async def test_mep_cannot_create_project_with_commercial_fields(with_boq):
     svc = service()
-    data = payload(rate, budget)
-    project = await svc.create_project(data, User(id=uuid4(), role="mep_project_manager"))
-    assert project.budget_amount == budget
-    assert project.status == "planning"
-    assert svc._create_boq_items.await_args.args[1][0].unit_rate == Decimal(rate)
-    svc.projects.add_member.assert_not_awaited()
-    svc.audit.record.assert_awaited_once()
-    svc.session.commit.assert_awaited_once()
+    data = payload().model_copy(update={} if with_boq else {
+        "boq_items": [], "budget_amount": Decimal("0")
+    })
+    with pytest.raises(PermissionDeniedException):
+        await svc.create_project(data, User(id=uuid4(), role="mep_project_manager"))
+    svc.projects.add_project.assert_not_awaited()
+    svc.session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -138,7 +135,7 @@ async def test_mep_cannot_create_nonplanning_project(status):
 async def test_unassigned_creator_cannot_read_project():
     svc = service()
     actor = User(id=uuid4(), role="mep_project_manager")
-    project = await svc.create_project(payload(), actor)
+    project = await svc.create_project(payload().model_copy(update={"boq_items": []}), actor)
     project.id = uuid4()
     svc.projects.get_by_id.return_value = project
     svc.projects.list_members.return_value = []

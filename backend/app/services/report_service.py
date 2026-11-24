@@ -495,9 +495,28 @@ class ReportService:
                 status_code=422,
                 error_code="SUPERVISOR_UPDATE_PROJECT_MISMATCH",
             )
+        superseded_ids = (
+            set(
+                await self.session.scalars(
+                    select(SupervisorUpdate.previous_id).where(
+                        SupervisorUpdate.previous_id.in_(update_ids),
+                        SupervisorUpdate.status == "verified",
+                        SupervisorUpdate.deleted_at.is_(None),
+                    )
+                )
+            )
+            if update_ids
+            else set()
+        )
         for update in updates:
             if update.status == "verified" and update.verified_report_id == report.id:
                 continue
+            if update.previous_id is not None or update.id in superseded_ids:
+                raise AppException(
+                    "Corrected progress is reviewed separately from official reports.",
+                    status_code=409,
+                    error_code="SUPERVISOR_CORRECTION_REPORT_LINK_FORBIDDEN",
+                )
             if update.verified_report_id is not None:
                 raise AppException(
                     "This update is already retained on another report.",

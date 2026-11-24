@@ -42,6 +42,7 @@ from app.utils.permissions import (
     REPORT_APPROVER_ROLES,
     ROLE_GROUP_PROJECT_MANAGER,
     ROLE_MEP_PROJECT_MANAGER,
+    ROLE_OPERATIONS_DIRECTOR,
     ensure_permission,
     has_permission,
     roles_with_permission,
@@ -55,6 +56,7 @@ MATERIAL_STAGE_ROLES = {1: ROLE_MEP_PROJECT_MANAGER, 2: ROLE_GROUP_PROJECT_MANAG
 MATERIAL_STAGE_STATES = {1: "pending_engineer", 2: "pending_gpm"}
 APPROVAL_REMINDER_TITLE = "Approval reminder"
 APPROVAL_ESCALATION_TITLE = "Approval escalated"
+MATERIAL_OVERDUE_TITLE = "Material approval overdue"
 
 # Roles that may actually decide each request type. Delegation must not hand decision
 # power to someone the owning workflow would reject: `_apply_entity_decision` writes the
@@ -221,6 +223,7 @@ class ApprovalService:
             limit=limit,
             offset=offset,
             include_all_inbox=False,
+            include_overdue_material=actor.role in COMPANY_RESOURCE_ROLES,
             project_ids=(
                 await accessible_project_ids(self.session, actor)
                 if box == "inbox" and actor.role not in COMPANY_RESOURCE_ROLES
@@ -629,6 +632,34 @@ class ApprovalService:
                 approval.reminded_at = now
                 reminded += 1
             if (
+                approval.request_type == "material_request"
+                and approval.submission_revision is not None
+            ):
+                if approval.escalated_at is None and approval.due_at <= escalation_cutoff:
+                    recipients = await self.session.scalars(
+                        select(User.id).where(
+                            User.role == ROLE_OPERATIONS_DIRECTOR,
+                            User.is_active.is_(True),
+                            User.deleted_at.is_(None),
+                        )
+                    )
+                    for recipient in recipients:
+                        await self.notifications.create(
+                            user_id=recipient,
+                            title=MATERIAL_OVERDUE_TITLE,
+                            body=append_link(
+                                f"{approval.title} is overdue.",
+                                label="View overdue approval",
+                                url=approval_inbox_url(tab="workflow", approval_id=approval.id),
+                            ),
+                            notification_type="approval",
+                            reference_type="approvals",
+                            reference_id=approval.id,
+                        )
+                    approval.escalated_at = now
+                    escalated += 1
+                continue
+            if (
                 approval.escalation_user_id
                 and approval.escalation_user_id != approval.approver_id
                 and approval.escalated_at is None
@@ -686,6 +717,25 @@ class ApprovalService:
             if approval.status not in {"pending", "delegated"}:
                 return False
             expected_user_id = approval.delegated_to_id or approval.approver_id
+        elif notification.title == MATERIAL_OVERDUE_TITLE:
+            if (
+                approval.request_type != "material_request"
+                or approval.submission_revision is None
+                or approval.escalated_at is None
+                or approval.status not in {"pending", "delegated"}
+                or not await self._material_stage_is_open(approval)
+            ):
+                return False
+            return bool(
+                await self.session.scalar(
+                    select(User.id).where(
+                        User.id == notification.user_id,
+                        User.role == ROLE_OPERATIONS_DIRECTOR,
+                        User.is_active.is_(True),
+                        User.deleted_at.is_(None),
+                    )
+                )
+            )
         elif notification.title == APPROVAL_ESCALATION_TITLE:
             if (
                 approval.status != "escalated"
@@ -1103,6 +1153,14 @@ class ApprovalService:
 
     def _can_view(self, approval: Approval, actor: User) -> bool:
         if actor.id == approval.submitter_id:
+            return True
+        if (
+            approval.request_type == "material_request"
+            and approval.submission_revision is not None
+            and approval.escalated_at is not None
+            and approval.status in {"pending", "delegated"}
+            and actor.role in COMPANY_RESOURCE_ROLES
+        ):
             return True
         if approval.submission_revision is not None:
             if actor.role not in self._decision_roles(approval):

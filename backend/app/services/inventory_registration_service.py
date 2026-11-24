@@ -7,6 +7,7 @@ from sqlalchemy.orm import aliased
 from app.models.inventory import (
     InventoryAsset,
     InventoryItem,
+    InventoryMovement,
     InventoryRegistration,
     StorageLocation,
 )
@@ -104,12 +105,18 @@ class InventoryRegistrationService:
         row = await self._get(registration_id, lock=True)
         await ensure_inventory_registration_access(self.session, row, actor)
         self._check_revision(row, payload.expected_submission_revision)
-        if row.status not in {"returned", "rejected"} or payload.project_id != row.project_id:
+        if (
+            row.status not in {"returned", "rejected", "approved"}
+            or payload.project_id != row.project_id
+        ):
             raise self._state_conflict()
         if await self.session.scalar(
             select(InventoryRegistration.id).where(InventoryRegistration.previous_id == row.id)
         ):
             raise self._state_conflict()
+        reason = (payload.reason or "").strip()
+        if row.status == "approved" and not reason:
+            raise AppException("A correction reason is required.", status_code=422)
         return await self._create_draft(payload, actor, previous=row)
 
     async def submit(
@@ -184,7 +191,11 @@ class InventoryRegistrationService:
             )
         await self._eligible_location(row.project_id, row.location_id)
         if payload.decision == "approved":
-            await self._receive(row, actor)
+            previous = await self._previous_approved(row)
+            if previous is None:
+                await self._receive(row, actor)
+            else:
+                await self._adjust_registration(row, previous, actor)
         row.status = payload.decision
         row.decided_at = utc_now()
         row.decision_comments = comments
@@ -220,7 +231,14 @@ class InventoryRegistrationService:
         )
         self.session.add(row)
         await self.session.flush()
-        await self._audit(row, actor, "correction_drafted" if previous else "drafted")
+        await self._audit(
+            row,
+            actor,
+            "correction_drafted" if previous else "drafted",
+            comments=payload.reason
+            if isinstance(payload, InventoryRegistrationCorrectionRequest)
+            else None,
+        )
         await self.session.commit()
         return row
 
@@ -285,6 +303,118 @@ class InventoryRegistrationService:
         )
         row.confirmed_item_id = item.id
         row.movement_id = movement.id
+
+    async def _previous_approved(self, row: InventoryRegistration) -> InventoryRegistration | None:
+        if row.root_id is None:
+            return None
+        return await self.session.scalar(
+            select(InventoryRegistration)
+            .where(
+                (InventoryRegistration.id == row.root_id)
+                | (InventoryRegistration.root_id == row.root_id),
+                InventoryRegistration.status == "approved",
+                InventoryRegistration.submission_revision < row.submission_revision,
+            )
+            .order_by(InventoryRegistration.submission_revision.desc())
+            .limit(1)
+        )
+
+    async def _adjust_registration(
+        self, row: InventoryRegistration, previous: InventoryRegistration, actor: User
+    ) -> None:
+        current = InventoryRegistrationCreateRequest.model_validate(row.requirements)
+        original = InventoryRegistrationCreateRequest.model_validate(previous.requirements)
+        item_id = previous.confirmed_item_id
+        if (
+            item_id is None
+            or row.location_id != previous.location_id
+            or current.category != original.category
+            or current.unit != original.unit
+            or current.catalog_item_id not in (None, item_id)
+        ):
+            raise AppException(
+                "Use a compensating transaction to change item or location.", status_code=409
+            )
+        row.confirmed_item_id = item_id
+        delta = current.quantity - original.quantity
+        remove_ids = [UUID(value) for value in row.requirements.get("remove_asset_ids", [])]
+        service = InventoryService(self.session)
+        if current.category != "material":
+            if delta < 0:
+                if len(set(remove_ids)) != -delta or len(remove_ids) != len(set(remove_ids)):
+                    raise AppException("Select each asset to remove.", status_code=422)
+                assets = list(
+                    await self.session.scalars(
+                        select(InventoryAsset)
+                        .where(
+                            InventoryAsset.id.in_(remove_ids),
+                            InventoryAsset.item_id == item_id,
+                            InventoryAsset.current_location_id == row.location_id,
+                            InventoryAsset.deleted_at.is_(None),
+                            InventoryAsset.status == "active",
+                        )
+                        .order_by(InventoryAsset.id)
+                        .with_for_update()
+                    )
+                )
+                roots = await self.session.scalars(
+                    select(InventoryRegistration.id).where(
+                        (InventoryRegistration.id == row.root_id)
+                        | (InventoryRegistration.root_id == row.root_id),
+                        InventoryRegistration.status == "approved",
+                    )
+                )
+                prefixes = tuple(f"REG-{root.hex}-" for root in roots)
+                stock = await service._get_or_create_stock(item_id, row.location_id)
+                referenced = await self.session.scalar(
+                    select(InventoryMovement.id)
+                    .where(
+                        InventoryMovement.item_id == item_id,
+                        InventoryMovement.movement_type.in_(
+                            ("transfer", "issue", "consume", "reserve")
+                        ),
+                        (InventoryMovement.asset_id.in_(remove_ids))
+                        | (InventoryMovement.asset_id.is_(None)),
+                    )
+                    .limit(1)
+                )
+                if (
+                    len(assets) != len(remove_ids)
+                    or stock.reserved_qty
+                    or referenced
+                    or any(not asset.asset_tag.startswith(prefixes) for asset in assets)
+                ):
+                    raise AppException(
+                        "Asset custody needs a compensating transaction.", status_code=409
+                    )
+                for asset in assets:
+                    asset.deleted_at = utc_now()
+            elif delta > 0:
+                for index in range(1, int(delta) + 1):
+                    self.session.add(
+                        InventoryAsset(
+                            item_id=item_id,
+                            asset_tag=f"REG-{row.id.hex}-{index:03d}",
+                            current_location_id=row.location_id,
+                            condition=current.condition,
+                        )
+                    )
+        if delta:
+            movement = await service._apply_movement(
+                MovementCreateRequest(
+                    item_id=item_id,
+                    movement_type="adjustment",
+                    quantity=delta,
+                    to_location_id=row.location_id,
+                    project_id=row.project_id,
+                    reference_type="inventory_registration",
+                    reference_id=row.id,
+                    notes=row.requirements.get("reason"),
+                ),
+                actor,
+                registration=row,
+            )
+            row.movement_id = movement.id
 
     async def _eligible_location(self, project_id: UUID, location_id: UUID) -> None:
         location = await self.session.scalar(

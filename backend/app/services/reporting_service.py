@@ -12,6 +12,7 @@ from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.supervisor_update_repository import SupervisorUpdateRepository
 from app.schemas.supervisor_updates import (
+    SupervisorUpdateCorrectionRequest,
     SupervisorUpdateCreateRequest,
     SupervisorUpdateDecisionRequest,
     SupervisorUpdateResponse,
@@ -111,6 +112,9 @@ class ReportingService:
         self,
         payload: SupervisorUpdateCreateRequest,
         actor: User,
+        *,
+        previous: SupervisorUpdate | None = None,
+        reason: str | None = None,
     ) -> SupervisorUpdate:
         ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
         if actor.role not in SUPERVISOR_ROLES:
@@ -121,10 +125,12 @@ class ReportingService:
             )
         await self._ensure_project_member(payload.project_id, actor)
         self._validate_day_type(payload.day_type)
-        self._validate_previous_date(payload, actor)
+        if previous is None:
+            self._validate_previous_date(payload, actor)
         update = SupervisorUpdate(
             project_id=payload.project_id,
             supervisor_id=actor.id,
+            previous_id=previous.id if previous else None,
             update_date=payload.update_date,
             day_type=payload.day_type,
             work_location=payload.work_location,
@@ -140,7 +146,8 @@ class ReportingService:
         try:
             await self.updates.add(update)
             await self.audit.record(
-                action="supervisor_updates.created",
+                action="supervisor_updates.corrected" if previous else "supervisor_updates.created",
+                comments=reason,
                 user_id=actor.id,
                 entity_type="supervisor_updates",
                 entity_id=update.id,
@@ -155,6 +162,22 @@ class ReportingService:
                 error_code="SUPERVISOR_UPDATE_EXISTS",
             ) from exc
         return update
+
+    async def correct_verified_update(
+        self, update_id: UUID, payload: SupervisorUpdateCorrectionRequest, actor: User
+    ) -> SupervisorUpdate:
+        original = await self.updates.get_by_id(update_id, for_update=True)
+        if original is None or original.supervisor_id != actor.id:
+            raise NotFoundException("Supervisor update")
+        self._check_draft_revision(original, payload.expected_revision)
+        if original.status != "verified":
+            raise AppException("Only confirmed progress can be corrected here.", status_code=409)
+        if original.project_id != payload.project_id or original.update_date != payload.update_date:
+            raise AppException("A correction must retain project and date.", status_code=422)
+        reason = payload.reason.strip()
+        if not reason:
+            raise AppException("A correction reason is required.", status_code=422)
+        return await self.create_supervisor_update(payload, actor, previous=original, reason=reason)
 
     async def update_supervisor_update(
         self,
@@ -184,7 +207,7 @@ class ReportingService:
             )
         if correcting or payload.expected_revision is not None or update.submission_revision:
             self._check_draft_revision(update, payload.expected_revision)
-        if (correcting or update.submission_revision) and (
+        if (correcting or update.submission_revision or update.previous_id) and (
             update.project_id != payload.project_id or update.update_date != payload.update_date
         ):
             raise AppException(
@@ -194,7 +217,7 @@ class ReportingService:
             )
         await self._ensure_project_member(payload.project_id, actor)
         self._validate_day_type(payload.day_type)
-        if not correcting and update.submission_revision is None:
+        if not correcting and update.submission_revision is None and update.previous_id is None:
             self._validate_previous_date(payload, actor)
         if update.project_id != payload.project_id and await self.session.scalar(
             select(Photo.id)

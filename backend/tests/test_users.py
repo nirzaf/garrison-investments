@@ -203,7 +203,6 @@ async def test_user_state_preconditions_permissions_and_revocation() -> None:
         assert set(hr_executive["permissions"]) == {
             "users:read",
             "dashboard:scoped",
-            "reports:view",
             "documents:view",
         }
         assert hr_executive["assignable"] is False

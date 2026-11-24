@@ -418,8 +418,14 @@ test('site registration posts stock only after assigned engineer review and mate
     await page.getByLabel('Required delivery date').fill('2026-11-30');
     await page.getByLabel('Purpose and work scope').fill('Site test');
     await page.getByLabel('Material description and specification').fill('Site fixture');
+    await page.getByLabel('Upload request evidence').setInputFiles({
+      name: 'material-evidence.jpg',
+      mimeType: 'image/jpeg',
+      buffer: readFileSync(new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url))
+    });
+    await expect(page.getByRole('button', { name: 'Remove material-evidence.jpg' })).toBeVisible();
     const submitted = page.waitForResponse((response) =>
-      response.url().endsWith('/inventory/requests') && response.request().method() === 'POST'
+      /\/inventory\/requests\/[^/]+\/resubmit$/.test(response.url()) && response.request().method() === 'POST'
     );
     await page.getByRole('button', { name: 'Submit request', exact: true }).click();
     const material = await (await submitted).json();

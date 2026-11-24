@@ -64,6 +64,9 @@ class SupervisorUpdate(TimestampMixin, SoftDeleteMixin, Base):
     verification_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     submission_revision: Mapped[int | None] = mapped_column(Integer)
+    previous_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("supervisor_updates.id", ondelete="RESTRICT")
+    )
     activity_scope: Mapped[str | None] = mapped_column(Text)
     remaining_work: Mapped[str | None] = mapped_column(Text)
     completed_area: Mapped[str | None] = mapped_column(String(255))

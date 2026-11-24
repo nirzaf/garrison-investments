@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.approval import Approval
@@ -58,6 +58,7 @@ class ApprovalRepository:
         limit: int,
         offset: int,
         include_all_inbox: bool = False,
+        include_overdue_material: bool = False,
         project_ids: list[UUID] | None = None,
         request_types: set[str] | None = None,
     ) -> tuple[list[Approval], int]:
@@ -72,6 +73,14 @@ class ApprovalRepository:
                     Approval.approver_id == user_id,
                     Approval.delegated_to_id == user_id,
                     (Approval.escalation_user_id == user_id) & (Approval.status == "escalated"),
+                    (
+                        (Approval.request_type == "material_request")
+                        & Approval.submission_revision.is_not(None)
+                        & Approval.escalated_at.is_not(None)
+                        & Approval.status.in_(("pending", "delegated"))
+                    )
+                    if include_overdue_material
+                    else false(),
                 )
             )
             if project_ids is not None:

@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.models.supervisor_update import SupervisorUpdate, SupervisorUpdateSubmission
 
@@ -51,6 +52,7 @@ class SupervisorUpdateRepository:
     async def list_report_evidence(
         self, report_id: UUID, project_id: UUID, update_ids: list[UUID]
     ) -> list[SupervisorUpdate]:
+        successor = aliased(SupervisorUpdate)
         return list(
             await self.session.scalars(
                 select(SupervisorUpdate)
@@ -63,6 +65,14 @@ class SupervisorUpdateRepository:
                         (
                             (SupervisorUpdate.status == "verified")
                             & SupervisorUpdate.verified_report_id.is_(None)
+                            & SupervisorUpdate.previous_id.is_(None)
+                            & ~select(successor.id)
+                            .where(
+                                successor.previous_id == SupervisorUpdate.id,
+                                successor.status == "verified",
+                                successor.deleted_at.is_(None),
+                            )
+                            .exists()
                             & SupervisorUpdate.submission_revision.is_not(None)
                         ),
                     ),

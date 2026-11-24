@@ -474,6 +474,10 @@ export function ApprovalInboxPage() {
                         {approval.title}
                       </h3>
                       <StatusBadge tone="info">{approval.status}</StatusBadge>
+                      {approval.submission_revision != null && approval.escalated_at &&
+                        ['pending', 'delegated'].includes(approval.status) && (
+                          <StatusBadge tone="warning">Overdue · Operations notified</StatusBadge>
+                        )}
                     </div>
                     <p className="mt-1 text-sm text-theme-text-muted">
                       {approval.request_type} - due {new Date(approval.due_at).toLocaleString()}

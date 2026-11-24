@@ -170,7 +170,7 @@ const cases: RoleCase[] = [
   {
     role: 'hr_executive_reader',
     label: 'HR Executive',
-    links: ['Reports', 'Supervisor updates', 'Documents', 'Photos', 'Users'],
+    links: ['Documents', 'Users'],
     inbox: false,
     feature: 'Users',
     heading: 'Users',

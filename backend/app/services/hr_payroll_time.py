@@ -8,7 +8,7 @@ from decimal import Decimal
 from io import StringIO
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import Date, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hr import (
@@ -20,9 +20,12 @@ from app.models.hr import (
     HrLeaveType,
     HrOvertimeRequest,
     HrPayrollPeriod,
+    HrRosterAllocation,
+    HrShiftAssignment,
     HrSiteAttendanceSubmission,
     HrTimesheet,
 )
+from app.models.project import Project
 from app.models.user import User
 from app.schemas.hr import (
     PayrollLeaveInputIssue,
@@ -33,6 +36,7 @@ from app.schemas.hr import (
     PayrollTimeIssueCode,
 )
 from app.services.audit_service import AuditService
+from app.services.hr_manager_review import REVIEW_EMPLOYMENT_STATES
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import PERMISSION_HR_PAYROLL_PREPARE, ensure_permission
 
@@ -75,6 +79,8 @@ async def payroll_time_inputs(
 ) -> tuple[PayrollTimeInputPreview, bytes | None]:
     ensure_permission(actor, PERMISSION_HR_PAYROLL_PREPARE)
     period, roster = await lock_payroll_input_roster(session, period_id, employee_ids)
+    if period.status == "closed":
+        raise AppException("The payroll period is closed.", status_code=409)
     result, content = await reconcile_payroll_time_inputs(session, period, roster)
     await _record_input_review(session, "time", result, actor, expected_csv_sha256)
     return result, content
@@ -136,6 +142,57 @@ async def reconcile_payroll_time_inputs(
             None,
         )
 
+    days = (
+        func.generate_series(cast(start, Date), cast(end, Date), text("interval '1 day'"))
+        .table_valued("day")
+        .render_derived()
+        .lateral()
+    )
+    day = cast(days.c.day, Date)
+    allocated = select(HrRosterAllocation.id).where(
+        HrRosterAllocation.employee_id == HrEmployee.id,
+        HrRosterAllocation.work_date == day,
+        HrRosterAllocation.cancelled_at.is_(None),
+    )
+    active_projects = select(Project.id).where(
+        Project.status == "active", Project.deleted_at.is_(None)
+    )
+    shifted = select(HrShiftAssignment.id).where(
+        HrShiftAssignment.employee_id == HrEmployee.id,
+        HrShiftAssignment.project_id.in_(active_projects),
+        HrShiftAssignment.effective_from <= day,
+        or_(HrShiftAssignment.effective_to.is_(None), HrShiftAssignment.effective_to >= day),
+    )
+    recorded = select(HrAttendanceEntry.id).where(
+        HrAttendanceEntry.employee_id == HrEmployee.id,
+        HrAttendanceEntry.work_date == day,
+        HrAttendanceEntry.status != "historical",
+        HrAttendanceEntry.source == "site",
+    )
+    missing = await session.scalars(
+        select(HrEmployee.id)
+        .select_from(HrEmployee)
+        .join(days, text("true"))
+        .where(
+            HrEmployee.id.in_(roster),
+            HrEmployee.deleted_at.is_(None),
+            HrEmployee.employment_status.in_(REVIEW_EMPLOYMENT_STATES),
+            or_(HrEmployee.join_date.is_(None), HrEmployee.join_date <= day),
+            or_(HrEmployee.termination_date.is_(None), HrEmployee.termination_date > day),
+            or_(
+                allocated.where(HrRosterAllocation.project_id.in_(active_projects)).exists(),
+                ~allocated.exists() & shifted.exists(),
+            ),
+            ~recorded.exists(),
+        )
+        .distinct()
+        .order_by(HrEmployee.id)
+    )
+    issues.extend(
+        PayrollTimeInputIssue(employee_id=employee_id, code="missing_site_attendance")
+        for employee_id in missing
+    )
+    site_overtime: dict[tuple[UUID, date], tuple[UUID, Decimal]] = {}
     attendance = await session.execute(
         select(HrAttendanceEntry, HrSiteAttendanceSubmission)
         .outerjoin(
@@ -168,6 +225,11 @@ async def reconcile_payroll_time_inputs(
                 )
             )
         else:
+            if site_review is not None and entry.source == "site":
+                site_overtime[(entry.employee_id, entry.work_date)] = (
+                    entry.id,
+                    Decimal(site_review.requirements["overtime_hours"]),
+                )
             if entry.calendar_id is None or entry.scheduled_workday is None:
                 issues.append(
                     PayrollTimeInputIssue(
@@ -210,6 +272,7 @@ async def reconcile_payroll_time_inputs(
     )
     overtime_by_sheet: dict[UUID, Decimal] = defaultdict(Decimal)
     overtime_days: set[tuple[UUID, date]] = set()
+    approved_daily_hours: dict[tuple[UUID, date], Decimal] = {}
     issue: PayrollTimeIssueCode
     for request in overtime:
         matched_sheet = covering_sheet(request.employee_id, request.work_date)
@@ -224,11 +287,21 @@ async def reconcile_payroll_time_inputs(
             issue = "overtime_hours_mismatch"
         else:
             overtime_days.add(day_key)
+            approved_daily_hours[day_key] = request.approved_hours
             overtime_by_sheet[matched_sheet.id] += request.approved_hours
             continue
         issues.append(
             PayrollTimeInputIssue(employee_id=request.employee_id, record_id=request.id, code=issue)
         )
+    for day_key, (record_id, reported_hours) in site_overtime.items():
+        if reported_hours != approved_daily_hours.get(day_key, Decimal("0")):
+            issues.append(
+                PayrollTimeInputIssue(
+                    employee_id=day_key[0],
+                    record_id=record_id,
+                    code="site_overtime_mismatch",
+                )
+            )
     for sheet in locked:
         if sheet.overtime_hours != overtime_by_sheet[sheet.id]:
             issues.append(

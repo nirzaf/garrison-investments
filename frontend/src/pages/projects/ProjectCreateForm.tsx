@@ -191,15 +191,17 @@ export function ProjectCreateForm({
             />
             {rowIssues('target_end_date')}
           </div>
-          <div>
-            <ProjectInput
-              label="Budget"
-              inputMode="decimal"
-              value={draft.budget_amount ?? ''}
-              onChange={(e) => setField('budget_amount', e.target.value)}
-            />
-            {rowIssues('budget_amount')}
-          </div>
+          {!planningOnly && (
+            <div>
+              <ProjectInput
+                label="Budget"
+                inputMode="decimal"
+                value={draft.budget_amount ?? ''}
+                onChange={(e) => setField('budget_amount', e.target.value)}
+              />
+              {rowIssues('budget_amount')}
+            </div>
+          )}
           <ProjectSelect
             label="Initial status"
             disabled={planningOnly}
@@ -296,126 +298,128 @@ export function ProjectCreateForm({
             </fieldset>
           ))}
         </div>
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="font-semibold">Bill of quantities</h4>
-            <button
-              className={projectActionClass}
-              type="button"
-              onClick={() => setField('boq_items', [...draft.boq_items, newBoqItem('')])}
-            >
-              Add BOQ item
-            </button>
+          {!planningOnly && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="font-semibold">Bill of quantities</h4>
+              <button
+                className={projectActionClass}
+                type="button"
+                onClick={() => setField('boq_items', [...draft.boq_items, newBoqItem('')])}
+              >
+                Add BOQ item
+              </button>
+            </div>
+            {!draft.boq_items.length && (
+              <p className="text-sm text-theme-text-secondary">
+                BOQ items can be added after project creation.
+              </p>
+            )}
+            {draft.boq_items.map((row, index) => (
+              <fieldset
+                key={row.rowId}
+                className="space-y-2 rounded-md border border-theme-border p-3"
+              >
+                <legend className="px-1 text-sm font-medium">BOQ item {index + 1}</legend>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <ProjectInput
+                    label="Item code"
+                    required
+                    maxLength={50}
+                    value={row.item_code}
+                    onChange={(e) => editBoqItem(row.rowId, { item_code: e.target.value })}
+                  />
+                  <ProjectInput
+                    label="BOQ description"
+                    required
+                    value={row.description}
+                    onChange={(e) => editBoqItem(row.rowId, { description: e.target.value })}
+                  />
+                  <ProjectInput
+                    label="Discipline"
+                    maxLength={50}
+                    value={row.discipline ?? ''}
+                    onChange={(e) => editBoqItem(row.rowId, { discipline: e.target.value })}
+                  />
+                  <ProjectInput
+                    label="Phase"
+                    maxLength={100}
+                    value={row.phase ?? ''}
+                    onChange={(e) => editBoqItem(row.rowId, { phase: e.target.value })}
+                  />
+                  <ProjectSelect
+                    label="Linked milestone"
+                    value={row.milestoneId}
+                    onChange={(e) => editBoqItem(row.rowId, { milestoneId: e.target.value })}
+                  >
+                    <option value="">No milestone</option>
+                    {draft.milestones.map((item) => (
+                      <option key={item.rowId} value={item.rowId}>
+                        {item.name || 'Unnamed milestone'}
+                      </option>
+                    ))}
+                  </ProjectSelect>
+                  <ProjectInput
+                    label="Unit"
+                    required
+                    maxLength={20}
+                    value={row.unit}
+                    onChange={(e) => editBoqItem(row.rowId, { unit: e.target.value })}
+                  />
+                  <ProjectInput
+                    label="Planned quantity"
+                    required
+                    inputMode="decimal"
+                    value={row.planned_quantity}
+                    onChange={(e) => editBoqItem(row.rowId, { planned_quantity: e.target.value })}
+                  />
+                  <ProjectInput
+                    label="Unit rate"
+                    required
+                    inputMode="decimal"
+                    value={row.unit_rate}
+                    onChange={(e) => editBoqItem(row.rowId, { unit_rate: e.target.value })}
+                  />
+                </div>
+                {rowIssues(`boq_items.${index}`)}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={projectActionClass}
+                    disabled={index === 0}
+                    type="button"
+                    onClick={() => moveBoqItem(index, -1)}
+                  >
+                    Move up
+                  </button>
+                  <button
+                    className={projectActionClass}
+                    disabled={index === draft.boq_items.length - 1}
+                    type="button"
+                    onClick={() => moveBoqItem(index, 1)}
+                  >
+                    Move down
+                  </button>
+                  <button
+                    className={projectActionClass}
+                    type="button"
+                    onClick={() =>
+                      setField(
+                        'boq_items',
+                        draft.boq_items.filter((item) => item.rowId !== row.rowId)
+                      )
+                    }
+                  >
+                    Remove BOQ item
+                  </button>
+                </div>
+              </fieldset>
+            ))}
+            {rowIssues('boq_items', false)}
+            {draft.boq_items.length > 0 && plannedTotal !== null && (
+              <p className="text-sm text-theme-text-secondary">Planned BOQ total {plannedTotal}</p>
+            )}
           </div>
-          {!draft.boq_items.length && (
-            <p className="text-sm text-theme-text-secondary">
-              BOQ items can be added after project creation.
-            </p>
           )}
-          {draft.boq_items.map((row, index) => (
-            <fieldset
-              key={row.rowId}
-              className="space-y-2 rounded-md border border-theme-border p-3"
-            >
-              <legend className="px-1 text-sm font-medium">BOQ item {index + 1}</legend>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <ProjectInput
-                  label="Item code"
-                  required
-                  maxLength={50}
-                  value={row.item_code}
-                  onChange={(e) => editBoqItem(row.rowId, { item_code: e.target.value })}
-                />
-                <ProjectInput
-                  label="BOQ description"
-                  required
-                  value={row.description}
-                  onChange={(e) => editBoqItem(row.rowId, { description: e.target.value })}
-                />
-                <ProjectInput
-                  label="Discipline"
-                  maxLength={50}
-                  value={row.discipline ?? ''}
-                  onChange={(e) => editBoqItem(row.rowId, { discipline: e.target.value })}
-                />
-                <ProjectInput
-                  label="Phase"
-                  maxLength={100}
-                  value={row.phase ?? ''}
-                  onChange={(e) => editBoqItem(row.rowId, { phase: e.target.value })}
-                />
-                <ProjectSelect
-                  label="Linked milestone"
-                  value={row.milestoneId}
-                  onChange={(e) => editBoqItem(row.rowId, { milestoneId: e.target.value })}
-                >
-                  <option value="">No milestone</option>
-                  {draft.milestones.map((item) => (
-                    <option key={item.rowId} value={item.rowId}>
-                      {item.name || 'Unnamed milestone'}
-                    </option>
-                  ))}
-                </ProjectSelect>
-                <ProjectInput
-                  label="Unit"
-                  required
-                  maxLength={20}
-                  value={row.unit}
-                  onChange={(e) => editBoqItem(row.rowId, { unit: e.target.value })}
-                />
-                <ProjectInput
-                  label="Planned quantity"
-                  required
-                  inputMode="decimal"
-                  value={row.planned_quantity}
-                  onChange={(e) => editBoqItem(row.rowId, { planned_quantity: e.target.value })}
-                />
-                <ProjectInput
-                  label="Unit rate"
-                  required
-                  inputMode="decimal"
-                  value={row.unit_rate}
-                  onChange={(e) => editBoqItem(row.rowId, { unit_rate: e.target.value })}
-                />
-              </div>
-              {rowIssues(`boq_items.${index}`)}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className={projectActionClass}
-                  disabled={index === 0}
-                  type="button"
-                  onClick={() => moveBoqItem(index, -1)}
-                >
-                  Move up
-                </button>
-                <button
-                  className={projectActionClass}
-                  disabled={index === draft.boq_items.length - 1}
-                  type="button"
-                  onClick={() => moveBoqItem(index, 1)}
-                >
-                  Move down
-                </button>
-                <button
-                  className={projectActionClass}
-                  type="button"
-                  onClick={() =>
-                    setField(
-                      'boq_items',
-                      draft.boq_items.filter((item) => item.rowId !== row.rowId)
-                    )
-                  }
-                >
-                  Remove BOQ item
-                </button>
-              </div>
-            </fieldset>
-          ))}
-          {rowIssues('boq_items', false)}
-          {draft.boq_items.length > 0 && plannedTotal !== null && (
-            <p className="text-sm text-theme-text-secondary">Planned BOQ total {plannedTotal}</p>
-          )}
-        </div>
         <div className="flex flex-wrap gap-2">
           <button className={projectSubmitClass} type="submit">
             {pending ? 'Creating…' : 'Create project'}

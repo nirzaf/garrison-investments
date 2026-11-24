@@ -125,6 +125,10 @@ class ProjectService:
                 raise PermissionDeniedException(PERMISSION_PROJECTS_MANAGE)
         self._validate_status(payload.status)
         self._validate_dates(payload.start_date, payload.target_end_date, "target_end_date")
+        if actor.role not in COMPANY_RESOURCE_ROLES and (
+            payload.budget_amount is not None or payload.boq_items
+        ):
+            raise PermissionDeniedException(PERMISSION_FINANCIAL_VIEW)
         amounts = self._validate_setup(payload)
         project = Project(
             name=payload.name.strip(),

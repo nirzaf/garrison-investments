@@ -127,6 +127,10 @@ class MaterialRequestLineCreate(BaseModel):
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
 
 
+class MaterialRequestDraftCreate(BaseModel):
+    project_id: UUID
+
+
 class MaterialRequestCreateRequest(BaseModel):
     project_id: UUID
     from_location_id: UUID
@@ -157,6 +161,11 @@ class MaterialRequestSubmitRequest(MaterialRequestCreateRequest):
 
 class MaterialRequestResubmitRequest(MaterialRequestSubmitRequest):
     expected_revision: int = Field(ge=1)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class MaterialRequestReplacementRequest(MaterialRequestResubmitRequest):
+    reason: str = Field(min_length=1, max_length=2000)
 
 
 class MaterialSubmissionLine(MaterialRequestLineCreate):
@@ -171,6 +180,7 @@ class MaterialSubmissionSnapshot(BaseModel):
     notes: str | None
     lines: list[MaterialSubmissionLine]
     evidence_versions: dict[str, int]
+    evidence_file_ids: list[UUID] = Field(default_factory=list)
 
 
 class MaterialSubmissionResponse(BaseModel):
@@ -219,6 +229,7 @@ class MaterialRequestResponse(BaseModel):
     request_number: str
     project_id: UUID
     requester_id: UUID | None
+    previous_id: UUID | None = None
     from_location_id: UUID | None
     status: str
     revision: int
@@ -288,6 +299,8 @@ class InventoryRegistrationDecisionRequest(InventoryRegistrationSubmitRequest):
 
 class InventoryRegistrationCorrectionRequest(InventoryRegistrationCreateRequest):
     expected_submission_revision: int = Field(ge=1)
+    reason: str | None = Field(default=None, max_length=2000)
+    remove_asset_ids: list[UUID] = Field(default_factory=list, max_length=100)
 
 
 class InventoryRegistrationResponse(BaseModel):

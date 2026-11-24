@@ -34,3 +34,26 @@ requirements and the corresponding local gap-closure work.
 | 9 · Financial access | Directors have company-wide financial reads. Group Project Managers have assigned-project financial reads. Financial mutations and company-wide cost tools retain their own authorization boundaries. | [Role rules](ROLES_AND_PERMISSIONS.md#authorization-rules), [finance tests](../backend/tests/test_finance.py), [analytics tests](../backend/tests/test_analytics.py) |
 | 11 and 12 · Status, audit and control | Site workflows show pending stages and decisions, notify responsible actors, and preserve corrections with actor and timestamp. Scoped dashboards distinguish pending from confirmed activity. | [Architecture](ARCHITECTURE.md#approvals-inventory-and-finance), [business-role browser cases](../frontend/e2e/business-roles.e2e.ts) |
 | 13 and 14 · Operational outcome and constraints | Separate workflows use the existing roles and PostgreSQL transactions. Release and production verification are recorded against the deployed SHA. New approval categories or thresholds need an approved policy. | [Schema index](schema/README.md), [deployment procedure](OPERATIONS_AND_DEPLOYMENT.md#fast-beta-release-path) |
+
+
+### November 24 PDF follow-up
+
+- MEP Project Managers can start unpriced Planning projects with milestones.
+  Budget and initial BOQ pricing are director-only. The HR Executive report
+  grant is removed in code per PDF §10. Owner sign-off remains pending under
+  [D11](BUSINESS-ROLE-DECISIONS.md#decision-register).
+- Overdue staged material approvals notify Operations Directors once. Directors
+  can read the flagged approvals while the assigned engineer and Group Project
+  Manager retain sole stage authority. Additional Operations or Managing Director
+  decision stages await an approved business policy.
+- Site attendance shows eligible, recorded, missing and independently confirmed
+  workers. Missing required site attendance and unreconciled site overtime block
+  payroll time preparation. [HR workforce guide](HR_WORKFORCE.md#site-attendance)
+- Approved progress corrections preserve the original and run independent reviews
+  on the successor. Approved inventory registration corrections preserve item
+  identity and post only the necessary stock delta. A supervised material draft can
+  retain evidence before submission, including approved versions of selected
+  project documents. Stock-bearing material corrections use the director's
+  unissued-remainder replacement action.
+- Historical inventory and attendance findings can be inspected with the
+  [read-only reconciliation report](../backend/scripts/report_legacy_site_workflows.py).

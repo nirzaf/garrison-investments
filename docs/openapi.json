@@ -13032,6 +13032,18 @@
             ],
             "title": "Quantity"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
           "received_date": {
             "format": "date",
             "title": "Received Date",
@@ -13048,6 +13060,15 @@
               }
             ],
             "title": "Remarks"
+          },
+          "remove_asset_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Remove Asset Ids",
+            "type": "array"
           },
           "serial_number": {
             "anyOf": [
@@ -16825,6 +16846,20 @@
         "title": "MaterialQuantityLine",
         "type": "object"
       },
+      "MaterialRequestDraftCreate": {
+        "properties": {
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "MaterialRequestDraftCreate",
+        "type": "object"
+      },
       "MaterialRequestLineCreate": {
         "properties": {
           "item_id": {
@@ -16899,6 +16934,64 @@
         "title": "MaterialRequestLineResponse",
         "type": "object"
       },
+      "MaterialRequestReplacementRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "from_location_id": {
+            "format": "uuid",
+            "title": "From Location Id",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialRequestLineCreate"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/MaterialSubmissionRequirements"
+          }
+        },
+        "required": [
+          "project_id",
+          "from_location_id",
+          "lines",
+          "requirements",
+          "expected_revision",
+          "reason"
+        ],
+        "title": "MaterialRequestReplacementRequest",
+        "type": "object"
+      },
       "MaterialRequestResponse": {
         "properties": {
           "from_location_id": {
@@ -16935,6 +17028,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "previous_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Id"
           },
           "project_id": {
             "format": "uuid",
@@ -17039,6 +17144,18 @@
             "format": "uuid",
             "title": "Project Id",
             "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "requirements": {
             "$ref": "#/components/schemas/MaterialSubmissionRequirements"
@@ -17267,6 +17384,14 @@
       },
       "MaterialSubmissionSnapshot": {
         "properties": {
+          "evidence_file_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence File Ids",
+            "type": "array"
+          },
           "evidence_versions": {
             "additionalProperties": {
               "type": "integer"
@@ -22539,6 +22664,8 @@
               "timesheet_not_locked",
               "overlapping_timesheets",
               "pending_attendance",
+              "missing_site_attendance",
+              "site_overtime_mismatch",
               "attendance_without_schedule",
               "attendance_without_timesheet",
               "pending_attendance_correction",
@@ -28477,6 +28604,52 @@
         "title": "ShiftAssignmentResponse",
         "type": "object"
       },
+      "SiteAttendanceCompleteness": {
+        "properties": {
+          "confirmed_workers": {
+            "title": "Confirmed Workers",
+            "type": "integer"
+          },
+          "empty_roster": {
+            "title": "Empty Roster",
+            "type": "boolean"
+          },
+          "expected_workers": {
+            "title": "Expected Workers",
+            "type": "integer"
+          },
+          "is_complete": {
+            "title": "Is Complete",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SiteAttendanceWorker"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "missing_workers": {
+            "title": "Missing Workers",
+            "type": "integer"
+          },
+          "recorded_workers": {
+            "title": "Recorded Workers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_workers",
+          "recorded_workers",
+          "missing_workers",
+          "confirmed_workers",
+          "is_complete",
+          "empty_roster",
+          "items"
+        ],
+        "title": "SiteAttendanceCompleteness",
+        "type": "object"
+      },
       "SiteAttendanceCorrectionRequest": {
         "properties": {
           "attendance_status": {
@@ -29205,6 +29378,180 @@
         "title": "SuperAdminToken",
         "type": "object"
       },
+      "SupervisorUpdateCorrectionRequest": {
+        "properties": {
+          "activity_scope": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Scope"
+          },
+          "attachment_refs": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentRef"
+            },
+            "title": "Attachment Refs",
+            "type": "array"
+          },
+          "attendance_count": {
+            "minimum": 0.0,
+            "title": "Attendance Count",
+            "type": "integer"
+          },
+          "completed_area": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Area"
+          },
+          "completed_quantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Quantity"
+          },
+          "day_type": {
+            "default": "weekday",
+            "title": "Day Type",
+            "type": "string"
+          },
+          "delay_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Notes"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "overtime_hours": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Overtime Hours"
+          },
+          "progress_notes": {
+            "minLength": 1,
+            "title": "Progress Notes",
+            "type": "string"
+          },
+          "progress_percentage": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Percentage"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "quantity_unit": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Unit"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "remaining_work": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Work"
+          },
+          "required_notes": {
+            "minLength": 1,
+            "title": "Required Notes",
+            "type": "string"
+          },
+          "update_date": {
+            "format": "date",
+            "title": "Update Date",
+            "type": "string"
+          },
+          "work_location": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Work Location",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "update_date",
+          "work_location",
+          "attendance_count",
+          "progress_notes",
+          "required_notes",
+          "expected_revision",
+          "reason"
+        ],
+        "title": "SupervisorUpdateCorrectionRequest",
+        "type": "object"
+      },
       "SupervisorUpdateCreateRequest-Input": {
         "properties": {
           "activity_scope": {
@@ -29682,6 +30029,18 @@
               }
             ],
             "title": "Pending Reviewer Id"
+          },
+          "previous_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Id"
           },
           "progress_notes": {
             "title": "Progress Notes",
@@ -57839,6 +58198,95 @@
         ]
       }
     },
+    "/api/v1/hr/site-attendance/completeness": {
+      "get": {
+        "operationId": "site_attendance_completeness_api_v1_hr_site_attendance_completeness_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Work Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteAttendanceCompleteness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Site Attendance Completeness Api V1 Hr Site Attendance Completeness Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Site Attendance Completeness",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/site-attendance/workers": {
       "get": {
         "operationId": "list_site_attendance_workers_api_v1_hr_site_attendance_workers_get",
@@ -60769,6 +61217,60 @@
         ]
       }
     },
+    "/api/v1/inventory/requests/drafts": {
+      "post": {
+        "operationId": "create_material_request_draft_api_v1_inventory_requests_drafts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialRequestDraftCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Material Request Draft Api V1 Inventory Requests Drafts Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Material Request Draft",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
     "/api/v1/inventory/requests/{request_id}/cancel": {
       "post": {
         "operationId": "cancel_material_request_api_v1_inventory_requests__request_id__cancel_post",
@@ -60909,6 +61411,72 @@
           }
         ],
         "summary": "Issue Material Request",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/requests/{request_id}/replacement": {
+      "post": {
+        "operationId": "replace_material_request_remainder_api_v1_inventory_requests__request_id__replacement_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialRequestReplacementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Replace Material Request Remainder Api V1 Inventory Requests  Request Id  Replacement Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Replace Material Request Remainder",
         "tags": [
           "Inventory"
         ]
@@ -64599,6 +65167,72 @@
           }
         ],
         "summary": "Update Supervisor Update",
+        "tags": [
+          "Supervisor Updates"
+        ]
+      }
+    },
+    "/api/v1/supervisor-updates/{update_id}/correction": {
+      "post": {
+        "operationId": "correct_verified_supervisor_update_api_v1_supervisor_updates__update_id__correction_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "update_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Update Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupervisorUpdateCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupervisorUpdateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Correct Verified Supervisor Update Api V1 Supervisor Updates  Update Id  Correction Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Correct Verified Supervisor Update",
         "tags": [
           "Supervisor Updates"
         ]

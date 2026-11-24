@@ -27,6 +27,7 @@ import {
 } from '../../api/photos';
 import { listReportProjectOptions, type ProjectOption } from '../../api/projects';
 import {
+  correctVerifiedSupervisorUpdate,
   createSupervisorUpdate,
   listSupervisorUpdates,
   submitSupervisorUpdate,
@@ -714,6 +715,23 @@ export function SupervisorUpdatePage() {
                       <span className="block">Linked report {update.verified_report_id}</span>
                     )}
                   </p>
+                )}
+                {update.previous_id && <p className="text-sm">Correction of {update.previous_id}</p>}
+                {update.status === 'verified' && update.supervisor_id === user?.id && (
+                  <button type="button" disabled={isSaving} className="form-button" onClick={async () => {
+                    const reason = window.prompt('Reason for correcting confirmed progress')?.trim();
+                    if (!reason) return;
+                    setIsSaving(true);
+                    try {
+                      const corrected = await correctVerifiedSupervisorUpdate(update, reason, scope ?? undefined);
+                      await resumeDraft(corrected);
+                      await loadUpdates(update.project_id);
+                    } catch (cause) {
+                      setError(formatApiError(cause, 'Unable to start the correction.'));
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }}>Correct confirmed progress</button>
                 )}
                 {(['draft', 'returned', 'rejected'].includes(update.status) ||
                   (update.status === 'submitted' && update.submission_revision == null)) &&

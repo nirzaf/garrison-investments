@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { formatApiError } from '../../api/errors';
+import { listHrAssignmentProjects } from '../../api/hr';
 import { listReportProjectOptions } from '../../api/projects';
 import {
+  getSiteAttendanceCompleteness,
   listSiteAttendance,
   listSiteAttendanceHistory,
   listSiteAttendanceWorkers,
@@ -33,9 +35,11 @@ export function SiteAttendancePage() {
   const queryClient = useQueryClient();
   const term = useDebouncedSearch(projectSearch);
   const projectChoices = useQuery({
-    queryKey: ['site-attendance-projects', term],
-    queryFn: () => listReportProjectOptions({ search: term || undefined, limit: pageSize }),
-    enabled: user?.role !== 'hr_manager' && !focusedEntry
+    queryKey: ['site-attendance-projects', user?.id, term],
+    queryFn: () => user?.role === 'hr_manager'
+      ? listHrAssignmentProjects(term, pageSize)
+      : listReportProjectOptions({ search: term || undefined, limit: pageSize }),
+    enabled: Boolean(user && !focusedEntry)
   });
   const entries = useQuery({
     queryKey: ['site-attendance', project?.id, workDate, focusedEntry, offset],
@@ -48,10 +52,19 @@ export function SiteAttendancePage() {
     }),
     enabled: Boolean(workDate || focusedEntry)
   });
+  const [missingOffset, setMissingOffset] = useState(0);
+  const completeness = useQuery({
+    queryKey: ['site-attendance-completeness', project?.id, workDate, missingOffset],
+    queryFn: () => getSiteAttendanceCompleteness({
+      project_id: project!.id, work_date: workDate, limit: pageSize, offset: missingOffset
+    }),
+    enabled: Boolean(project && workDate && !focusedEntry)
+  });
   const maySubmit = isSupervisor(user?.role) && Boolean(project && workDate && !focusedEntry);
 
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: ['site-attendance'] });
+    void queryClient.invalidateQueries({ queryKey: ['site-attendance-completeness'] });
     void queryClient.invalidateQueries({ queryKey: ['site-attendance-history'] });
   }
 
@@ -64,9 +77,9 @@ export function SiteAttendancePage() {
         <div className="grid gap-3 sm:grid-cols-3">
           <label>Attendance date
             <input className="form-field" type="date" value={workDate}
-              onChange={(event) => { setWorkDate(event.target.value); setOffset(0); setCorrection(undefined); }} />
+              onChange={(event) => { setWorkDate(event.target.value); setMissingOffset(0); setOffset(0); setCorrection(undefined); }} />
           </label>
-          {user?.role !== 'hr_manager' && <>
+          <>
             <label>Search projects
               <input className="form-field" value={projectSearch}
                 onChange={(event) => setProjectSearch(event.target.value)} />
@@ -75,6 +88,7 @@ export function SiteAttendancePage() {
               <select className="form-field" value={project?.id ?? ''}
                 onChange={(event) => {
                   setProject(projectChoices.data?.items.find((row) => row.id === event.target.value));
+                  setMissingOffset(0);
                   setOffset(0);
                   setCorrection(undefined);
                 }}>
@@ -86,8 +100,23 @@ export function SiteAttendancePage() {
               </select>
               {projectChoices.isError && <span role="alert">Unable to load projects.</span>}
             </label>
-          </>}
+          </>
         </div>
+      )}
+      {project && !focusedEntry && completeness.isError && <p role="alert">Unable to load attendance completeness.</p>}
+      {completeness.data && (
+        <section aria-label="Attendance completeness" className="space-y-2">
+          <p>Expected: {completeness.data.expected_workers} · Recorded: {completeness.data.recorded_workers}
+            {' · '}Missing: {completeness.data.missing_workers} · Confirmed: {completeness.data.confirmed_workers}</p>
+          {completeness.data.empty_roster && <p>No eligible workers are rostered for this project and date.</p>}
+          {completeness.data.is_complete && <p>Attendance is complete.</p>}
+          <ul>{completeness.data.items.map((worker) => (
+            <li key={worker.id}>{worker.full_name} · {worker.employee_code}</li>
+          ))}</ul>
+          {missingOffset > 0 && <button type="button" onClick={() => setMissingOffset(missingOffset - pageSize)}>Previous missing workers</button>}
+          {missingOffset + pageSize < completeness.data.missing_workers &&
+            <button type="button" onClick={() => setMissingOffset(missingOffset + pageSize)}>Next missing workers</button>}
+        </section>
       )}
       {correction ? (
         <AttendanceForm

@@ -141,6 +141,13 @@ export function listMaterialRequests(
   return getInventoryPage<MaterialRequestRecord>('/inventory/requests', params, signal);
 }
 
+export async function createMaterialRequestDraft(projectId: string) {
+  const response = await apiClient.post<MaterialRequestRecord>('/inventory/requests/drafts', {
+    project_id: projectId
+  });
+  return response.data;
+}
+
 export async function createMaterialRequest(payload: MaterialRequestCreatePayload) {
   const { data } = await apiClient.post<MaterialRequestRecord>('/inventory/requests', payload);
   return data;
@@ -151,6 +158,15 @@ export async function resubmitMaterialRequest(
 ) {
   const { data } = await apiClient.post<MaterialRequestRecord>(
     `/inventory/requests/${requestId}/resubmit`, payload
+  );
+  return data;
+}
+
+export async function replaceMaterialRequest(
+  requestId: string, payload: components['schemas']['MaterialRequestReplacementRequest']
+) {
+  const { data } = await apiClient.post<MaterialRequestRecord>(
+    `/inventory/requests/${requestId}/replacement`, payload
   );
   return data;
 }
@@ -228,11 +244,17 @@ export async function listInventoryRegistrationHistory(id: string) {
 
 export async function createInventoryRegistration(
   draft: InventoryRegistrationDraft,
-  previous?: InventoryRegistration
+  previous?: InventoryRegistration,
+  reason?: string,
+  removeAssetIds?: string[]
 ) {
   const path = previous ? `/inventory/registrations/${previous.id}/correction` : '/inventory/registrations';
   const { data } = await apiClient.post<InventoryRegistration>(
-    path, { ...draft, ...(previous ? { expected_submission_revision: previous.submission_revision } : {}) }
+    path, { ...draft, ...(previous ? {
+      expected_submission_revision: previous.submission_revision,
+      reason,
+      remove_asset_ids: removeAssetIds
+    } : {}) }
   );
   return data;
 }

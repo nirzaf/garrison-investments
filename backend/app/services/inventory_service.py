@@ -23,6 +23,7 @@ from app.models.inventory import (
     StorageLocation,
 )
 from app.models.notification import Notification
+from app.models.photo import Photo
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -32,6 +33,7 @@ from app.schemas.inventory import (
     InventoryItemCreateRequest,
     LocationCreateRequest,
     MaterialQuantityCommand,
+    MaterialRequestReplacementRequest,
     MaterialRequestResponse,
     MaterialRequestResubmitRequest,
     MaterialRequestSubmitRequest,
@@ -397,19 +399,43 @@ class InventoryService:
                 query = query.where(StorageLocation.project_id.in_(project_ids))
         return list((await self.session.scalars(query.order_by(InventoryItem.name.asc()))).all())
 
+    async def create_material_draft(self, project_id: UUID, actor: User) -> MaterialRequest:
+        if actor.role not in SUPERVISOR_ROLES:
+            raise PermissionDeniedException("create material evidence drafts")
+        self._ensure_material_submitter(actor)
+        projects = await self._request_projects_query(actor)
+        if await self.session.scalar(projects.where(Project.id == project_id)) is None:
+            raise NotFoundException("Eligible request project")
+        draft = await self._new_material_request(project_id, actor)
+        draft.status = "draft"
+        self.session.add(draft)
+        await self.session.flush()
+        await self.audit.record(
+            action="inventory.requests.drafted",
+            user_id=actor.id,
+            entity_type="material_requests",
+            entity_id=draft.id,
+        )
+        await self.session.commit()
+        return draft
+
     async def create_material_request(
         self, payload: MaterialRequestSubmitRequest, actor: User
     ) -> MaterialRequest:
         self._ensure_material_submitter(actor)
+        request = await self._new_material_request(payload.project_id, actor)
+        return await self._submit_material_requirements(request, payload, actor)
+
+    async def _new_material_request(self, project_id: UUID, actor: User) -> MaterialRequest:
         sequence = int(
             await self.session.scalar(text("select nextval('material_request_number_seq')"))
         )
-        request = MaterialRequest(
+        return MaterialRequest(
             request_number=f"MR-{sequence:05d}",
-            project_id=payload.project_id,
+            project_id=project_id,
             requester_id=actor.id,
+            lines=[],
         )
-        return await self._submit_material_requirements(request, payload, actor)
 
     async def resubmit_material_request(
         self, request_id: UUID, payload: MaterialRequestResubmitRequest, actor: User
@@ -435,7 +461,20 @@ class InventoryService:
             "requested",
             "approved",
         }
-        if not legacy_open and request.status not in {"returned", "rejected"}:
+        own_draft = (
+            request.status == "draft"
+            and request.requester_id == actor.id
+            and actor.role in SUPERVISOR_ROLES
+        )
+        approved = request.submission_revision is not None and request.status == "approved"
+        if approved and not (payload.reason or "").strip():
+            raise AppException("A correction reason is required.", status_code=422)
+        if (
+            not legacy_open
+            and not own_draft
+            and not approved
+            and request.status not in {"returned", "rejected"}
+        ):
             raise AppException(
                 "Only returned or rejected requests may be corrected.",
                 status_code=409,
@@ -449,11 +488,59 @@ class InventoryService:
                 status_code=409,
                 error_code="REQUEST_HAS_STOCK_ACTIVITY",
             )
+        if approved:
+            await self.audit.record(
+                action="inventory.requests.corrected",
+                user_id=actor.id,
+                entity_type="material_requests",
+                entity_id=request.id,
+                comments=(payload.reason or "").strip(),
+            )
         for line in request.lines:
             line.deleted_at = utc_now()
         request.revision += 1
         request.requester_id = actor.id
         return await self._submit_material_requirements(request, payload, actor)
+
+    async def replace_material_remainder(
+        self, request_id: UUID, payload: MaterialRequestReplacementRequest, actor: User
+    ) -> MaterialRequest:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
+        original = await self._get_material_request(request_id, for_update=True, lock_lines=False)
+        reason = payload.reason.strip()
+        if not reason or original.project_id != payload.project_id:
+            raise AppException("Give a reason and retain the original project.", status_code=422)
+        if original.revision != payload.expected_revision:
+            raise AppException("Refresh the request before replacing it.", status_code=409)
+        if original.status not in {
+            "approved",
+            "reserved",
+            "partially_reserved",
+            "partially_issued",
+        }:
+            raise AppException("This request cannot be replaced.", status_code=409)
+        await ApprovalService(self.session).cancel_material_request_approvals(original.id, actor)
+        await self._lock_request_lines(original.id)
+        if not any(line.reserved_quantity or line.issued_quantity for line in original.lines):
+            raise AppException(
+                "Use ordinary correction for a request without stock.", status_code=409
+            )
+        remaining = {line.item_id: line.quantity - line.issued_quantity for line in original.lines}
+        if any(line.quantity > remaining.get(line.item_id, 0) for line in payload.lines):
+            raise AppException(
+                "Replacement exceeds the original unissued remainder.", status_code=422
+            )
+        await self._cancel_locked_request(original, actor)
+        replacement = await self._new_material_request(original.project_id, actor)
+        replacement.previous_id = original.id
+        await self.audit.record(
+            action="inventory.requests.replaced",
+            user_id=actor.id,
+            entity_type="material_requests",
+            entity_id=original.id,
+            comments=reason,
+        )
+        return await self._submit_material_requirements(replacement, payload, actor)
 
     @staticmethod
     def _ensure_material_submitter(actor: User) -> None:
@@ -543,9 +630,21 @@ class InventoryService:
                 error_code="MATERIAL_REQUEST_AMOUNT_TOO_LARGE",
             )
         request.total_estimated_cost = total
-        snapshot = payload.model_dump(mode="json", exclude={"expected_revision"})
+        snapshot = payload.model_dump(mode="json", exclude={"expected_revision", "reason"})
         snapshot["lines"] = line_snapshots
         snapshot["evidence_versions"] = evidence_versions
+        snapshot["evidence_file_ids"] = [
+            str(file_id)
+            for file_id in await self.session.scalars(
+                select(Photo.id)
+                .where(
+                    Photo.entity_type == "material_request",
+                    Photo.entity_id == request.id,
+                    Photo.deleted_at.is_(None),
+                )
+                .order_by(Photo.id)
+            )
+        ]
         submission = MaterialRequestSubmission(
             request_id=request.id,
             submission_revision=submission_revision,
@@ -691,7 +790,10 @@ class InventoryService:
     ) -> tuple[list[MaterialRequest], int]:
         query = (
             select(MaterialRequest)
-            .where(MaterialRequest.deleted_at.is_(None))
+            .where(
+                MaterialRequest.deleted_at.is_(None),
+                or_(MaterialRequest.status != "draft", MaterialRequest.requester_id == actor.id),
+            )
             .options(selectinload(MaterialRequest.lines))
             .order_by(MaterialRequest.created_at.desc(), MaterialRequest.id.desc())
         )
@@ -818,6 +920,11 @@ class InventoryService:
             await self.session.commit()
             return request
         await self._lock_request_lines(request.id)
+        await self._cancel_locked_request(request, actor)
+        await self.session.commit()
+        return request
+
+    async def _cancel_locked_request(self, request: MaterialRequest, actor: User) -> None:
         for line in sorted(request.lines, key=lambda line: (line.item_id, line.id)):
             if line.reserved_quantity > 0:
                 stock = await self._get_stock(
@@ -840,8 +947,6 @@ class InventoryService:
             entity_type="material_requests",
             entity_id=request.id,
         )
-        await self.session.commit()
-        return request
 
     async def fulfill_quantities(
         self,

@@ -99,7 +99,7 @@ HR_MANAGER_GRANTS = HR_MANAGER_CORE_GRANTS | {
 }
 EFFECTIVE_GRANTS = {
     **{role: grants for role, grants in EXPECTED_GRANTS.items() if role != "hr_executive"},
-    "hr_executive_reader": EXPECTED_GRANTS["hr_executive"],
+    "hr_executive_reader": EXPECTED_GRANTS["hr_executive"] - {"reports:view"},
     "group_project_manager": EXPECTED_GRANTS["group_project_manager"] | {"financial:view"},
     "hr_manager": (
         EXPECTED_GRANTS["hr_manager"]

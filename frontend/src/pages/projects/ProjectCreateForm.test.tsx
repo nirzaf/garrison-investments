@@ -3,13 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { ProjectCreateForm } from './ProjectCreateForm';
 
 describe('project creation financial boundary', () => {
-  it('starts without a BOQ row, retains the add action, and locks initial status for MEP', () => {
+  it('hides commercial inputs and locks initial status for MEP', () => {
     const html = renderToStaticMarkup(
       <ProjectCreateForm planningOnly onCreated={() => {}} onCancel={() => {}} />
     );
-    expect(html).toContain('Budget');
-    expect(html).toContain('BOQ items can be added after project creation.');
-    expect(html).toContain('Add BOQ item');
+    expect(html).not.toContain('Budget');
+    expect(html).not.toContain('Add BOQ item');
     expect(html).not.toContain('BOQ description');
     expect(html).toContain('disabled');
   });

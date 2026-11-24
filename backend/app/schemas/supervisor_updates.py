@@ -37,6 +37,11 @@ class SupervisorUpdateCreateRequest(BaseModel):
         return self
 
 
+class SupervisorUpdateCorrectionRequest(SupervisorUpdateCreateRequest):
+    expected_revision: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class SupervisorUpdateSubmitRequest(BaseModel):
     notes: str | None = None
     expected_revision: int = Field(ge=1)
@@ -50,6 +55,7 @@ class SupervisorUpdateDecisionRequest(BaseModel):
 
 
 class SupervisorUpdateResponse(BaseModel):
+    previous_id: UUID | None = None
     id: UUID
     project_id: UUID
     supervisor_id: UUID

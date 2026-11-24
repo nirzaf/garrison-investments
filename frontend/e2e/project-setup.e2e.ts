@@ -413,3 +413,29 @@ test('project teams and task dates persist through reload at narrow and desktop 
   });
   expect(errors).toEqual([]);
 });
+
+test('MEP can create an unpriced Planning project without commercial inputs', async ({ page, request }) => {
+  const account: TestAccount = JSON.parse(execFileSync(
+    env.BROWSER_TEST_PYTHON ?? 'python',
+    ['-m', 'tests.browser_fixtures', 'seed', '--role', 'mep_project_manager'],
+    { cwd: backendDirectory, encoding: 'utf8' }
+  ));
+  const token = await signIn(page, account);
+  const name = `MEP unpriced ${randomUUID().slice(0, 8)}`;
+  await openSetup(page, name);
+  await expect(page.getByLabel('Initial status')).toBeDisabled();
+  await expect(page.getByLabel('Budget', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add BOQ item' })).toHaveCount(0);
+  const rejected = await request.post('/api/v1/projects', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name, scope_of_work: 'MEP test scope', target_end_date: '2027-12-31', budget_amount: '0' }
+  });
+  expect(rejected.status()).toBe(403);
+  const response = page.waitForResponse((result) =>
+    new URL(result.url()).pathname === '/api/v1/projects' && result.request().method() === 'POST'
+  );
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  const accepted = await response;
+  expect(accepted.status()).toBe(201);
+  expect(await accepted.json()).toMatchObject({ name, status: 'planning', budget_amount: null });
+});

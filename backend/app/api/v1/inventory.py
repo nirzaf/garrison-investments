@@ -20,6 +20,8 @@ from app.schemas.inventory import (
     LocationCreateRequest,
     LocationResponse,
     MaterialQuantityCommand,
+    MaterialRequestDraftCreate,
+    MaterialRequestReplacementRequest,
     MaterialRequestResponse,
     MaterialRequestResubmitRequest,
     MaterialRequestSubmitRequest,
@@ -255,6 +257,18 @@ async def create_material_request(
     return material_request_response(request, current_user)
 
 
+@router.post(
+    "/requests/drafts", response_model=MaterialRequestResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_material_request_draft(
+    payload: MaterialRequestDraftCreate,
+    current_user: CanViewInventory,
+    session: DbSession,
+) -> MaterialRequestResponse:
+    draft = await InventoryService(session).create_material_draft(payload.project_id, current_user)
+    return material_request_response(draft, current_user)
+
+
 @router.post("/requests/{request_id}/resubmit", response_model=MaterialRequestResponse)
 async def resubmit_material_request(
     request_id: UUID,
@@ -266,6 +280,23 @@ async def resubmit_material_request(
         request_id, payload, current_user
     )
     return material_request_response(request, current_user)
+
+
+@router.post(
+    "/requests/{request_id}/replacement",
+    response_model=MaterialRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def replace_material_request_remainder(
+    request_id: UUID,
+    payload: MaterialRequestReplacementRequest,
+    current_user: CanManageInventory,
+    session: DbSession,
+) -> MaterialRequestResponse:
+    replacement = await InventoryService(session).replace_material_remainder(
+        request_id, payload, current_user
+    )
+    return material_request_response(replacement, current_user)
 
 
 @router.get("/requests/{request_id}/submissions", response_model=MaterialSubmissionHistoryResponse)

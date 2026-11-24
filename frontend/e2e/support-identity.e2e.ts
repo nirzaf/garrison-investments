@@ -854,7 +854,7 @@ print(json.dumps({
   await policy.getByLabel('Role').selectOption('hr_executive_reader');
   await policy.getByLabel('Permission key').fill('reports:view');
   await policy.getByRole('button', { name: 'Explain policy rule' }).click();
-  await expect(policy).toContainText('HR Executive (reports:view): Allowed');
+  await expect(policy).toContainText('HR Executive (reports:view): Denied');
 
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();

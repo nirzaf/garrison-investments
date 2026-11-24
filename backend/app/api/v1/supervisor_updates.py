@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query, status
 
 from app.api.dependencies import CurrentUser, DbSession
 from app.schemas.supervisor_updates import (
+    SupervisorUpdateCorrectionRequest,
     SupervisorUpdateCreateRequest,
     SupervisorUpdateDecisionRequest,
     SupervisorUpdateListResponse,
@@ -51,6 +52,22 @@ async def create_supervisor_update(
     session: DbSession,
 ) -> SupervisorUpdateResponse:
     update = await ReportingService(session).create_supervisor_update(payload, current_user)
+    return SupervisorUpdateResponse.model_validate(update)
+
+
+@router.post(
+    "/{update_id}/correction", response_model=SupervisorUpdateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def correct_verified_supervisor_update(
+    update_id: UUID,
+    payload: SupervisorUpdateCorrectionRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> SupervisorUpdateResponse:
+    update = await ReportingService(session).correct_verified_update(
+        update_id, payload, current_user
+    )
     return SupervisorUpdateResponse.model_validate(update)
 
 

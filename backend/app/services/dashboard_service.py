@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.models.daily_report import DailyReport
 from app.models.document import Document
@@ -67,10 +68,18 @@ class DashboardService:
         registrations = select(func.count(InventoryRegistration.id)).where(
             InventoryRegistration.project_id.in_(project_scope),
         )
+        successor = aliased(SupervisorUpdate)
         site_counts: dict[str, Select[int]] = {
             "confirmed_progress": progress.where(
                 SupervisorUpdate.status == "verified",
                 SupervisorUpdate.submission_revision.is_not(None),
+                ~select(successor.id)
+                .where(
+                    successor.previous_id == SupervisorUpdate.id,
+                    successor.status == "verified",
+                    successor.deleted_at.is_(None),
+                )
+                .exists(),
             ),
             "progress_awaiting_review": progress.where(
                 SupervisorUpdate.status.in_(("submitted", "pending_qs", "pending_engineer")),
@@ -83,9 +92,16 @@ class DashboardService:
             "registrations_awaiting_review": registrations.where(
                 InventoryRegistration.status == "pending_engineer",
             ),
-            "confirmed_registrations": registrations.where(
+            "confirmed_registrations": select(
+                func.count(
+                    func.distinct(
+                        func.coalesce(InventoryRegistration.root_id, InventoryRegistration.id)
+                    )
+                )
+            ).where(
+                InventoryRegistration.project_id.in_(project_scope),
                 InventoryRegistration.status == "approved",
-                InventoryRegistration.movement_id.is_not(None),
+                InventoryRegistration.confirmed_item_id.is_not(None),
             ),
             "confirmed_present_today": select(func.count(HrAttendanceEntry.id))
             .join(

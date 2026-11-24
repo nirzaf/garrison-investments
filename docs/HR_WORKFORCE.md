@@ -10,7 +10,7 @@ work email. It never grants a project membership or changes a portal role.
 | Actor | Access |
 | --- | --- |
 | HR Manager | Workforce records, recruiting and onboarding, employment decisions, protected employee data, HR documents, time and leave, service requests, and offboarding. |
-| HR Executive | Standard user directory and assigned-project dashboard, reports and project documents. |
+| HR Executive | Standard user directory and assigned-project dashboard and project documents. |
 | Managing Director and Operations Director | Review and fulfill the account handoff using the existing user service. The handoff does not grant access to the HR directory or private files. |
 | Linked employee | Own profile and contact updates, attendance, leave, shared active documents, policy acknowledgments, and HR service requests in `/me/hr`. |
 
@@ -836,7 +836,10 @@ shows submitted and HR-confirmed manpower counts separately. Ordinary HR
 attendance entry and import paths cannot skip the checks for a site worker.
 Payroll preparation admits site attendance only after the current version passes
 both checks and the existing period controls. Payroll activation is governed
-separately. [Site attendance service](../backend/app/services/hr_site_attendance_service.py)
+separately. The project/date completeness view compares eligible roster or shift
+workers with the recorded and independently confirmed entries. Reviewers can
+page missing workers without changing their attendance status. Missing site
+attendance or a mismatch with approved overtime blocks time preparation. [Site attendance service](../backend/app/services/hr_site_attendance_service.py)
 
 ## Workforce roster
 

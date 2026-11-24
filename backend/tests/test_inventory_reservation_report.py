@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
@@ -18,6 +18,7 @@ from app.models.inventory import (
 )
 from app.models.project import Project
 from scripts.report_inventory_reservation_drift import report_drift
+from scripts.report_legacy_site_workflows import report as report_legacy_site_workflows
 
 pytestmark = pytest.mark.asyncio
 
@@ -171,3 +172,28 @@ async def test_reservation_report_checks_each_lines_remaining_quantity(
         stored_slack = await session.get(MaterialRequestLine, slack.id)
         assert stored_excess is not None and stored_excess.reserved_quantity == Decimal(7)
         assert stored_slack is not None and stored_slack.reserved_quantity == Decimal(1)
+
+
+async def test_legacy_site_report_preserves_request_accounting(
+    inventory_ids: tuple[UUID, UUID, UUID],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project_id, item_id, location_id = inventory_ids
+    async with AsyncSessionLocal.begin() as session:
+        line = await reserve(session, project_id, item_id, location_id, 3, issued=2)
+        line_id, request_id = line.id, line.request_id
+
+    statement = select(
+        MaterialRequestLine.quantity,
+        MaterialRequestLine.reserved_quantity,
+        MaterialRequestLine.issued_quantity,
+    ).where(MaterialRequestLine.id == line_id)
+    async with AsyncSessionLocal() as session:
+        before = (await session.execute(statement)).one()
+    await report_legacy_site_workflows()
+    rows = [json.loads(row) for row in capsys.readouterr().out.splitlines()]
+    finding = next(row for row in rows if row["id"] == str(request_id))
+    assert finding["disposition"] == "requires_reservation_release"
+    assert Decimal(finding["issued_quantity"]) == Decimal(2)
+    async with AsyncSessionLocal() as session:
+        assert (await session.execute(statement)).one() == before

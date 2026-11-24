@@ -271,7 +271,7 @@ async def test_single_owner_permission_view_projection_without_second_reviewer(
             f"{API}/views/{action['id']}/projection/permission-explanation"
         )
         assert read_resp.status_code == 200, read_resp.text
-        assert read_resp.json()["allowed"] is True
+        assert read_resp.json()["allowed"] is False
         assert read_resp.json()["permission_key"] == "reports:view"
 
 

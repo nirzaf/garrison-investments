@@ -361,7 +361,7 @@ async def test_hr_executive_reader_has_only_approved_scoped_access() -> None:
         reader = auth(await login_for_token(client, email, password))
         identity = (await client.get("/api/v1/auth/me", headers=reader)).json()
         assert set(identity["permissions"]) == {
-            "users:read", "dashboard:scoped", "reports:view", "documents:view"
+            "users:read", "dashboard:scoped", "documents:view"
         }
         directory = await client.get("/api/v1/users", headers=reader)
         assert directory.status_code == 200
@@ -374,7 +374,7 @@ async def test_hr_executive_reader_has_only_approved_scoped_access() -> None:
             headers=auth(assigned["op_token"]),
         )
         assert membership.status_code == 201, membership.text
-        allowed_report, _ = await upload_report_photo(client, assigned)
+        allowed_report, photo_id = await upload_report_photo(client, assigned)
         foreign_report, _ = await upload_report_photo(client, other)
         allowed_document = await upload_document(client, assigned)
         foreign_document = await upload_document(client, other)
@@ -383,9 +383,14 @@ async def test_hr_executive_reader_has_only_approved_scoped_access() -> None:
         assert dashboard.status_code == 200
         assert dashboard.json()["active_projects"] == 1
         report_list = await client.get("/api/v1/reports", params={"limit": 100}, headers=reader)
-        assert report_list.status_code == 200
-        assert {row["id"] for row in report_list.json()["items"]} == {allowed_report}
-        assert (await client.get(f"/api/v1/reports/{allowed_report}", headers=reader)).is_success
+        assert report_list.status_code == 403
+        assert dashboard.json()["recent_activity"] == []
+        for path in (
+            f"/api/v1/reports/{allowed_report}",
+            f"/api/v1/reports/{allowed_report}/pdf",
+            f"/api/v1/photos/{photo_id}/download",
+        ):
+            assert (await client.get(path, headers=reader)).status_code in (403, 404), path
         foreign = await client.get(f"/api/v1/reports/{foreign_report}", headers=reader)
         assert foreign.status_code in (403, 404)
         assert (
