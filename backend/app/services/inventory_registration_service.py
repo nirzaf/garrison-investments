@@ -1,12 +1,14 @@
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import String, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.models.inventory import (
     InventoryAsset,
     InventoryItem,
+    InventoryLocationStock,
     InventoryMovement,
     InventoryRegistration,
     StorageLocation,
@@ -91,6 +93,59 @@ class InventoryRegistrationService:
                 query.order_by(InventoryRegistration.submission_revision.desc())
             )
         )
+
+    async def list_correction_assets(
+        self, registration_id: UUID, actor: User, *, search: str | None, limit: int, offset: int
+    ) -> tuple[list[InventoryAsset], int, Decimal | None]:
+        self._ensure_supervisor(actor)
+        row = await self._get(registration_id)
+        await ensure_inventory_registration_access(self.session, row, actor)
+        if row.status not in {"approved", "returned", "rejected"}:
+            raise self._state_conflict()
+        effective = row if row.status == "approved" else await self._previous_approved(row)
+        if effective is None or effective.confirmed_item_id is None:
+            return [], 0, None
+        root_id = effective.root_id or effective.id
+        chain = select(InventoryRegistration.id).where(
+            (InventoryRegistration.id == root_id) | (InventoryRegistration.root_id == root_id),
+            InventoryRegistration.status == "approved",
+            InventoryAsset.asset_tag.startswith(
+                func.concat(
+                    "REG-", func.replace(InventoryRegistration.id.cast(String), "-", ""), "-"
+                )
+            ),
+        )
+        custody = select(InventoryMovement.id).where(
+            InventoryMovement.item_id == InventoryAsset.item_id,
+            InventoryMovement.movement_type.in_(("transfer", "issue", "consume", "reserve")),
+            (InventoryMovement.asset_id == InventoryAsset.id)
+            | InventoryMovement.asset_id.is_(None),
+        )
+        reserved = select(InventoryLocationStock.id).where(
+            InventoryLocationStock.item_id == InventoryAsset.item_id,
+            InventoryLocationStock.location_id == effective.location_id,
+            InventoryLocationStock.deleted_at.is_(None),
+            InventoryLocationStock.reserved_qty > 0,
+        )
+        query = select(InventoryAsset).where(
+            InventoryAsset.item_id == effective.confirmed_item_id,
+            InventoryAsset.current_location_id == effective.location_id,
+            InventoryAsset.deleted_at.is_(None),
+            InventoryAsset.status == "active",
+            chain.exists(),
+            ~custody.exists(),
+            ~reserved.exists(),
+        )
+        if search and search.strip():
+            query = query.where(InventoryAsset.asset_tag.icontains(search.strip(), autoescape=True))
+        total = await self.session.scalar(select(func.count()).select_from(query.subquery()))
+        items = await self.session.scalars(
+            query.order_by(InventoryAsset.asset_tag, InventoryAsset.id).limit(limit).offset(offset)
+        )
+        quantity = InventoryRegistrationCreateRequest.model_validate(
+            effective.requirements
+        ).quantity
+        return list(items), int(total or 0), quantity
 
     async def create(
         self, payload: InventoryRegistrationCreateRequest, actor: User
@@ -338,6 +393,10 @@ class InventoryRegistrationService:
         row.confirmed_item_id = item_id
         delta = current.quantity - original.quantity
         remove_ids = [UUID(value) for value in row.requirements.get("remove_asset_ids", [])]
+        if remove_ids and (current.category == "material" or delta >= 0):
+            raise AppException(
+                "Asset removal requires a serialized quantity reduction.", status_code=422
+            )
         service = InventoryService(self.session)
         if current.category != "material":
             if delta < 0:

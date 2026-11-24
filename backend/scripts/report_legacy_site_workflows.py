@@ -34,11 +34,33 @@ MATERIAL_REQUESTS = text("""
     ORDER BY r.id
 """)
 
+CURRENT_STOCK_ACTIVITY = text("""
+    SELECT r.id, r.project_id, r.status, r.revision, r.submission_revision,
+           SUM(l.reserved_quantity) AS reserved_quantity,
+           SUM(l.issued_quantity) AS issued_quantity,
+           CASE WHEN r.status = 'cancelled' AND SUM(l.reserved_quantity) > 0
+                THEN 'requires_reservation_release'
+                ELSE 'current_fulfillment' END AS disposition
+    FROM material_requests r
+    JOIN material_request_lines l ON l.request_id = r.id AND l.deleted_at IS NULL
+    WHERE r.deleted_at IS NULL AND r.submission_revision IS NOT NULL
+    GROUP BY r.id
+    HAVING SUM(l.reserved_quantity) > 0 OR r.status = 'partially_issued'
+    ORDER BY r.id
+""")
+
 SITE_ATTENDANCE = text("""
     SELECT a.id, a.employee_id, a.project_id, a.status, a.record_revision AS revision,
            a.work_date, a.worked_hours, a.site_submission_revision,
            'current_engineer_and_hr_decisions' AS missing_evidence,
-           CASE WHEN a.status IN ('approved', 'historical') THEN 'historical_only'
+           CASE WHEN a.status = 'historical' THEN 'historical_only'
+                WHEN a.status = 'approved'
+                 AND EXISTS (SELECT 1 FROM hr_payroll_periods p
+                             WHERE a.work_date BETWEEN p.period_start AND p.period_end
+                               AND p.status = 'closed')
+                 AND NOT EXISTS (SELECT 1 FROM hr_payroll_periods p
+                                 WHERE a.work_date BETWEEN p.period_start AND p.period_end
+                                   AND p.status <> 'closed') THEN 'historical_only'
                 ELSE 'manual_reconciliation' END AS disposition
     FROM hr_attendance_entries a
     WHERE a.project_id IS NOT NULL AND NOT EXISTS (
@@ -46,7 +68,7 @@ SITE_ATTENDANCE = text("""
         WHERE s.entry_id = a.id AND s.submission_revision = a.site_submission_revision
           AND s.engineer_decision = 'approved' AND s.hr_decision = 'approved'
     )
-      AND a.site_submission_revision IS NULL
+      AND (a.site_submission_revision IS NULL OR a.status IN ('approved', 'historical'))
     ORDER BY a.id
 """)
 
@@ -54,9 +76,12 @@ SITE_ATTENDANCE = text("""
 async def report() -> None:
     try:
         async with AsyncSessionLocal() as session:
-            await session.execute(text("SET TRANSACTION READ ONLY"))
+            await session.execute(
+                text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            )
             for category, query in (
                 ("legacy_material_request", MATERIAL_REQUESTS),
+                ("current_material_stock_activity", CURRENT_STOCK_ACTIVITY),
                 ("legacy_site_attendance", SITE_ATTENDANCE),
             ):
                 async for row in await session.stream(query):

@@ -16795,6 +16795,141 @@
         "title": "MaskedProjectDetail",
         "type": "object"
       },
+      "MaterialDraftLine": {
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "quantity": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Quantity",
+            "type": "string"
+          }
+        },
+        "title": "MaterialDraftLine",
+        "type": "object"
+      },
+      "MaterialDraftPayload": {
+        "properties": {
+          "from_location_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Location Id"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialDraftLine"
+            },
+            "maxItems": 100,
+            "title": "Lines",
+            "type": "array"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Notes",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "required_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Date"
+          },
+          "specification": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Specification",
+            "type": "string"
+          },
+          "stock_availability": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock Availability"
+          },
+          "supporting_document_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Supporting Document Ids",
+            "type": "array"
+          },
+          "urgency": {
+            "default": "routine",
+            "enum": [
+              "routine",
+              "urgent",
+              "critical"
+            ],
+            "title": "Urgency",
+            "type": "string"
+          }
+        },
+        "title": "MaterialDraftPayload",
+        "type": "object"
+      },
+      "MaterialDraftSave": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/MaterialDraftPayload"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "payload"
+        ],
+        "title": "MaterialDraftSave",
+        "type": "object"
+      },
       "MaterialQuantityCommand": {
         "properties": {
           "expected_revision": {
@@ -16848,6 +16983,30 @@
       },
       "MaterialRequestDraftCreate": {
         "properties": {
+          "correction_expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Expected Revision"
+          },
+          "correction_target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Target Id"
+          },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
@@ -16994,6 +17153,39 @@
       },
       "MaterialRequestResponse": {
         "properties": {
+          "correction_expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Expected Revision"
+          },
+          "correction_target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Target Id"
+          },
+          "draft_payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialDraftPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "from_location_id": {
             "anyOf": [
               {
@@ -22665,6 +22857,7 @@
               "overlapping_timesheets",
               "pending_attendance",
               "missing_site_attendance",
+              "site_employment_eligibility_unresolved",
               "site_overtime_mismatch",
               "attendance_without_schedule",
               "attendance_without_timesheet",
@@ -22682,6 +22875,18 @@
             "title": "Employee Id",
             "type": "string"
           },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
           "record_id": {
             "anyOf": [
               {
@@ -22693,6 +22898,18 @@
               }
             ],
             "title": "Record Id"
+          },
+          "work_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Date"
           }
         },
         "required": [
@@ -25798,6 +26015,85 @@
           "userVerification"
         ],
         "title": "RegistrationAuthenticator",
+        "type": "object"
+      },
+      "RegistrationCorrectionAsset": {
+        "properties": {
+          "asset_tag": {
+            "title": "Asset Tag",
+            "type": "string"
+          },
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "current_location_id": {
+            "format": "uuid",
+            "title": "Current Location Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "location_name": {
+            "title": "Location Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "asset_tag",
+          "current_location_id",
+          "condition",
+          "status",
+          "location_name"
+        ],
+        "title": "RegistrationCorrectionAsset",
+        "type": "object"
+      },
+      "RegistrationCorrectionAssets": {
+        "properties": {
+          "effective_quantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Quantity"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RegistrationCorrectionAsset"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "effective_quantity"
+        ],
+        "title": "RegistrationCorrectionAssets",
         "type": "object"
       },
       "RegistrationCreationOptions": {
@@ -30008,6 +30304,11 @@
               }
             ],
             "title": "Delay Notes"
+          },
+          "eligible_for_report": {
+            "default": false,
+            "title": "Eligible For Report",
+            "type": "boolean"
           },
           "id": {
             "format": "uuid",
@@ -60783,6 +61084,102 @@
         ]
       }
     },
+    "/api/v1/inventory/registrations/{registration_id}/correction-assets": {
+      "get": {
+        "operationId": "list_registration_correction_assets_api_v1_inventory_registrations__registration_id__correction_assets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "registration_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Registration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationCorrectionAssets"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Registration Correction Assets Api V1 Inventory Registrations  Registration Id  Correction Assets Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Registration Correction Assets",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
     "/api/v1/inventory/registrations/{registration_id}/decision": {
       "post": {
         "operationId": "decide_inventory_registration_api_v1_inventory_registrations__registration_id__decision_post",
@@ -61266,6 +61663,138 @@
           }
         ],
         "summary": "Create Material Request Draft",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/requests/drafts/{draft_id}": {
+      "put": {
+        "operationId": "save_material_request_draft_api_v1_inventory_requests_drafts__draft_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialDraftSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Save Material Request Draft Api V1 Inventory Requests Drafts  Draft Id  Put"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Material Request Draft",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/requests/drafts/{draft_id}/submit-correction": {
+      "post": {
+        "operationId": "submit_material_correction_draft_api_v1_inventory_requests_drafts__draft_id__submit_correction_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialRequestResubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Material Correction Draft Api V1 Inventory Requests Drafts  Draft Id  Submit Correction Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Material Correction Draft",
         "tags": [
           "Inventory"
         ]

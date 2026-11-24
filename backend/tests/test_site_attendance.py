@@ -137,7 +137,10 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
             missing, csv_content = await reconcile_payroll_time_inputs(
                 session, period, {employee.id}
             )
-            assert any(issue.code == "missing_site_attendance" for issue in missing.issues)
+            finding = next(
+                issue for issue in missing.issues if issue.code == "missing_site_attendance"
+            )
+            assert (finding.project_id, finding.work_date) == (project.id, day)
             assert csv_content is None
 
         site_path = "/api/v1/hr/site-attendance"
@@ -279,7 +282,10 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
             result, csv_content = await reconcile_payroll_time_inputs(
                 session, period, {employee.id}
             )
-            assert any(issue.code == "site_overtime_mismatch" for issue in result.issues)
+            finding = next(
+                issue for issue in result.issues if issue.code == "site_overtime_mismatch"
+            )
+            assert (finding.project_id, finding.work_date) == (project.id, day)
             assert csv_content is None
             sheet = await session.get(HrTimesheet, sheet_id)
             assert sheet is not None
@@ -318,3 +324,87 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
             headers=writer,
         )
         assert summary.json()["confirmed_present"] == 1
+
+
+async def test_historical_payroll_obligations_match_project_and_work_date() -> None:
+    await skip_if_database_unavailable()
+    from app.models.hr import HrAttendanceEntry
+    from app.models.project import Project
+
+    manager, _ = await create_user("group_project_manager")
+    engineer, _ = await create_user("mep_project_manager")
+    required = await create_project(manager, engineer)
+    other = await create_project(manager, engineer)
+    day = business_today() - timedelta(days=10)
+    second_day = day + timedelta(days=1)
+    period = HrPayrollPeriod(
+        id=uuid4(),
+        period_code="historical-site-test",
+        period_start=day,
+        period_end=second_day,
+        pay_date=second_day,
+    )
+    async with AsyncSessionLocal.begin() as session:
+        project = await session.get(Project, required.id)
+        assert project is not None
+        project.status = "completed"
+        employee = HrEmployee(
+            employee_code=f"HIST-{uuid4().hex[:8]}",
+            first_name="Former",
+            last_name="Worker",
+            full_name="Former Worker",
+            employment_status="terminated",
+            join_date=day - timedelta(days=10),
+            termination_date=second_day,
+        )
+        calendar = HrWorkCalendar(
+            code=f"HIST-{uuid4().hex[:6]}",
+            name="Historical site",
+            project_id=required.id,
+            timezone="Asia/Qatar",
+            status="published",
+            published_at=utc_now(),
+            effective_from=day,
+            effective_to=second_day,
+        )
+        session.add_all([employee, calendar])
+        await session.flush()
+        session.add_all(
+            [
+                HrShiftAssignment(
+                    employee_id=employee.id,
+                    calendar_id=calendar.id,
+                    project_id=required.id,
+                    shift_name="Site",
+                    effective_from=day,
+                    effective_to=second_day,
+                    start_time=time(7),
+                    end_time=time(16),
+                ),
+                HrAttendanceEntry(
+                    employee_id=employee.id,
+                    project_id=other.id,
+                    work_date=day,
+                    attendance_status="present",
+                    status="approved",
+                    source="site",
+                ),
+            ]
+        )
+        await session.flush()
+        result, _ = await reconcile_payroll_time_inputs(session, period, {employee.id})
+        missing = {
+            (issue.employee_id, issue.project_id, issue.work_date)
+            for issue in result.issues
+            if issue.code == "missing_site_attendance"
+        }
+        assert missing == {(employee.id, required.id, date) for date in (day, second_day)}
+        employee.join_date = None
+        await session.flush()
+        result, _ = await reconcile_payroll_time_inputs(session, period, {employee.id})
+        unresolved = [
+            issue
+            for issue in result.issues
+            if issue.code == "site_employment_eligibility_unresolved"
+        ]
+        assert {issue.work_date for issue in unresolved} == {day, second_day}

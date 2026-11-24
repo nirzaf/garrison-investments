@@ -3,7 +3,7 @@ from hashlib import sha256
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select, text
+from sqlalchemy import Select, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,14 +32,20 @@ from app.schemas.inventory import (
     AssetCreateRequest,
     InventoryItemCreateRequest,
     LocationCreateRequest,
+    MaterialDraftSave,
     MaterialQuantityCommand,
+    MaterialRequestDraftCreate,
     MaterialRequestReplacementRequest,
     MaterialRequestResponse,
     MaterialRequestResubmitRequest,
     MaterialRequestSubmitRequest,
     MovementCreateRequest,
 )
-from app.services.approval_service import MATERIAL_STAGE_ROLES, ApprovalService
+from app.services.approval_service import (
+    MATERIAL_STAGE_ROLES,
+    ApprovalService,
+    frozen_material_stages,
+)
 from app.services.audit_service import AuditService
 from app.services.authorization import accessible_project_ids, ensure_project_access
 from app.services.document_service import DocumentService
@@ -399,15 +405,31 @@ class InventoryService:
                 query = query.where(StorageLocation.project_id.in_(project_ids))
         return list((await self.session.scalars(query.order_by(InventoryItem.name.asc()))).all())
 
-    async def create_material_draft(self, project_id: UUID, actor: User) -> MaterialRequest:
+    async def create_material_draft(
+        self, payload: MaterialRequestDraftCreate, actor: User
+    ) -> MaterialRequest:
+        project_id = payload.project_id
         if actor.role not in SUPERVISOR_ROLES:
             raise PermissionDeniedException("create material evidence drafts")
         self._ensure_material_submitter(actor)
         projects = await self._request_projects_query(actor)
         if await self.session.scalar(projects.where(Project.id == project_id)) is None:
             raise NotFoundException("Eligible request project")
+        if payload.correction_target_id is not None:
+            original = await self._get_material_request(payload.correction_target_id)
+            if original.project_id != project_id or original.requester_id != actor.id:
+                raise NotFoundException("Material request")
+            self._check_material_draft_revision(original, payload.correction_expected_revision)
+            if original.status not in {"requested", "approved", "returned", "rejected"}:
+                raise AppException(
+                    "This request is no longer eligible for correction.",
+                    status_code=409,
+                    error_code="REQUEST_STATUS_INVALID",
+                )
         draft = await self._new_material_request(project_id, actor)
         draft.status = "draft"
+        draft.correction_target_id = payload.correction_target_id
+        draft.correction_expected_revision = payload.correction_expected_revision
         self.session.add(draft)
         await self.session.flush()
         await self.audit.record(
@@ -418,6 +440,50 @@ class InventoryService:
         )
         await self.session.commit()
         return draft
+
+    @staticmethod
+    def _check_material_draft_revision(request: MaterialRequest, expected: int | None) -> None:
+        if request.revision != expected:
+            raise AppException(
+                "Refresh the request before editing it.",
+                status_code=409,
+                error_code="REQUEST_REVISION_CONFLICT",
+            )
+
+    async def _editable_material_draft(self, draft_id: UUID, actor: User) -> MaterialRequest:
+        self._ensure_material_submitter(actor)
+        draft = await self._get_material_request(draft_id, for_update=True, lock_lines=False)
+        if draft.status != "draft" or draft.requester_id != actor.id:
+            raise NotFoundException("Material request draft")
+        await ensure_project_access(self.session, draft.project_id, actor)
+        return draft
+
+    async def save_material_draft(
+        self, draft_id: UUID, payload: MaterialDraftSave, actor: User
+    ) -> MaterialRequest:
+        draft = await self._editable_material_draft(draft_id, actor)
+        self._check_material_draft_revision(draft, payload.expected_revision)
+        await self._supporting_document_versions(
+            payload.payload.supporting_document_ids, draft.project_id, actor
+        )
+        draft.draft_payload = payload.payload.model_dump(mode="json")
+        draft.revision += 1
+        await self.session.commit()
+        return draft
+
+    async def submit_material_correction_draft(
+        self, draft_id: UUID, payload: MaterialRequestResubmitRequest, actor: User
+    ) -> MaterialRequest:
+        draft = await self._editable_material_draft(draft_id, actor)
+        self._check_material_draft_revision(draft, payload.expected_revision)
+        if draft.correction_target_id is None or draft.correction_expected_revision is None:
+            raise NotFoundException("Material correction draft")
+        return await self.resubmit_material_request(
+            draft.correction_target_id,
+            payload.model_copy(update={"expected_revision": draft.correction_expected_revision}),
+            actor,
+            correction_draft=draft,
+        )
 
     async def create_material_request(
         self, payload: MaterialRequestSubmitRequest, actor: User
@@ -438,13 +504,24 @@ class InventoryService:
         )
 
     async def resubmit_material_request(
-        self, request_id: UUID, payload: MaterialRequestResubmitRequest, actor: User
+        self,
+        request_id: UUID,
+        payload: MaterialRequestResubmitRequest,
+        actor: User,
+        *,
+        correction_draft: MaterialRequest | None = None,
     ) -> MaterialRequest:
         self._ensure_material_submitter(actor)
         request = await self._get_material_request(request_id, for_update=True, lock_lines=False)
         await ensure_project_access(self.session, request.project_id, actor)
         if request.requester_id != actor.id and actor.role not in COMPANY_RESOURCE_ROLES:
             raise NotFoundException("Material request")
+        if request.correction_target_id is not None:
+            raise AppException(
+                "Submit the correction draft through its correction endpoint.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
         if request.project_id != payload.project_id:
             raise AppException(
                 "A corrected request must remain on its original project.",
@@ -500,7 +577,9 @@ class InventoryService:
             line.deleted_at = utc_now()
         request.revision += 1
         request.requester_id = actor.id
-        return await self._submit_material_requirements(request, payload, actor)
+        return await self._submit_material_requirements(
+            request, payload, actor, correction_draft=correction_draft
+        )
 
     async def replace_material_remainder(
         self, request_id: UUID, payload: MaterialRequestReplacementRequest, actor: User
@@ -548,8 +627,24 @@ class InventoryService:
         if actor.role not in SUPERVISOR_ROLES | COMPANY_RESOURCE_ROLES:
             raise PermissionDeniedException("submit material requests")
 
+    async def _supporting_document_versions(
+        self, document_ids: list[UUID], project_id: UUID, actor: User
+    ) -> dict[str, int]:
+        versions = {}
+        for document_id in document_ids:
+            document = await DocumentService(self.session).get(document_id, actor)
+            if document.project_id != project_id or document.active_version is None:
+                raise NotFoundException("Project supporting document")
+            versions[str(document.id)] = document.active_version
+        return versions
+
     async def _submit_material_requirements(
-        self, request: MaterialRequest, payload: MaterialRequestSubmitRequest, actor: User
+        self,
+        request: MaterialRequest,
+        payload: MaterialRequestSubmitRequest,
+        actor: User,
+        *,
+        correction_draft: MaterialRequest | None = None,
     ) -> MaterialRequest:
         projects = await self._request_projects_query(actor)
         project = await self.session.scalar(projects.where(Project.id == payload.project_id))
@@ -565,12 +660,9 @@ class InventoryService:
         )
         if location is None:
             raise NotFoundException("Eligible request source location")
-        evidence_versions = {}
-        for document_id in payload.requirements.supporting_document_ids:
-            document = await DocumentService(self.session).get(document_id, actor)
-            if document.project_id != project.id or document.active_version is None:
-                raise NotFoundException("Project supporting document")
-            evidence_versions[str(document.id)] = document.active_version
+        evidence_versions = await self._supporting_document_versions(
+            payload.requirements.supporting_document_ids, project.id, actor
+        )
         approvals = ApprovalService(self.session)
         engineer = await approvals.require_project_reviewer(
             project.id, MATERIAL_STAGE_ROLES[1], excluded_user_ids={actor.id}
@@ -595,6 +687,7 @@ class InventoryService:
         request.submission_revision = submission_revision
         request.from_location_id = location.id
         request.status = "pending_engineer"
+        request.draft_payload = None
         request.notes = payload.notes
         request.total_estimated_cost = Decimal("0")
         self.session.add(request)
@@ -633,18 +726,30 @@ class InventoryService:
         snapshot = payload.model_dump(mode="json", exclude={"expected_revision", "reason"})
         snapshot["lines"] = line_snapshots
         snapshot["evidence_versions"] = evidence_versions
+        evidence_owner_id = correction_draft.id if correction_draft else request.id
         snapshot["evidence_file_ids"] = [
             str(file_id)
             for file_id in await self.session.scalars(
                 select(Photo.id)
                 .where(
                     Photo.entity_type == "material_request",
-                    Photo.entity_id == request.id,
+                    Photo.entity_id == evidence_owner_id,
                     Photo.deleted_at.is_(None),
                 )
                 .order_by(Photo.id)
             )
         ]
+        if correction_draft is not None:
+            await self.session.execute(
+                update(Photo)
+                .where(
+                    Photo.entity_type == "material_request",
+                    Photo.entity_id == correction_draft.id,
+                    Photo.deleted_at.is_(None),
+                )
+                .values(entity_id=request.id)
+            )
+            correction_draft.deleted_at = utc_now()
         submission = MaterialRequestSubmission(
             request_id=request.id,
             submission_revision=submission_revision,
@@ -687,6 +792,8 @@ class InventoryService:
     ) -> tuple[list[MaterialRequestSubmission], list[Approval]]:
         ensure_permission(actor, PERMISSION_INVENTORY_VIEW)
         request = await self._get_material_request(request_id)
+        if request.status == "draft" and request.requester_id != actor.id:
+            raise NotFoundException("Material request")
         await ensure_project_access(self.session, request.project_id, actor)
         submissions = await self.session.scalars(
             select(MaterialRequestSubmission)
@@ -728,26 +835,33 @@ class InventoryService:
         if not check_decisions:
             return
         if request.submission_revision is not None:
-            actors = list(
-                await self.session.scalars(
-                    select(Approval.decided_by)
-                    .where(
-                        Approval.request_type == "material_request",
-                        Approval.request_id == request.id,
-                        Approval.submission_revision == request.submission_revision,
-                        Approval.step_order.in_((1, 2)),
-                        Approval.status == "approved",
-                        Approval.deleted_at.is_(None),
-                        Approval.decided_by.is_not(None),
-                        Approval.decided_by != request.requester_id,
-                    )
-                    .order_by(Approval.step_order)
-                )
+            submission = await self.session.get(
+                MaterialRequestSubmission, (request.id, request.submission_revision)
             )
-            if len(set(actors)) == 2:
-                return
+            stages = frozen_material_stages(submission) if submission is not None else ()
+            if submission is not None and stages:
+                decisions = (
+                    await self.session.execute(
+                        select(Approval.step_order, Approval.decided_by).where(
+                            Approval.request_type == "material_request",
+                            Approval.request_id == request.id,
+                            Approval.submission_revision == request.submission_revision,
+                            Approval.step_order.in_(stages),
+                            Approval.status == "approved",
+                            Approval.deleted_at.is_(None),
+                            Approval.decided_by.is_not(None),
+                            Approval.decided_by != submission.submitted_by,
+                        )
+                    )
+                ).all()
+                if (
+                    len(decisions) == len(stages)
+                    and {stage for stage, _ in decisions} == set(stages)
+                    and len({actor_id for _, actor_id in decisions}) == len(stages)
+                ):
+                    return
         raise AppException(
-            "Engineer verification and GPM approval of the current submission are required.",
+            "Every required approval of the current material submission must be recorded.",
             status_code=409,
             error_code="MATERIAL_APPROVALS_REQUIRED",
         )

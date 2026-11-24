@@ -141,11 +141,31 @@ export function listMaterialRequests(
   return getInventoryPage<MaterialRequestRecord>('/inventory/requests', params, signal);
 }
 
-export async function createMaterialRequestDraft(projectId: string) {
+export async function createMaterialRequestDraft(
+  projectId: string, target?: MaterialRequestRecord
+) {
   const response = await apiClient.post<MaterialRequestRecord>('/inventory/requests/drafts', {
-    project_id: projectId
+    project_id: projectId,
+    correction_target_id: target?.id,
+    correction_expected_revision: target?.revision
   });
   return response.data;
+}
+
+export async function saveMaterialRequestDraft(
+  draftId: string, body: components['schemas']['MaterialDraftSave']
+) {
+  const { data } = await apiClient.put<MaterialRequestRecord>(`/inventory/requests/drafts/${draftId}`, body);
+  return data;
+}
+
+export async function submitMaterialCorrectionDraft(
+  draftId: string, body: components['schemas']['MaterialRequestResubmitRequest']
+) {
+  const { data } = await apiClient.post<MaterialRequestRecord>(
+    `/inventory/requests/drafts/${draftId}/submit-correction`, body
+  );
+  return data;
 }
 
 export async function createMaterialRequest(payload: MaterialRequestCreatePayload) {
@@ -238,6 +258,15 @@ export async function listInventoryRegistrations(params: {
 export async function listInventoryRegistrationHistory(id: string) {
   const { data } = await apiClient.get<InventoryRegistration[]>(
     `/inventory/registrations/${id}/history`
+  );
+  return data;
+}
+
+export async function listRegistrationCorrectionAssets(
+  id: string, params: { search?: string; limit: number; offset: number }
+) {
+  const { data } = await apiClient.get<components['schemas']['RegistrationCorrectionAssets']>(
+    `/inventory/registrations/${id}/correction-assets`, { params }
   );
   return data;
 }

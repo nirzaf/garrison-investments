@@ -22,6 +22,7 @@ candidate remain technical issues under the [beta release policy](BETA_RELEASE_P
 | D09 | Company dashboard versus resource details | Proposed: company aggregates for directors, HR Manager, and Administrative Executive; each underlying project/report/document/finance endpoint keeps its own grant and scope. | Aggregate access cannot imply record detail or finance access. Business confirmation remains pending. |
 | D10 | Account UUID mapping and production cutover | No UUID mapping or signed account manifest is present in this repository change. | A reviewed complete manifest, rehearsal, recovery evidence, and separate production authorization are required before data changes. |
 | D11 | HR Executive site-report access | PDF §10 supersedes the D01 site-report grant for HR Executive. Directory, scoped dashboard and assigned project documents remain available. | Owner sign-off pending. |
+| D12 | Optional material director approval thresholds | Operations Director and Managing Director stages use their independently configured cost thresholds. The required stages are fixed when each submission is created. | Management-approved production values are pending. Both settings default to disabled. |
 
 ## Provenance and limits
 

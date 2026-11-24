@@ -250,7 +250,7 @@ async def test_supervisor_requires_photo_and_separate_site_confirmations(
 
 async def test_confirmed_progress_correction_preserves_original() -> None:
     await skip_if_database_unavailable()
-    from tests.test_daily_reports import setup_project_team
+    from tests.test_daily_reports import report_payload, setup_project_team
     from tests.test_photos import jpeg_bytes
 
     async with create_test_client() as client:
@@ -299,6 +299,23 @@ async def test_confirmed_progress_correction_preserves_original() -> None:
         assert verified.status_code == 200, verified.text
         retained = await client.get(base, params={"update_id": update_id}, headers=owner)
         assert retained.json()["items"][0]["progress_notes"] == original["progress_notes"]
+        assert not retained.json()["items"][0]["eligible_for_report"]
+        latest = await client.get(base, params={"update_id": draft["id"]}, headers=owner)
+        assert latest.json()["items"][0]["eligible_for_report"]
+        report_headers = {"Authorization": f"Bearer {team['engineer_token']}"}
+        report = await client.post(
+            "/api/v1/reports",
+            json=report_payload(team["project_id"], draft["id"]),
+            headers=report_headers,
+        )
+        assert report.status_code == 201, report.text
+        submitted_report = await client.post(
+            f"/api/v1/reports/{report.json()['id']}/submit", headers=report_headers
+        )
+        assert submitted_report.status_code == 200, submitted_report.text
+        linked = await client.get(base, params={"update_id": draft["id"]}, headers=owner)
+        assert linked.json()["items"][0]["verified_report_id"] == report.json()["id"]
+        assert not linked.json()["items"][0]["eligible_for_report"]
         summary = await client.get("/api/v1/dashboard/summary", headers=director)
         assert summary.status_code == 200, summary.text
 

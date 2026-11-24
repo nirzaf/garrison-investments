@@ -13,6 +13,8 @@ import {
   materialSubmissionHistory,
   replaceMaterialRequest,
   resubmitMaterialRequest,
+  saveMaterialRequestDraft,
+  submitMaterialCorrectionDraft,
   type InventoryItemRecord,
   type MaterialQuantityCommand,
   type MaterialRequestCreatePayload,
@@ -61,6 +63,7 @@ export function MaterialRequestForm({
   onSuccess: () => void;
 }) {
   const snapshot = correction?.snapshot;
+  const saved = correction?.request.draft_payload;
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<MaterialRequestRecord | undefined>(
@@ -70,14 +73,18 @@ export function MaterialRequestForm({
   const [search, setSearch] = useState('');
   const [project, setProject] = useState<RequestProjectOption>();
   const projectId = correction?.request.project_id ?? project?.id;
-  const [locationId, setLocationId] = useState(correction?.request.from_location_id ?? '');
-  const [reason, setReason] = useState('');
-  const [notes, setNotes] = useState(snapshot?.notes ?? correction?.request.notes ?? '');
+  const [locationId, setLocationId] = useState(saved?.from_location_id ?? correction?.request.from_location_id ?? '');
+  const [reason, setReason] = useState(saved?.reason ?? '');
+  const [notes, setNotes] = useState(saved?.notes ?? snapshot?.notes ?? correction?.request.notes ?? '');
   const [requirements, setRequirements] = useState<MaterialRequestCreatePayload['requirements']>(
-    snapshot?.requirements ?? { required_date: '', urgency: 'routine', purpose: '', specification: '' }
+    saved ? {
+      required_date: saved.required_date ?? '', urgency: saved.urgency ?? 'routine',
+      purpose: saved.purpose ?? '', specification: saved.specification ?? '',
+      stock_availability: saved.stock_availability
+    } : snapshot?.requirements ?? { required_date: '', urgency: 'routine', purpose: '', specification: '' }
   );
   const [evidence, setEvidence] = useState<Record<string, string>>(() =>
-    Object.fromEntries((snapshot?.requirements.supporting_document_ids ?? [])
+    Object.fromEntries((saved?.supporting_document_ids ?? snapshot?.requirements.supporting_document_ids ?? [])
       .map((id, index) => [id, `Previously selected document ${index + 1}`]))
   );
   const [documentSearch, setDocumentSearch] = useState('');
@@ -94,7 +101,9 @@ export function MaterialRequestForm({
     enabled: Boolean(projectId)
   });
   const [lines, setLines] = useState(() =>
-    correction?.request.lines.length ? correction.request.lines.filter((line) => !correction.replaceRemainder || stockMilliquantity(line.issued_quantity) < stockMilliquantity(line.quantity)).map((line) => ({
+    saved?.lines?.length ? saved.lines.map((line) => ({
+      ...newLine(), item_id: line.item_id ?? '', quantity: line.quantity ?? ''
+    })) : correction?.request.lines.length ? correction.request.lines.filter((line) => !correction.replaceRemainder || stockMilliquantity(line.issued_quantity) < stockMilliquantity(line.quantity)).map((line) => ({
       key: line.id, item_id: line.item_id, quantity: String(correction.replaceRemainder ? unissuedQuantity(line.quantity, line.issued_quantity) : line.quantity)
     })) : [newLine()]
   );
@@ -111,14 +120,41 @@ export function MaterialRequestForm({
     queryFn: () => listPhotos({ entityType: 'material_request', entityId: draft?.id }),
     enabled: Boolean(draft)
   });
+  async function ensureDraft() {
+    if (draft) return draft;
+    const owner = await createMaterialRequestDraft(projectId!, correction?.request);
+    setDraft(owner);
+    return owner;
+  }
+  const save = useMutation({
+    mutationFn: async () => {
+      const owner = await ensureDraft();
+      return saveMaterialRequestDraft(owner.id, {
+        expected_revision: owner.revision,
+        payload: {
+          ...requirements,
+          required_date: requirements.required_date || null,
+          from_location_id: locationId || null,
+          notes,
+          reason,
+          supporting_document_ids: Object.keys(evidence),
+          lines: lines.map(({ item_id, quantity }) => ({ item_id: item_id || null, quantity }))
+        }
+      });
+    },
+    onSuccess: (updated) => {
+      setDraft(updated);
+      void queryClient.invalidateQueries({ queryKey: ['material-requests'] });
+    },
+    onError: (cause) => setError(formatApiError(cause, 'Unable to save the material request draft.'))
+  });
   const media = useMutation({
     mutationFn: async (action: { files: File[] } | { remove: string }) => {
       if ('remove' in action) {
         await deletePhoto(action.remove);
         return;
       }
-      const owner = draft ?? await createMaterialRequestDraft(projectId!);
-      setDraft(owner);
+      const owner = await ensureDraft();
       try {
         for (const file of action.files) {
           await uploadEntityFiles({
@@ -138,6 +174,9 @@ export function MaterialRequestForm({
   const create = useMutation({
     mutationFn: (payload: MaterialRequestCreatePayload) => {
       const existing = draft ?? correction?.request;
+      if (existing?.correction_target_id) {
+        return submitMaterialCorrectionDraft(existing.id, { ...payload, expected_revision: existing.revision, reason });
+      }
       if (existing && correction?.replaceRemainder) {
         return replaceMaterialRequest(existing.id, { ...payload, expected_revision: existing.revision, reason });
       }
@@ -153,7 +192,7 @@ export function MaterialRequestForm({
       className="space-y-3 rounded-lg border border-theme-border bg-theme-card p-4"
       onSubmit={async (event) => {
         event.preventDefault();
-        if (!projectId || !locationId || pending.current || media.isPending) return;
+        if (!projectId || !locationId || pending.current || media.isPending || save.isPending) return;
         if (new Set(lines.map((line) => line.item_id)).size !== lines.length) {
           setError('Select each inventory item once.');
           return;
@@ -200,7 +239,7 @@ export function MaterialRequestForm({
         <select
           className="form-field"
           required
-          disabled={Boolean(draft) || media.isPending}
+          disabled={Boolean(draft) || media.isPending || save.isPending}
           value={project?.id ?? ''}
           onChange={(event) => {
             setEvidence({}); setDocumentOffset(0); setProject(options.find((option) => option.id === event.target.value));
@@ -380,11 +419,11 @@ export function MaterialRequestForm({
           ))}
         </fieldset>
       )}
-      {supervisor && projectId && (!correction || draft) && (
+      {supervisor && projectId && !correction?.replaceRemainder && (
         <div className="space-y-2">
           <label className="block text-sm">Upload request evidence
             <input type="file" className="form-field" multiple accept="image/jpeg,image/png,.heic,application/pdf"
-              disabled={media.isPending || create.isPending}
+              disabled={media.isPending || create.isPending || save.isPending}
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
                 if (files.length) media.mutate({ files });
@@ -395,20 +434,28 @@ export function MaterialRequestForm({
           {attached.data?.items.map((file) => (
             <div className="flex gap-2" key={file.id}>
               <span>{file.original_name}</span>
-              <button type="button" disabled={media.isPending || create.isPending}
+              <button type="button" disabled={media.isPending || create.isPending || save.isPending}
                 onClick={() => media.mutate({ remove: file.id })}>Remove {file.original_name}</button>
             </div>
           ))}
         </div>
       )}
-      {(correction?.replaceRemainder || correction?.request.status === 'approved') && (
+      {(correction?.replaceRemainder || correction?.request.status === 'approved' || draft?.correction_target_id) && (
         <label className="block text-sm">Correction reason
           <textarea className="form-field" required maxLength={2000} value={reason}
             onChange={(event) => setReason(event.target.value)} />
         </label>
       )}
       {error && <p role="alert">{error}</p>}
-      <button className="form-button" type="submit" disabled={!projectId || create.isPending || media.isPending}>
+      {supervisor && !correction?.replaceRemainder && (
+        <button className="form-button" type="button"
+          disabled={!projectId || create.isPending || media.isPending || save.isPending}
+          onClick={() => { setError(null); save.mutate(); }}>
+          {save.isPending ? 'Saving draft…' : 'Save draft'}
+        </button>
+      )}
+      {save.isSuccess && <p role="status">Draft saved.</p>}
+      <button className="form-button" type="submit" disabled={!projectId || create.isPending || media.isPending || save.isPending}>
         {create.isPending ? 'Submitting…' : correction ? 'Resubmit request' : 'Submit request'}
       </button>
     </form>

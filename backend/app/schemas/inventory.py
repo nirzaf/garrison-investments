@@ -79,6 +79,16 @@ class AssetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RegistrationCorrectionAsset(AssetResponse):
+    location_name: str
+
+
+class RegistrationCorrectionAssets(BaseModel):
+    items: list[RegistrationCorrectionAsset]
+    total: int
+    effective_quantity: Decimal | None
+
+
 class MovementCreateRequest(BaseModel):
     item_id: UUID
     asset_id: UUID | None = None
@@ -129,6 +139,37 @@ class MaterialRequestLineCreate(BaseModel):
 
 class MaterialRequestDraftCreate(BaseModel):
     project_id: UUID
+    correction_target_id: UUID | None = None
+    correction_expected_revision: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def correction_pair(self) -> Self:
+        if (self.correction_target_id is None) != (self.correction_expected_revision is None):
+            raise ValueError("Provide both the correction target and its expected revision.")
+        return self
+
+
+class MaterialDraftLine(BaseModel):
+    item_id: UUID | None = None
+    quantity: str = Field(default="", max_length=32)
+
+
+class MaterialDraftPayload(BaseModel):
+    from_location_id: UUID | None = None
+    notes: str = Field(default="", max_length=2000)
+    required_date: date | None = None
+    urgency: Literal["routine", "urgent", "critical"] = "routine"
+    purpose: str = Field(default="", max_length=2000)
+    specification: str = Field(default="", max_length=2000)
+    stock_availability: str | None = Field(default=None, max_length=1000)
+    supporting_document_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    lines: list[MaterialDraftLine] = Field(default_factory=list, max_length=100)
+    reason: str = Field(default="", max_length=2000)
+
+
+class MaterialDraftSave(BaseModel):
+    expected_revision: int = Field(ge=1)
+    payload: MaterialDraftPayload
 
 
 class MaterialRequestCreateRequest(BaseModel):
@@ -237,6 +278,9 @@ class MaterialRequestResponse(BaseModel):
     total_estimated_cost: Decimal | None
     notes: str | None
     lines: list[MaterialRequestLineResponse]
+    draft_payload: MaterialDraftPayload | None = None
+    correction_target_id: UUID | None = None
+    correction_expected_revision: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

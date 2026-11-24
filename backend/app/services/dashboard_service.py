@@ -14,6 +14,7 @@ from app.models.project_member import ProjectMember
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.user import User
 from app.schemas.dashboard import DashboardSummaryResponse, SiteOperationsSummary
+from app.services.approval_service import MATERIAL_STAGE_STATES
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_DASHBOARD_COMPANY,
@@ -87,7 +88,7 @@ class DashboardService:
             "material_requests_awaiting_review": select(func.count(MaterialRequest.id)).where(
                 MaterialRequest.project_id.in_(project_scope),
                 MaterialRequest.deleted_at.is_(None),
-                MaterialRequest.status.in_(("requested", "pending_engineer", "pending_gpm")),
+                MaterialRequest.status.in_(("requested", *MATERIAL_STAGE_STATES.values())),
             ),
             "registrations_awaiting_review": registrations.where(
                 InventoryRegistration.status == "pending_engineer",

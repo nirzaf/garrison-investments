@@ -84,6 +84,13 @@ class ReportingService:
             if updates
             else {}
         )
+        linkable = await self.updates.linkable_update_ids(
+            [
+                update.id
+                for update in updates
+                if update.status == "verified" and update.submission_revision is not None
+            ]
+        )
         return [
             SupervisorUpdateResponse.model_validate(update).model_copy(
                 update={
@@ -91,6 +98,7 @@ class ReportingService:
                     if update.verified_by is not None
                     else None,
                     "pending_reviewer_id": self._pending_reviewer(update, reviewers.get(update.id)),
+                    "eligible_for_report": update.id in linkable,
                 }
             )
             for update in updates
@@ -166,6 +174,7 @@ class ReportingService:
     async def correct_verified_update(
         self, update_id: UUID, payload: SupervisorUpdateCorrectionRequest, actor: User
     ) -> SupervisorUpdate:
+        await self.updates.lock_correction_roots([update_id])
         original = await self.updates.get_by_id(update_id, for_update=True)
         if original is None or original.supervisor_id != actor.id:
             raise NotFoundException("Supervisor update")
@@ -381,6 +390,7 @@ class ReportingService:
         role = ROLE_QUANTITY_SURVEYOR if payload.stage == "qs" else ROLE_MEP_PROJECT_MANAGER
         if actor.role != role:
             raise PermissionDeniedException("perform this progress review")
+        await self.updates.lock_correction_roots([update_id])
         update = await self.updates.get_by_id(update_id, for_update=True)
         if update is None:
             raise NotFoundException("Supervisor update")

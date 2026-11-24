@@ -155,6 +155,8 @@ export function PayrollInputResult({ data, title, disabled, onDownload }: {
             return (
               <li key={`${item.employee_id}:${item.code}:${record ?? index}`}>
                 {item.code.replace(/_/g, ' ')} · Employee <code>{item.employee_id}</code>
+                {'work_date' in item && item.work_date && <> · Date {item.work_date}</>}
+                {'project_id' in item && item.project_id && <> · Project <code>{item.project_id}</code></>}
                 {record && <> · Record <code>{record}</code></>}
               </li>
             );

@@ -151,9 +151,12 @@ current portal role. [Permission definitions and grants](../backend/app/utils/pe
   Site-report reading and approval are outside the HR Manager grant.
 - Managing Director and Operations Director retain general inventory management.
   Both supervisor roles can create and correct their own material requests and
-  register inventory on assigned projects. The assigned MEP Project Manager
+  register inventory on assigned projects. They can save and resume private drafts
+  and select eligible assets from the registration chain. The assigned MEP Project Manager
   verifies a submitted material request, and the assigned Group Project Manager
-  then approves it. Directors and assigned Administrative Executives can
+  then reviews it. When a configured threshold applies, the designated director
+  reviews the later stage. Overdue visibility does not confer decision authority.
+  Directors and assigned Administrative Executives can
   process approved requests within their scope. Directors retain cancellation
   authority. Assigned Quantity Surveyors can read submitted registrations.
   General catalogue and stock permissions remain separate.

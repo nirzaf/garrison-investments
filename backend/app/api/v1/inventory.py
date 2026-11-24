@@ -19,6 +19,7 @@ from app.schemas.inventory import (
     InventoryRegistrationSubmitRequest,
     LocationCreateRequest,
     LocationResponse,
+    MaterialDraftSave,
     MaterialQuantityCommand,
     MaterialRequestDraftCreate,
     MaterialRequestReplacementRequest,
@@ -29,6 +30,8 @@ from app.schemas.inventory import (
     MaterialSubmissionResponse,
     MovementCreateRequest,
     MovementResponse,
+    RegistrationCorrectionAsset,
+    RegistrationCorrectionAssets,
     RequestProjectOption,
     RequestProjectOptions,
     StockResponse,
@@ -265,8 +268,31 @@ async def create_material_request_draft(
     current_user: CanViewInventory,
     session: DbSession,
 ) -> MaterialRequestResponse:
-    draft = await InventoryService(session).create_material_draft(payload.project_id, current_user)
+    draft = await InventoryService(session).create_material_draft(payload, current_user)
     return material_request_response(draft, current_user)
+
+
+@router.put("/requests/drafts/{draft_id}", response_model=MaterialRequestResponse)
+async def save_material_request_draft(
+    draft_id: UUID, payload: MaterialDraftSave, current_user: CanViewInventory, session: DbSession
+) -> MaterialRequestResponse:
+    draft = await InventoryService(session).save_material_draft(draft_id, payload, current_user)
+    return material_request_response(draft, current_user)
+
+
+@router.post(
+    "/requests/drafts/{draft_id}/submit-correction", response_model=MaterialRequestResponse
+)
+async def submit_material_correction_draft(
+    draft_id: UUID,
+    payload: MaterialRequestResubmitRequest,
+    current_user: CanViewInventory,
+    session: DbSession,
+) -> MaterialRequestResponse:
+    request = await InventoryService(session).submit_material_correction_draft(
+        draft_id, payload, current_user
+    )
+    return material_request_response(request, current_user)
 
 
 @router.post("/requests/{request_id}/resubmit", response_model=MaterialRequestResponse)
@@ -452,6 +478,34 @@ async def decide_inventory_registration(
 ) -> InventoryRegistrationResponse:
     row = await InventoryRegistrationService(session).decide(registration_id, payload, actor)
     return InventoryRegistrationResponse.model_validate(row)
+
+
+@router.get(
+    "/registrations/{registration_id}/correction-assets",
+    response_model=RegistrationCorrectionAssets,
+)
+async def list_registration_correction_assets(
+    registration_id: UUID,
+    actor: CanViewInventory,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=80)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> RegistrationCorrectionAssets:
+    rows, total, quantity = await InventoryRegistrationService(session).list_correction_assets(
+        registration_id, actor, search=search, limit=limit, offset=offset
+    )
+    return RegistrationCorrectionAssets(
+        items=[
+            RegistrationCorrectionAsset(
+                **AssetResponse.model_validate(row).model_dump(),
+                location_name=row.current_location.name,
+            )
+            for row in rows
+        ],
+        total=total,
+        effective_quantity=quantity,
+    )
 
 
 @router.post(

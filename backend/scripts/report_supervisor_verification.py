@@ -29,6 +29,13 @@ QUERY = text("""
      AND r.deleted_at IS NULL
      AND r.supervisor_update_ids @> jsonb_build_array(u.id::text)
     WHERE u.status = 'verified' AND u.deleted_at IS NULL AND u.verified_report_id IS NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM supervisor_update_submissions s
+           WHERE s.update_id = u.id AND s.submission_revision = u.submission_revision
+             AND s.engineer_decision = 'approved' AND s.engineer_decided_at IS NOT NULL
+             AND s.engineer_id = u.verified_by
+             AND (s.qs_id IS NULL OR (s.qs_decision = 'approved' AND s.qs_decided_at IS NOT NULL))
+      )
     GROUP BY u.id
     ORDER BY u.id
     """)

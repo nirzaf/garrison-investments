@@ -3061,6 +3061,7 @@ PayrollTimeIssueCode = Literal[
     "overlapping_timesheets",
     "pending_attendance",
     "missing_site_attendance",
+    "site_employment_eligibility_unresolved",
     "site_overtime_mismatch",
     "attendance_without_schedule",
     "attendance_without_timesheet",
@@ -3074,6 +3075,8 @@ PayrollTimeIssueCode = Literal[
 
 class PayrollTimeInputIssue(BaseModel):
     employee_id: UUID
+    project_id: UUID | None = None
+    work_date: date | None = None
     record_id: UUID | None = None
     code: PayrollTimeIssueCode
 

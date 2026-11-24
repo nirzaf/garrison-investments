@@ -513,8 +513,8 @@ export function DailyReportPage() {
       .then(([submitted, linked]) => {
         if (!active) return;
         const updates = new Map(submitted.items.filter((update) =>
-          update.submission_revision != null && !update.previous_id &&
-          (!update.verified_report_id || update.verified_report_id === savedReportId)
+          update.eligible_for_report ||
+          (savedReportId && update.verified_report_id === savedReportId)
         ).map((update) => [update.id, update]));
         for (const update of linked) {
           if (update.project_id === form.project_id) updates.set(update.id, update);

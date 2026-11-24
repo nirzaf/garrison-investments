@@ -4649,6 +4649,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/registrations/{registration_id}/correction-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Registration Correction Assets */
+        get: operations["list_registration_correction_assets_api_v1_inventory_registrations__registration_id__correction_assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/registrations/{registration_id}/decision": {
         parameters: {
             query?: never;
@@ -4746,6 +4763,40 @@ export interface paths {
         put?: never;
         /** Create Material Request Draft */
         post: operations["create_material_request_draft_api_v1_inventory_requests_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/requests/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Material Request Draft */
+        put: operations["save_material_request_draft_api_v1_inventory_requests_drafts__draft_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/requests/drafts/{draft_id}/submit-correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Material Correction Draft */
+        post: operations["submit_material_correction_draft_api_v1_inventory_requests_drafts__draft_id__submit_correction_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12835,6 +12886,61 @@ export interface components {
             /** Tasks */
             tasks: number;
         };
+        /** MaterialDraftLine */
+        MaterialDraftLine: {
+            /** Item Id */
+            item_id?: string | null;
+            /**
+             * Quantity
+             * @default
+             */
+            quantity: string;
+        };
+        /** MaterialDraftPayload */
+        MaterialDraftPayload: {
+            /** From Location Id */
+            from_location_id?: string | null;
+            /** Lines */
+            lines?: components["schemas"]["MaterialDraftLine"][];
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Required Date */
+            required_date?: string | null;
+            /**
+             * Specification
+             * @default
+             */
+            specification: string;
+            /** Stock Availability */
+            stock_availability?: string | null;
+            /** Supporting Document Ids */
+            supporting_document_ids?: string[];
+            /**
+             * Urgency
+             * @default routine
+             * @enum {string}
+             */
+            urgency: "routine" | "urgent" | "critical";
+        };
+        /** MaterialDraftSave */
+        MaterialDraftSave: {
+            /** Expected Revision */
+            expected_revision: number;
+            payload: components["schemas"]["MaterialDraftPayload"];
+        };
         /** MaterialQuantityCommand */
         MaterialQuantityCommand: {
             /** Expected Revision */
@@ -12854,6 +12960,10 @@ export interface components {
         };
         /** MaterialRequestDraftCreate */
         MaterialRequestDraftCreate: {
+            /** Correction Expected Revision */
+            correction_expected_revision?: number | null;
+            /** Correction Target Id */
+            correction_target_id?: string | null;
             /**
              * Project Id
              * Format: uuid
@@ -12915,6 +13025,11 @@ export interface components {
         };
         /** MaterialRequestResponse */
         MaterialRequestResponse: {
+            /** Correction Expected Revision */
+            correction_expected_revision?: number | null;
+            /** Correction Target Id */
+            correction_target_id?: string | null;
+            draft_payload?: components["schemas"]["MaterialDraftPayload"] | null;
             /** From Location Id */
             from_location_id: string | null;
             /**
@@ -14886,14 +15001,18 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "missing_locked_timesheet" | "timesheet_crosses_period" | "timesheet_not_locked" | "overlapping_timesheets" | "pending_attendance" | "missing_site_attendance" | "site_overtime_mismatch" | "attendance_without_schedule" | "attendance_without_timesheet" | "pending_attendance_correction" | "pending_overtime" | "overtime_without_timesheet" | "duplicate_approved_overtime" | "overtime_hours_mismatch";
+            code: "missing_locked_timesheet" | "timesheet_crosses_period" | "timesheet_not_locked" | "overlapping_timesheets" | "pending_attendance" | "missing_site_attendance" | "site_employment_eligibility_unresolved" | "site_overtime_mismatch" | "attendance_without_schedule" | "attendance_without_timesheet" | "pending_attendance_correction" | "pending_overtime" | "overtime_without_timesheet" | "duplicate_approved_overtime" | "overtime_hours_mismatch";
             /**
              * Employee Id
              * Format: uuid
              */
             employee_id: string;
+            /** Project Id */
+            project_id?: string | null;
             /** Record Id */
             record_id?: string | null;
+            /** Work Date */
+            work_date?: string | null;
         };
         /** PayrollTimeInputPreview */
         PayrollTimeInputPreview: {
@@ -15891,6 +16010,41 @@ export interface components {
              * @constant
              */
             userVerification: "required";
+        };
+        /** RegistrationCorrectionAsset */
+        RegistrationCorrectionAsset: {
+            /** Asset Tag */
+            asset_tag: string;
+            /** Condition */
+            condition: string;
+            /**
+             * Current Location Id
+             * Format: uuid
+             */
+            current_location_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Location Name */
+            location_name: string;
+            /** Status */
+            status: string;
+        };
+        /** RegistrationCorrectionAssets */
+        RegistrationCorrectionAssets: {
+            /** Effective Quantity */
+            effective_quantity: string | null;
+            /** Items */
+            items: components["schemas"]["RegistrationCorrectionAsset"][];
+            /** Total */
+            total: number;
         };
         /** RegistrationCreationOptions */
         RegistrationCreationOptions: {
@@ -17474,6 +17628,11 @@ export interface components {
             day_type: string;
             /** Delay Notes */
             delay_notes: string | null;
+            /**
+             * Eligible For Report
+             * @default false
+             */
+            eligible_for_report: boolean;
             /**
              * Id
              * Format: uuid
@@ -32133,6 +32292,41 @@ export interface operations {
             };
         };
     };
+    list_registration_correction_assets_api_v1_inventory_registrations__registration_id__correction_assets_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationCorrectionAssets"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     decide_inventory_registration_api_v1_inventory_registrations__registration_id__decision_post: {
         parameters: {
             query?: never;
@@ -32349,6 +32543,76 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    save_material_request_draft_api_v1_inventory_requests_drafts__draft_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialDraftSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_material_correction_draft_api_v1_inventory_requests_drafts__draft_id__submit_correction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialRequestResubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

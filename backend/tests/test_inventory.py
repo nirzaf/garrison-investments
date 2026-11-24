@@ -325,6 +325,28 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         )
         assert drafted.status_code == 201, drafted.text
         draft = drafted.json()
+        stored_payload = {
+            **request_payload["requirements"],
+            "from_location_id": location["id"],
+            "notes": "Saved for another session",
+            "lines": request_payload["lines"],
+        }
+        save_url = f"/api/v1/inventory/requests/drafts/{draft['id']}"
+        update_payload = {"expected_revision": draft["revision"], "payload": stored_payload}
+        foreign = await client.put(save_url, json=update_payload, headers=store_headers)
+        assert foreign.status_code == 404, foreign.text
+        saved = await client.put(save_url, json=update_payload, headers=owner_headers)
+        assert saved.status_code == 200, saved.text
+        stale = await client.put(save_url, json=update_payload, headers=owner_headers)
+        assert stale.status_code == 409, stale.text
+        reloaded = await client.get(
+            "/api/v1/inventory/requests",
+            params={"request_id": draft["id"]},
+            headers=owner_headers,
+        )
+        assert reloaded.json()[0]["draft_payload"]["notes"] == stored_payload["notes"]
+        assert reloaded.json()[0]["submission_revision"] is None
+        draft = saved.json()
         fields = {"entity_type": "material_request", "entity_id": draft["id"]}
         upload = await client.post(
             "/api/v1/photos/upload",
@@ -391,9 +413,14 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             assert overdue is not None
             overdue.due_at = utc_now() - timedelta(days=3)
             await session.commit()
+
+            async def run_reminders():
+                async with AsyncSessionLocal() as worker_session:
+                    return await ApprovalService(worker_session).send_reminders_and_escalations()
+
+            await asyncio.gather(run_reminders(), run_reminders())
+            await session.refresh(overdue)
             approvals = ApprovalService(session)
-            await approvals.send_reminders_and_escalations()
-            await approvals.send_reminders_and_escalations()
             assert overdue.status == "pending"
             assert overdue.approver_id == engineer.id
             assert overdue.escalation_user_id is None
@@ -445,18 +472,45 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         )
         assert returned.status_code == 200, returned.text
 
+        correction = await client.post(
+            "/api/v1/inventory/requests/drafts",
+            json={
+                "project_id": str(project.id),
+                "correction_target_id": request_id,
+                "correction_expected_revision": material_request["revision"] + 2,
+            },
+            headers=owner_headers,
+        )
+        assert correction.status_code == 201, correction.text
+        correction_draft = correction.json()
+        correction_upload = await client.post(
+            "/api/v1/photos/upload",
+            data={"entity_type": "material_request", "entity_id": correction_draft["id"]},
+            files={"files": ("correction.jpg", jpeg_bytes(), "image/jpeg")},
+            headers=owner_headers,
+        )
+        assert correction_upload.status_code == 201, correction_upload.text
+        corrected_file_id = correction_upload.json()[0]["id"]
         corrected = await client.post(
-            f"/api/v1/inventory/requests/{request_id}/resubmit",
+            f"/api/v1/inventory/requests/drafts/{correction_draft['id']}/submit-correction",
             json={
                 **request_payload,
                 "notes": "Confirmed delivery",
-                "expected_revision": material_request["revision"] + 2,
+                "expected_revision": correction_draft["revision"],
             },
-            headers={"Authorization": f"Bearer {requester_token}"},
+            headers=owner_headers,
         )
         assert corrected.status_code == 200, corrected.text
         assert corrected.json()["submission_revision"] == 2
         assert corrected.json()["status"] == "pending_engineer"
+        evidence = await client.get(
+            f"/api/v1/inventory/requests/{request_id}/submissions", headers=owner_headers
+        )
+        assert [
+            row["requirements"]["evidence_file_ids"] for row in evidence.json()["submissions"]
+        ] == [[corrected_file_id], [file_id]]
+        locked = await client.delete(f"/api/v1/photos/{corrected_file_id}", headers=owner_headers)
+        assert locked.status_code == 409, locked.text
         retired = await client.post(
             f"/api/v1/approvals/{manager['id']}/approve",
             json={"expected_submission_revision": 1},
@@ -906,7 +960,8 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
             assert (
                 await session.scalar(
                     select(func.count(InventoryMovement.id)).where(
-                        InventoryMovement.reference_type == "inventory_registration"
+                        InventoryMovement.reference_type == "inventory_registration",
+                        InventoryMovement.project_id == project.id,
                     )
                 )
                 == 0
@@ -930,6 +985,14 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
         history = await client.get(f"{path}/{correction['id']}/history", headers=owner)
         assert [entry["status"] for entry in history.json()] == ["approved", "returned"]
 
+        asset_url = f"{path}/{approved['id']}/correction-assets"
+        eligible = await client.get(asset_url, headers=owner, params={"search": "REG-", "limit": 1})
+        assert eligible.status_code == 200, eligible.text
+        assert eligible.json()["total"] == 1
+        assert eligible.json()["items"][0]["location_name"] == location.name
+        assert eligible.json()["items"][0]["condition"] == "new"
+        forbidden = await client.get(asset_url, headers=reviewer)
+        assert forbidden.status_code == 403, forbidden.text
         approved_correction = {
             **draft,
             "expected_submission_revision": 2,
@@ -978,6 +1041,52 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
             ]
         )
         assert sorted(response.status_code for response in attempts) == [200, 409]
+        eligible = await client.get(f"{path}/{changed['id']}/correction-assets", headers=owner)
+        assert eligible.status_code == 200, eligible.text
+        assert eligible.json()["total"] == 2
+        selected = eligible.json()["items"][0]["id"]
+        reduction_payload = {
+            **approved_correction,
+            "expected_submission_revision": 4,
+            "reason": "Review count after discovering a duplicate receipt",
+            "serial_number": None,
+            "quantity": "1",
+            "remove_asset_ids": [selected],
+        }
+        rejected_draft = await client.post(
+            f"{path}/{changed['id']}/correction", json=reduction_payload, headers=owner
+        )
+        assert rejected_draft.status_code == 201, rejected_draft.text
+        rejected_id = rejected_draft.json()["id"]
+        await upload_and_submit(rejected_draft.json(), 5)
+        rejected = await client.post(
+            f"{path}/{rejected_id}/decision",
+            json={
+                "decision": "rejected",
+                "expected_submission_revision": 5,
+                "comments": "Recount.",
+            },
+            headers=reviewer,
+        )
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()["movement_id"] is None
+        selection = await client.get(f"{path}/{rejected_id}/correction-assets", headers=owner)
+        assert selection.status_code == 200, selection.text
+        assert Decimal(selection.json()["effective_quantity"]) == 2
+        reduction = await client.post(
+            f"{path}/{rejected_id}/correction",
+            json={**reduction_payload, "expected_submission_revision": 5},
+            headers=owner,
+        )
+        assert reduction.status_code == 201, reduction.text
+        await upload_and_submit(reduction.json(), 6)
+        reduced = await client.post(
+            f"{path}/{reduction.json()['id']}/decision",
+            json={"decision": "approved", "expected_submission_revision": 6},
+            headers=reviewer,
+        )
+        assert reduced.status_code == 200, reduced.text
+        assert reduced.json()["confirmed_item_id"] == approved["confirmed_item_id"]
 
     async with AsyncSessionLocal() as session:
         assert (
@@ -995,13 +1104,16 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
                 InventoryLocationStock.item_id == item_id,
                 InventoryLocationStock.location_id == location.id,
             )
-        ) == Decimal("2")
+        ) == Decimal("1")
         assert (
             await session.scalar(
                 select(func.count(InventoryAsset.id)).where(InventoryAsset.item_id == item_id)
             )
             == 2
         )
+
+        removed = await session.get(InventoryAsset, UUID(selected))
+        assert removed is not None and removed.deleted_at is not None
 
         movement = await session.scalar(
             select(InventoryMovement).where(InventoryMovement.reference_id == UUID(changed["id"]))
@@ -1054,7 +1166,12 @@ async def test_material_director_stage_sequence(
     supervisor, supervisor_password = await create_user("site_supervisor")
     project = await create_project(manager, engineer)
     async with AsyncSessionLocal.begin() as session:
-        session.add(ProjectMember(project_id=project.id, user_id=supervisor.id))
+        session.add_all(
+            [
+                ProjectMember(project_id=project.id, user_id=user.id)
+                for user in (supervisor, operations, director)
+            ]
+        )
     if scenario == "unavailable":
         from app.services.approval_service import ApprovalService
 
@@ -1136,6 +1253,17 @@ async def test_material_director_stage_sequence(
                 assert remaining["id"] == pending["id"]
                 return
             if stage > 2:
+                blocked = await client.post(
+                    f"/api/v1/inventory/requests/{request_id}/reserve", headers=headers
+                )
+                assert blocked.status_code == 409, blocked.text
+                assert blocked.json()["error_code"] == "MATERIAL_APPROVALS_REQUIRED"
+                dashboard = await client.get(
+                    "/api/v1/dashboard/summary",
+                    headers={"Authorization": f"Bearer {tokens[2]}"},
+                )
+                assert dashboard.status_code == 200, dashboard.text
+                assert dashboard.json()["site_operations"]["material_requests_awaiting_review"] == 1
                 outbox = await client.get(
                     "/api/v1/approvals",
                     params={"box": "outbox"},
@@ -1161,15 +1289,36 @@ async def test_material_director_stage_sequence(
                 decided = await client.get(
                     "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
                 )
-                assert decided.json()[0]["status"] == {"return": "returned", "reject": "rejected"}[
-                    scenario
-                ]
+                assert (
+                    decided.json()[0]["status"]
+                    == {"return": "returned", "reject": "rejected"}[scenario]
+                )
                 return
             await approve_material_stage(client, tokens[stage], request_id, stage)
         final = await client.get(
             "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
         )
         assert final.json()[0]["status"] == "approved"
+        if stages == (1, 2, 3, 4):
+            from sqlalchemy import select
+
+            from app.models.approval import Approval
+
+            async with AsyncSessionLocal.begin() as session:
+                final_approval = await session.scalar(
+                    select(Approval).where(
+                        Approval.request_id == UUID(request_id), Approval.step_order == 4
+                    )
+                )
+                assert final_approval is not None
+                final_approval.decided_by = manager.id
+            for operation in ("reserve", "issue"):
+                denied = await client.post(
+                    f"/api/v1/inventory/requests/{request_id}/{operation}",
+                    headers=headers,
+                )
+                assert denied.status_code == 409, denied.text
+                assert denied.json()["error_code"] == "MATERIAL_APPROVALS_REQUIRED"
         if scenario == "correct":
             corrected = await client.post(
                 f"/api/v1/inventory/requests/{request_id}/resubmit",

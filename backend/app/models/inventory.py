@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -165,6 +166,13 @@ class MaterialRequest(TimestampMixin, SoftDeleteMixin, Base):
     previous_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("material_requests.id", ondelete="RESTRICT")
     )
+    draft_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    correction_target_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "material_requests.id", name="fk_material_requests_draft_target", ondelete="RESTRICT"
+        )
+    )
+    correction_expected_revision: Mapped[int | None] = mapped_column(Integer)
     total_estimated_cost: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,

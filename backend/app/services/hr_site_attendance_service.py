@@ -29,6 +29,7 @@ from app.schemas.hr import (
 from app.services.approval_service import ApprovalService
 from app.services.authorization import accessible_project_ids, ensure_project_access
 from app.services.hr_manager_review import REVIEW_EMPLOYMENT_STATES, verify_request_revision
+from app.services.hr_site_eligibility import historical_site_employment
 from app.services.hr_workforce_service import HrWorkforceService
 from app.services.notification_service import NotificationService
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
@@ -98,7 +99,12 @@ class HrSiteAttendanceService:
         self, project_id: UUID, work_date: date, actor: User, *, limit: int, offset: int
     ) -> SiteAttendanceCompleteness:
         self._ensure_reader(actor)
-        await self._ensure_active_project(project_id, actor)
+        if actor.role != ROLE_HR_MANAGER:
+            await ensure_project_access(self.session, project_id, actor)
+        if not await self.session.scalar(
+            select(Project.id).where(Project.id == project_id, Project.deleted_at.is_(None))
+        ):
+            raise NotFoundException("Project")
         entry = HrAttendanceEntry
         review = HrSiteAttendanceSubmission
         recorded = select(entry.id).where(
@@ -106,6 +112,7 @@ class HrSiteAttendanceService:
             entry.project_id == project_id,
             entry.work_date == work_date,
             entry.source == "site",
+            entry.status != "historical",
         )
         confirmed = recorded.join(
             review,
@@ -117,7 +124,7 @@ class HrSiteAttendanceService:
             review.hr_decision == "approved",
             review.hr_id == entry.approved_by_id,
         )
-        scope = self._worker_eligibility(project_id, work_date)
+        scope = self._worker_eligibility(project_id, work_date, historical=True)
         expected, entered, verified = (
             await self.session.execute(
                 select(
@@ -433,7 +440,9 @@ class HrSiteAttendanceService:
         return reviewers
 
     @staticmethod
-    def _worker_eligibility(project_id: UUID, work_date: date) -> tuple[ColumnElement[bool], ...]:
+    def _worker_eligibility(
+        project_id: UUID, work_date: date, *, historical: bool = False
+    ) -> tuple[ColumnElement[bool], ...]:
         daily_roster = select(HrRosterAllocation.id).where(
             HrRosterAllocation.employee_id == HrEmployee.id,
             HrRosterAllocation.work_date == work_date,
@@ -448,15 +457,19 @@ class HrSiteAttendanceService:
                 HrShiftAssignment.effective_to >= work_date,
             ),
         )
+        assignment = or_(
+            daily_roster.where(HrRosterAllocation.project_id == project_id).exists(),
+            ~daily_roster.exists() & project_shift.exists(),
+        )
+        if historical:
+            eligible, _ = historical_site_employment(work_date)
+            return eligible, assignment
         return (
             HrEmployee.deleted_at.is_(None),
             HrEmployee.employment_status.in_(REVIEW_EMPLOYMENT_STATES),
             or_(HrEmployee.join_date.is_(None), HrEmployee.join_date <= work_date),
             or_(HrEmployee.termination_date.is_(None), HrEmployee.termination_date > work_date),
-            or_(
-                daily_roster.where(HrRosterAllocation.project_id == project_id).exists(),
-                ~daily_roster.exists() & project_shift.exists(),
-            ),
+            assignment,
         )
 
     async def _require_worker(self, payload: SiteAttendanceCreateRequest) -> HrEmployee:

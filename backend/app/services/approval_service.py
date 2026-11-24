@@ -41,6 +41,7 @@ from app.utils.permissions import (
     PERMISSION_REPORTS_APPROVE,
     PERMISSION_REPORTS_SUBMIT,
     REPORT_APPROVER_ROLES,
+    ROLE_ADMINISTRATIVE_EXECUTIVE,
     ROLE_GROUP_PROJECT_MANAGER,
     ROLE_MANAGING_DIRECTOR,
     ROLE_MEP_PROJECT_MANAGER,
@@ -70,6 +71,7 @@ MATERIAL_STAGE_TITLES = {2: "GPM approval", 3: "Operations approval", 4: "MD app
 APPROVAL_REMINDER_TITLE = "Approval reminder"
 APPROVAL_ESCALATION_TITLE = "Approval escalated"
 MATERIAL_OVERDUE_TITLE = "Material approval overdue"
+MATERIAL_FULFILLMENT_TITLE = "Material request ready for fulfillment"
 
 # Roles that may actually decide each request type. Delegation must not hand decision
 # power to someone the owning workflow would reject: `_apply_entity_decision` writes the
@@ -95,6 +97,17 @@ def required_material_stages(total: Decimal | None) -> tuple[int, ...]:
         )
         if threshold is not None and total >= threshold
     )
+
+
+def frozen_material_stages(submission: MaterialRequestSubmission) -> tuple[int, ...]:
+    requirements = submission.requirements
+    if not isinstance(requirements, dict):
+        return ()
+    stages = requirements.get("approval_stages", [1, 2])
+    if not isinstance(stages, list) or any(type(stage) is not int for stage in stages):
+        return ()
+    ordered = tuple(stages)
+    return ordered if ordered in {(1, 2), (1, 2, 3), (1, 2, 4), (1, 2, 3, 4)} else ()
 
 
 class ApprovalService:
@@ -373,13 +386,13 @@ class ApprovalService:
             approval.decided_by = actor.id
         approval.decision_comments = comments
         approval.decided_at = utc_now()
-        await self._apply_entity_decision(approval, actor, "approved", comments)
+        next_stage = await self._apply_entity_decision(approval, actor, "approved", comments)
         await self._notify_submitter(
             approval,
-            "Approval completed",
+            "Material approval advanced" if next_stage else "Approval completed",
             (
-                f"{approval.title} passed technical verification and is awaiting GPM approval."
-                if approval.submission_revision is not None and approval.step_order == 1
+                f"{approval.title} was accepted. Next stage: {MATERIAL_STAGE_TITLES[next_stage]}."
+                if next_stage
                 else f"{approval.title} was approved."
             ),
         )
@@ -683,13 +696,16 @@ class ApprovalService:
                 and approval.submission_revision is not None
             ):
                 if approval.escalated_at is None and approval.due_at <= escalation_cutoff:
-                    recipients = await self.session.scalars(
+                    overdue_recipients = await self.session.scalars(
                         select(User.id).where(
                             User.role == ROLE_OPERATIONS_DIRECTOR,
                             User.is_active.is_(True),
                             User.deleted_at.is_(None),
                         )
                     )
+                    recipients = list(overdue_recipients)
+                    if not recipients:
+                        continue
                     for recipient in recipients:
                         await self.notifications.create(
                             user_id=recipient,
@@ -734,7 +750,13 @@ class ApprovalService:
         return reminded, escalated
 
     async def can_deliver_scheduled_email(self, notification: Notification) -> bool:
-        if notification.notification_type != "approval":
+        ready_for_fulfillment = (
+            notification.notification_type == "inventory"
+            and notification.title == MATERIAL_FULFILLMENT_TITLE
+        )
+        if ready_for_fulfillment and notification.reference_type != "approvals":
+            return False
+        if notification.notification_type != "approval" and not ready_for_fulfillment:
             return True
         if notification.reference_type == "daily_report":
             return await self._can_deliver_report_notification(notification)
@@ -790,11 +812,24 @@ class ApprovalService:
             ):
                 return False
             expected_user_id = approval.escalation_user_id
-        elif notification.title in {"Approval completed", "Approval rejected"}:
+        elif notification.title in {
+            "Material approval advanced",
+            MATERIAL_FULFILLMENT_TITLE,
+            "Approval completed",
+            "Approval rejected",
+        }:
+            if (
+                approval.request_type == "material_request"
+                and approval.submission_revision is not None
+            ):
+                return await self._can_deliver_material_decision(notification, approval)
             expected_status = (
                 "approved" if notification.title == "Approval completed" else "rejected"
             )
-            if approval.status != expected_status:
+            if (
+                notification.title in {"Material approval advanced", MATERIAL_FULFILLMENT_TITLE}
+                or approval.status != expected_status
+            ):
                 return False
             return await self._active_user_matches(notification.user_id, approval.submitter_id)
         else:
@@ -802,6 +837,70 @@ class ApprovalService:
         if expected_user_id is None or notification.user_id != expected_user_id:
             return False
         return await self._approval_recipient_has_current_scope(approval, expected_user_id)
+
+    async def _can_deliver_material_decision(
+        self, notification: Notification, approval: Approval
+    ) -> bool:
+        request = await self.session.get(MaterialRequest, approval.request_id)
+        if (
+            request is None
+            or request.deleted_at is not None
+            or request.submission_revision != approval.submission_revision
+        ):
+            return False
+        submission = await self.session.get(
+            MaterialRequestSubmission, (approval.request_id, approval.submission_revision)
+        )
+        if submission is None:
+            return False
+        if notification.title == MATERIAL_FULFILLMENT_TITLE:
+            stages = frozen_material_stages(submission)
+            if (
+                not stages
+                or approval.step_order != stages[-1]
+                or approval.status != "approved"
+                or request.status
+                not in {"approved", "partially_reserved", "reserved", "partially_issued"}
+                or not await self._active_user_matches(
+                    notification.user_id, submission.processor_id
+                )
+            ):
+                return False
+            processor = await self.users.get_by_id(notification.user_id)
+            return (
+                processor is not None
+                and processor.role == ROLE_ADMINISTRATIVE_EXECUTIVE
+                and (
+                    request.project_id
+                    in (await accessible_project_ids(self.session, processor) or [])
+                )
+            )
+        if not await self._active_user_matches(notification.user_id, submission.submitted_by):
+            return False
+        recipient = await self.users.get_by_id(notification.user_id)
+        if recipient is None or (
+            recipient.role not in COMPANY_RESOURCE_ROLES
+            and request.project_id
+            not in (await accessible_project_ids(self.session, recipient) or [])
+        ):
+            return False
+        if notification.title == "Approval rejected":
+            return approval.status == "rejected" and request.status == "rejected"
+        stages = frozen_material_stages(submission)
+        if approval.status != "approved" or approval.step_order not in stages:
+            return False
+        if notification.title == "Approval completed":
+            return approval.step_order == stages[-1] and request.status in {
+                "approved",
+                "partially_reserved",
+                "reserved",
+                "partially_issued",
+                "issued",
+            }
+        if approval.step_order == stages[-1]:
+            return False
+        next_stage = stages[stages.index(approval.step_order) + 1]
+        return request.status == MATERIAL_STAGE_STATES[next_stage]
 
     async def _can_deliver_report_notification(self, notification: Notification) -> bool:
         if notification.reference_id is None:
@@ -1255,7 +1354,7 @@ class ApprovalService:
         actor: User,
         decision: str,
         comments: str | None,
-    ) -> None:
+    ) -> int | None:
         if approval.request_type == "material_request":
             request = await self.session.scalar(
                 select(MaterialRequest)
@@ -1268,8 +1367,9 @@ class ApprovalService:
             if request is None:
                 raise NotFoundException("Material request")
             if approval.submission_revision is not None:
-                await self._apply_material_submission_decision(request, approval, actor, decision)
-                return
+                return await self._apply_material_submission_decision(
+                    request, approval, actor, decision
+                )
             if request.status != "requested":
                 raise AppException(
                     "Only requested material requests can be decided.",
@@ -1317,6 +1417,7 @@ class ApprovalService:
                 new_values={"decision": decision, "approval_id": str(approval.id)},
                 comments=comments,
             )
+        return None
 
     async def _material_deciders(
         self, request_id: UUID, revision: int, before_stage: int
@@ -1336,7 +1437,7 @@ class ApprovalService:
 
     async def _apply_material_submission_decision(
         self, request: MaterialRequest, approval: Approval, actor: User, decision: str
-    ) -> None:
+    ) -> int | None:
         submission = await self.session.get(
             MaterialRequestSubmission, (request.id, approval.submission_revision)
         )
@@ -1346,7 +1447,7 @@ class ApprovalService:
                 status_code=409,
                 error_code="REQUEST_STATUS_INVALID",
             )
-        stages = tuple(submission.requirements.get("approval_stages", (1, 2)))
+        stages = frozen_material_stages(submission)
         stage = approval.step_order
         if stage not in stages:
             raise AppException(
@@ -1388,7 +1489,7 @@ class ApprovalService:
         request.revision += 1
         if decision != "approved":
             request.status = decision
-            return
+            return None
         if stage != stages[-1]:
             next_stage = stages[stages.index(stage) + 1]
             request.status = MATERIAL_STAGE_STATES[next_stage]
@@ -1406,21 +1507,22 @@ class ApprovalService:
                 material_submission=submission,
                 step_order=next_stage,
             )
-            return
+            return next_stage
         request.status = "approved"
         if submission.processor_id is not None:
             await self.notifications.create(
                 user_id=submission.processor_id,
-                title="Material request ready for fulfillment",
+                title=MATERIAL_FULFILLMENT_TITLE,
                 body=append_link(
                     f"{request.request_number} is ready for fulfillment.",
                     label="Open material request",
                     url=material_request_url(request.id),
                 ),
                 notification_type="inventory",
-                reference_type="material_request",
-                reference_id=request.id,
+                reference_type="approvals",
+                reference_id=approval.id,
             )
+        return None
 
     async def _notify_submitter(self, approval: Approval, title: str, body: str) -> None:
         if approval.submitter_id:

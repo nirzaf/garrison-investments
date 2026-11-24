@@ -8,6 +8,7 @@ import {
   decideInventoryRegistration,
   listInventoryRegistrationHistory,
   listInventoryRegistrations,
+  listRegistrationCorrectionAssets,
   listRequestProjects,
   submitInventoryRegistration,
   type InventoryItemRecord,
@@ -107,7 +108,10 @@ function RegistrationForm({ items, locations, previous, onClose, onSuccess }: In
   onSuccess: () => void;
 }) {
   const [reason, setReason] = useState('');
-  const [assetReferences, setAssetReferences] = useState('');
+  const [selectedAssets, setSelectedAssets] = useState<Record<string, string>>({});
+  const [assetSearch, setAssetSearch] = useState('');
+  const [assetOffset, setAssetOffset] = useState(0);
+  const assetTerm = useDebouncedSearch(assetSearch);
   const [search, setSearch] = useState('');
   const term = useDebouncedSearch(search);
   const [draft, setDraft] = useState<InventoryRegistrationDraft>(
@@ -121,13 +125,26 @@ function RegistrationForm({ items, locations, previous, onClose, onSuccess }: In
     queryFn: () => listRequestProjects(term || undefined),
     enabled: !previous
   });
+  const serializedCorrection = Boolean(previous && previous.requirements.category !== 'material');
+  const assetOptions = useQuery({
+    queryKey: ['registration-correction-assets', previous?.id, assetTerm, assetOffset],
+    queryFn: () => listRegistrationCorrectionAssets(previous!.id, {
+      search: assetTerm, limit: pageSize, offset: assetOffset
+    }),
+    enabled: serializedCorrection
+  });
+  const removalCount = Math.max(
+    0, Number(assetOptions.data?.effective_quantity ?? 0) - Number(draft.quantity)
+  );
+  const canSave = (!serializedCorrection || assetOptions.isSuccess) &&
+    Object.keys(selectedAssets).length === removalCount;
   const save = useMutation({
-    mutationFn: () => createInventoryRegistration(draft, previous, reason, assetReferences.split(/[,\s]+/).filter(Boolean)),
+    mutationFn: () => createInventoryRegistration(draft, previous, reason, Object.keys(selectedAssets)),
     onSuccess
   });
 
   return (
-    <form onSubmit={(event) => { event.preventDefault(); if (!save.isPending) save.mutate(); }}>
+    <form onSubmit={(event) => { event.preventDefault(); if (!save.isPending && canSave) save.mutate(); }}>
       <fieldset className="grid gap-3 sm:grid-cols-2" disabled={save.isPending}>
         <legend className="mb-3 font-medium">{previous ? 'Correct registration' : 'New registration draft'}</legend>
         {!previous && <>
@@ -227,16 +244,55 @@ function RegistrationForm({ items, locations, previous, onClose, onSuccess }: In
               onChange={(event) => setReason(event.target.value)} />
           </label>
         )}
-        {previous && previous.requirements.category !== 'material' &&
-          Number(draft.quantity) < Number(previous.requirements.quantity) && (
-            <label>Asset IDs to remove
-              <input className="form-field" required value={assetReferences}
-                onChange={(event) => setAssetReferences(event.target.value)} />
+        {serializedCorrection && assetOptions.isPending && <p role="status">Loading eligible assets…</p>}
+        {serializedCorrection && assetOptions.isError && (
+          <p role="alert">{formatApiError(assetOptions.error, 'Unable to load eligible assets.')}</p>
+        )}
+        {(removalCount > 0 || Object.keys(selectedAssets).length > 0) && (
+          <fieldset className="space-y-2 sm:col-span-2">
+            <legend>Select {removalCount} assets to remove</legend>
+            <label>Search asset tags
+              <input className="form-field" maxLength={80} value={assetSearch} onChange={(event) => {
+                setAssetSearch(event.target.value);
+                setAssetOffset(0);
+              }} />
             </label>
-          )}
+            {assetOptions.isFetching && <p role="status">Loading eligible assets…</p>}
+            {assetOptions.data?.items.length === 0 && <p>No eligible assets found.</p>}
+            {assetOptions.data?.items.map((asset) => (
+              <label key={asset.id} className="block">
+                <input type="checkbox" checked={Boolean(selectedAssets[asset.id])}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setSelectedAssets((selected) => {
+                      const next = { ...selected };
+                      if (checked) next[asset.id] = asset.asset_tag;
+                      else delete next[asset.id];
+                      return next;
+                    });
+                  }} />
+                {' '}{asset.asset_tag} · {asset.condition} · {asset.location_name}
+              </label>
+            ))}
+            <div className="flex gap-3">
+              <button type="button" disabled={assetOffset === 0 || assetOptions.isFetching}
+                onClick={() => setAssetOffset(Math.max(0, assetOffset - pageSize))}>Previous assets</button>
+              <button type="button"
+                disabled={assetOffset + pageSize >= (assetOptions.data?.total ?? 0) || assetOptions.isFetching}
+                onClick={() => setAssetOffset(assetOffset + pageSize)}>Next assets</button>
+            </div>
+            {Object.entries(selectedAssets).map(([id, tag]) => (
+              <button key={id} type="button" onClick={() => setSelectedAssets((selected) => {
+                const next = { ...selected };
+                delete next[id];
+                return next;
+              })}>Remove selection {tag}</button>
+            ))}
+          </fieldset>
+        )}
         <p className="text-sm">Upload a photograph and any delivery documents after saving the draft.</p>
         <div className="flex gap-3">
-          <button type="submit" className="form-button">{save.isPending ? 'Saving…' : 'Save registration draft'}</button>
+          <button type="submit" className="form-button" disabled={!canSave}>{save.isPending ? 'Saving…' : 'Save registration draft'}</button>
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </fieldset>

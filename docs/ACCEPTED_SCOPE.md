@@ -46,14 +46,21 @@ requirements and the corresponding local gap-closure work.
   can read the flagged approvals while the assigned engineer and Group Project
   Manager retain authority over their assigned stages. Optional Operations and
   Managing Director decisions require configured thresholds, which default to disabled.
+  The submission freezes its required stages. Stock fulfillment requires a distinct
+  approved decision for each frozen stage. Intermediate notices identify the next stage.
 - Site attendance shows eligible, recorded, missing and independently confirmed
   workers. Missing required site attendance and unreconciled site overtime block
-  payroll time preparation. [HR workforce guide](HR_WORKFORCE.md#site-attendance)
+  payroll time preparation. Findings identify the project and work date. Historical
+  eligibility uses recorded employment dates and effective assignments. Unresolved
+  employment dates require review. [HR workforce guide](HR_WORKFORCE.md#site-attendance)
 - Approved progress corrections preserve the original and run independent reviews
-  on the successor. Approved inventory registration corrections preserve item
-  identity and post only the necessary stock delta. A supervised material draft can
-  retain evidence before submission, including approved versions of selected
-  project documents. Stock-bearing material corrections use the director's
+  on the successor. The latest independently confirmed version of an unlinked
+  chain can be included in an official report. A chain with an existing binding
+  keeps that report and its PDF. Inventory registration corrections preserve item
+  identity and post only the necessary stock delta. Supervisors can save and resume
+  material requests and corrections with revision checks. Correction drafts retain
+  new evidence separately until submission, while earlier evidence stays linked
+  to its original submission revision. Stock-bearing material corrections use the director's
   unissued-remainder replacement action.
 - Historical inventory and attendance findings can be inspected with the
   [read-only reconciliation report](../backend/scripts/report_legacy_site_workflows.py).

@@ -418,16 +418,28 @@ test('site registration posts stock only after assigned engineer review and mate
     await page.getByLabel('Required delivery date').fill('2026-11-30');
     await page.getByLabel('Purpose and work scope').fill('Site test');
     await page.getByLabel('Material description and specification').fill('Site fixture');
-    await page.getByLabel('Upload request evidence').setInputFiles({
+    const savedDraft = page.waitForResponse((response) =>
+      /\/inventory\/requests\/drafts\/[^/]+$/.test(response.url()) && response.request().method() === 'PUT'
+    );
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    const materialDraft = await (await savedDraft).json();
+    await expect(page.getByRole('status').filter({ hasText: 'Draft saved.' })).toBeVisible();
+    await page.reload();
+    const materialArticle = page.getByRole('article').filter({ hasText: materialDraft.request_number });
+    await materialArticle.getByText('Submission and decision history', { exact: true }).click();
+    await materialArticle.getByRole('button', { name: 'Resume draft' }).click();
+    await expect(materialArticle.getByLabel('Purpose and work scope')).toHaveValue('Site test');
+    await expect(materialArticle.getByLabel('Quantity 1', { exact: true })).toHaveValue('2');
+    await materialArticle.getByLabel('Upload request evidence').setInputFiles({
       name: 'material-evidence.jpg',
       mimeType: 'image/jpeg',
       buffer: readFileSync(new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url))
     });
-    await expect(page.getByRole('button', { name: 'Remove material-evidence.jpg' })).toBeVisible();
+    await expect(materialArticle.getByRole('button', { name: 'Remove material-evidence.jpg' })).toBeVisible();
     const submitted = page.waitForResponse((response) =>
       /\/inventory\/requests\/[^/]+\/resubmit$/.test(response.url()) && response.request().method() === 'POST'
     );
-    await page.getByRole('button', { name: 'Submit request', exact: true }).click();
+    await materialArticle.getByRole('button', { name: 'Resubmit request', exact: true }).click();
     const material = await (await submitted).json();
     await expect(page.getByRole('article').filter({ hasText: material.request_number }))
       .toContainText('pending_engineer');

@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md) · [Architecture](../ARCHITECTURE.md) · [Operations and deployment](../OPERATIONS_AND_DEPLOYMENT.md)
 
-This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference uses a historical catalogue check at revision `202605310013` and describes subsequent source migrations. The current repository Alembic head is `202605310101`. The local HR migrations begin at [revision 007](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and currently end at [revision 046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
+This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference uses a historical catalogue check at revision `202605310013` and describes subsequent source migrations. The current repository Alembic head is [`202605310108`](../../backend/alembic/versions/202605310108_material_request_drafts.py). The local HR migrations begin at [revision 007](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and currently end at [revision 046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
 
 A dash in the default column means the database has no server default. Application-side rules live in the linked model and service code. Many tables use `deleted_at` for soft deletion. Foreign-key delete actions describe physical row deletion.
 
@@ -199,3 +199,8 @@ is independently confirmed. A material replacement leaves prior issues on the
 original request and binds new decisions to the replacement's own submission.
 Material evidence file IDs and document versions are retained in the existing
 submission requirements JSON, with an empty file list for older submissions.
+
+Revision 108 adds nullable editable draft data and correction-target revision
+links to `material_requests`. Existing submissions retain their immutable evidence
+and decision snapshots. The correction applies to its target only after its
+current revision has been verified.
