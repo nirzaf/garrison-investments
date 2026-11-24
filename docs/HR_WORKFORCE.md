@@ -21,16 +21,18 @@ HR Manager role. The original workbook matrix remains a historical fixture.
 
 ### HR Executive scope and proposed HR tasks
 
-The owner authorized the four standard permissions selected in column J of
-the [role matrix fixture](../backend/tests/business_role_matrix.json).
-The worksheet remains pending review. Column I records historical Manager
+The source matrix selects four standard permissions in column J of the
+[role matrix fixture](../backend/tests/business_role_matrix.json), but the
+current HR Executive role has only `users:read`, `dashboard:scoped`, and
+`documents:view`. D11 withholds `reports:view` pending owner sign-off. The
+worksheet remains pending review. Column I records historical Manager
 selections. It includes broad grants that have since been removed from the
 Manager role. The in-app matrix shows the [effective permissions](ROLES_AND_PERMISSIONS.md).
 
 | Task | Current authorization and retained HR Manager behavior | Proposed Executive workflow | Spreadsheet evidence and decision needed |
 | --- | --- | --- | --- |
 | User directory | `users:read` exposes the standard directory. User mutations use the director workflow. | Read the same standard directory under its existing rules. | Column J selects `users:read`. Owner authorized this grant. |
-| Dashboard, reports and documents | Company dashboard and report decisions follow their own grants. Report and generic-document record checks use project membership for scoped roles. | Read the assigned-project dashboard, reports and documents. | Column J selects `dashboard:scoped`, `reports:view` and `documents:view`. Owner authorized these three grants. |
+| Dashboard, reports and documents | Company dashboard and report decisions follow their own grants. Report and generic-document record checks use project membership for scoped roles. | Read the assigned-project dashboard and documents. Site-report access remains withheld under D11 pending owner sign-off. | Column J selects `dashboard:scoped`, `reports:view` and `documents:view`; D11 supersedes the `reports:view` selection for the current role. |
 | Onboarding preparation and review | HR Manager maintains employee drafts and checklists. Service checks protect case detail, record changes and evidence. Account fulfillment requires a director. | Prepare drafts and evidence for explicitly assigned employees. Submit a version for Manager review. | No HR workflow selection appears in the source. Decide the employee assignment rule, draft fields, evidence categories, activation reviewer and cases requiring an independent reviewer. |
 | Attendance and overtime | HR Manager records manual/CSV time and corrections. Existing review and period locks constrain decisions. `hr:attendance:record` also reaches calendars and roster functions. | Prepare source-linked entries and corrections under a narrower grant. The Manager reviews and controls locks. | Approve source, allowed corrections, date/shift rules and who can reopen a period. |
 | Leave and balances | HR Manager manages requests; approval, policy and ledger actions have additional boundaries. Self-service uses linked employee identity. | Prepare an assigned employee's request and allowed evidence for independent Manager review, with narrowly scoped balance reads. | Approve evidence and balance visibility, carry-in consumption, expiry and closed-year correction. |
@@ -108,8 +110,9 @@ The latest verified HR deployment is `21750a2a425f91b4d5811e8ac77f0e3ddec9deb8`.
 On 2026-11-17, the live release receipt and a read-only PostgreSQL query both
 reported Alembic `202605310061`. Public readiness returned `ready` with the
 database `connected` and the unauthenticated HR request queue returned 401.
-The running application exposed the four approved HR Executive grants and
-granted payroll access to zero roles. No account held the new role and the
+That historical deployment exposed the four HR Executive grants selected by
+the source matrix; current code withholds `reports:view` under D11 pending owner
+sign-off. Payroll access was granted to zero roles. No account held the new role and the
 live backend registered the HR request CLI commands. No migration ran.
 [Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/44031348063)
 

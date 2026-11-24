@@ -89,7 +89,7 @@ Rollback: revert the BOQ route/service and matching frontend/API contract change
 | `audit:view` | ✓ | ✓ | | | | | | | | |
 | `dashboard:company` | ✓ | ✓ | | | | | | ✓ | ✓ | |
 | `dashboard:scoped` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | | | ✓ |
+| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | | | |
 | `reports:submit` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | |
 | `reports:approve` | ✓ | ✓ | ✓ | ✓ | | | | | | |
 | `inventory:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | |
@@ -115,9 +115,11 @@ recommend specific time and leave requests when the company policy is enabled.
 The authorization applies to that reporting relationship and does not grant
 HR directory, document or final-decision permissions. See [HR and workforce](HR_WORKFORCE.md).
 
-HR Executive receives only the four standard permissions in the matrix. The
-[HR task assessment](HR_WORKFORCE.md#hr-executive-scope-and-proposed-hr-tasks)
-records proposed preparation workflows and their open decisions.
+HR Executive currently receives `users:read`, `dashboard:scoped`, and
+`documents:view`. The source matrix's `reports:view` selection is withheld under
+D11 pending owner sign-off; do not restore report access without that decision.
+The [HR task assessment](HR_WORKFORCE.md#hr-executive-scope-and-proposed-hr-tasks)
+records the source decision and proposed workflows separately.
 
 The backend defines 16 standard and 21 HR permission keys. No current role is
 granted `hr:cases:restricted`, `hr:payroll:approve`, `hr:payroll:prepare`,
