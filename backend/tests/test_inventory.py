@@ -515,6 +515,9 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             returned_approval.decided_at = original_decided_at
             await session.commit()
             assert await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+            # The validator locks the approval row. Release that lock before the worker opens a
+            # second session to validate and deliver the queued notification.
+            await session.commit()
             assert (
                 await _send_email_notification(str(returned_notice_id))
                 == "notification email sent to 1 recipient"
