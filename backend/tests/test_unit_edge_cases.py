@@ -217,6 +217,15 @@ def test_photo_file_validation_accepts_supported_photo_and_attachment_types(
     assert service._validate_file(filename, data, kind) == expected_mime
 
 
+def test_photo_file_validation_accepts_exact_size_limit() -> None:
+    service = PhotoService.__new__(PhotoService)
+    signature = b"xxxxftypheic"
+    data = signature + b"\0" * (MAX_FILE_SIZE - len(signature))
+
+    assert len(data) == MAX_FILE_SIZE
+    assert service._validate_file("limit.heic", data, "photo") == "image/heic"
+
+
 @pytest.mark.parametrize(
     ("kind", "filename", "data", "expected_code"),
     [
