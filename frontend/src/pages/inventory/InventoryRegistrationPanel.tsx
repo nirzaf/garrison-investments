@@ -16,7 +16,17 @@ import {
   type InventoryRegistrationDraft,
   type StorageLocationRecord
 } from '../../api/inventory';
-import { getPhotoDownloadUrl, listPhotos, prepareMediaFiles, uploadMediaFiles } from '../../api/photos';
+import {
+  deletePhoto,
+  getPhotoDownloadUrl,
+  listPhotos,
+  prepareMediaFiles,
+  uploadMediaFiles
+} from '../../api/photos';
+import {
+  EvidenceClassificationField,
+  type EvidenceClassification
+} from '../../components/evidence/EvidenceClassificationField';
 import { useAuth } from '../../context/useAuth';
 import { useDebouncedSearch } from '../../useDebouncedSearch';
 
@@ -312,6 +322,7 @@ function RegistrationDetails({ record, isOwner, canReview, onCorrection, refresh
   const [comments, setComments] = useState('');
   const [fileError, setFileError] = useState('');
   const [filePending, setFilePending] = useState(false);
+  const [evidenceClassification, setEvidenceClassification] = useState<EvidenceClassification | ''>('');
   const history = useQuery({
     queryKey: ['inventory-registration-history', record.id, record.status],
     queryFn: () => listInventoryRegistrationHistory(record.id),
@@ -331,11 +342,20 @@ function RegistrationDetails({ record, isOwner, canReview, onCorrection, refresh
 
   async function upload(filesToUpload: FileList, kind: 'photo' | 'attachment') {
     if (filePending) return;
+    if (!evidenceClassification) {
+      setFileError('Select an evidence classification before uploading.');
+      return;
+    }
     setFilePending(true);
     setFileError('');
     try {
       const remaining = 5 - (files.data?.items.filter((item) => item.kind === 'photo').length ?? 0);
-      const prepared = await prepareMediaFiles(filesToUpload, kind, remaining);
+      const prepared = await prepareMediaFiles(
+        filesToUpload,
+        kind,
+        remaining,
+        evidenceClassification
+      );
       const result = await uploadMediaFiles('inventory_registration', record.id, prepared.items);
       setFileError([...prepared.errors, ...result.errors].join(' '));
       await files.refetch();
@@ -352,6 +372,15 @@ function RegistrationDetails({ record, isOwner, canReview, onCorrection, refresh
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       setFileError(formatApiError(error, 'Unable to open evidence.'));
+    }
+  }
+
+  async function removeEvidence(fileId: string) {
+    try {
+      await deletePhoto(fileId);
+      await files.refetch();
+    } catch (error) {
+      setFileError(formatApiError(error, 'Unable to remove draft evidence.'));
     }
   }
 
@@ -373,12 +402,27 @@ function RegistrationDetails({ record, isOwner, canReview, onCorrection, refresh
         {open && files.isPending && <p role="status">Loading evidence…</p>}
         {files.isError && <p role="alert">Unable to load evidence.</p>}
         {files.data?.items.map((file) => (
-          <button key={file.id} type="button" className="block text-brand-600 underline"
-            onClick={() => void openEvidence(file.id)}>{file.original_name}</button>
+          <div className="flex items-center gap-2" key={file.id}>
+            {file.restricted ? (
+              <span>Restricted evidence receipt</span>
+            ) : (
+              <button type="button" className="text-brand-600 underline"
+                onClick={() => void openEvidence(file.id)}>{file.original_name ?? 'Evidence file'}</button>
+            )}
+            {file.can_delete && (
+              <button className="form-field" disabled={filePending || submit.isPending}
+                onClick={() => void removeEvidence(file.id)} type="button">Remove evidence</button>
+            )}
+          </div>
         ))}
         {fileError && <p role="alert">{fileError}</p>}
         {isOwner && record.status === 'draft' && (
           <div className="space-y-2">
+            <EvidenceClassificationField
+              disabled={filePending || submit.isPending}
+              onChange={setEvidenceClassification}
+              value={evidenceClassification}
+            />
             <label className="block">Item photographs
               <input type="file" accept="image/jpeg,image/png,image/heic,.heic" multiple
                 disabled={filePending || submit.isPending}

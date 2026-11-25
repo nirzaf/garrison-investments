@@ -147,7 +147,11 @@ async def test_supervisor_requires_photo_and_separate_site_confirmations(
         image = await client.post(
             "/api/v1/photos/upload",
             files={"files": ("progress.jpg", jpeg_bytes(), "image/jpeg")},
-            data={"entity_type": "supervisor_update", "entity_id": update_id},
+            data={
+                "entity_type": "supervisor_update",
+                "entity_id": update_id,
+                "classification": "operational",
+            },
             headers=owner,
         )
         assert image.status_code == 201, image.text
@@ -280,7 +284,11 @@ async def test_confirmed_progress_correction_preserves_original() -> None:
         draft = created.json()
         uploaded = await client.post(
             "/api/v1/photos/upload",
-            data={"entity_type": "supervisor_update", "entity_id": draft["id"]},
+            data={
+                "entity_type": "supervisor_update",
+                "entity_id": draft["id"],
+                "classification": "operational",
+            },
             files={"files": ("corrected.jpg", jpeg_bytes(), "image/jpeg")},
             headers=owner,
         )

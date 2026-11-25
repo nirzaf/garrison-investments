@@ -69,10 +69,18 @@ async def upload_report_photo(client, team: dict) -> tuple[str, str]:
     photo_id = uploaded.json()[0]["id"]
     reviewer_email, reviewer_password = await create_user("managing_director")
     reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+    reviewer_headers = auth(reviewer_token)
+    reviewer_view = await client.get(f"/api/v1/photos/{photo_id}", headers=reviewer_headers)
+    assert reviewer_view.status_code == 200, reviewer_view.text
     reviewed = await client.patch(
         f"/api/v1/photos/{photo_id}/classification",
-        json={"classification": "operational", "reason": "Verified operational fixture."},
-        headers=auth(reviewer_token),
+        json={
+            "classification": "operational",
+            "expected_classification": reviewer_view.json()["classification"],
+            "expected_updated_at": reviewer_view.json()["updated_at"],
+            "reason": "Verified operational fixture.",
+        },
+        headers=reviewer_headers,
     )
     assert reviewed.status_code == 200, reviewed.text
     return report["id"], photo_id
@@ -92,10 +100,20 @@ async def upload_document(client, team: dict, *, project_scoped: bool = True) ->
     document = response.json()
     reviewer_email, reviewer_password = await create_user("managing_director")
     reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+    reviewer_headers = auth(reviewer_token)
+    reviewer_view = await client.get(
+        f"/api/v1/documents/{document['id']}", headers=reviewer_headers
+    )
+    assert reviewer_view.status_code == 200, reviewer_view.text
     classified = await client.patch(
         f"/api/v1/documents/{document['id']}/classification",
-        json={"classification": "operational", "reason": "Verified operational fixture."},
-        headers=auth(reviewer_token),
+        json={
+            "classification": "operational",
+            "expected_classification": reviewer_view.json()["classification"],
+            "expected_updated_at": reviewer_view.json()["updated_at"],
+            "reason": "Verified operational fixture.",
+        },
+        headers=reviewer_headers,
     )
     assert classified.status_code == 200, classified.text
     return classified.json()

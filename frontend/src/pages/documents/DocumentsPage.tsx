@@ -19,6 +19,10 @@ import { PDF_IMAGE_ACCEPT, validateDocumentFile } from '../../api/fileValidation
 import { listDocumentProjectOptions, type ProjectOption } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import {
+  EvidenceClassificationField,
+  type EvidenceClassification
+} from '../../components/evidence/EvidenceClassificationField';
 import { useAuth } from '../../context/useAuth';
 
 const documentPageSize = 25;
@@ -56,6 +60,8 @@ export function DocumentsPage() {
   const [documentType, setDocumentType] = useState('wir');
   const [expiryDate, setExpiryDate] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [uploadClassification, setUploadClassification] = useState<EvidenceClassification | ''>('');
+  const [replacementClassification, setReplacementClassification] = useState<EvidenceClassification | ''>('');
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [classificationTarget, setClassificationTarget] = useState<DocumentRecord | null>(null);
@@ -154,6 +160,14 @@ export function DocumentsPage() {
       setError('Select a document file.');
       return;
     }
+    const canonicalFinancial = ['contract', 'invoice'].includes(documentType.trim().toLowerCase());
+    if (!canonicalFinancial && !uploadClassification) {
+      setError('Select an evidence classification before uploading.');
+      return;
+    }
+    const effectiveClassification: EvidenceClassification = canonicalFinancial
+      ? 'financial'
+      : uploadClassification as EvidenceClassification;
     void saveDocument(async () => {
       await validateDocumentFile(file);
       await uploadDocument({
@@ -161,11 +175,13 @@ export function DocumentsPage() {
         documentType,
         projectId: uploadProjectId || undefined,
         expiryDate: expiryDate || undefined,
-        file
+        file,
+        classification: effectiveClassification
       });
       setTitle('');
       setExpiryDate('');
       setFile(null);
+      setUploadClassification('');
       if (uploadFileInput.current) uploadFileInput.current.value = '';
       setNotice('Document uploaded for approval.');
       setPage(0);
@@ -175,11 +191,21 @@ export function DocumentsPage() {
   function submitReplacement(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!replacementDocumentId || !replacementFile) return;
+    if (!replacementClassification) {
+      setError('Select an evidence classification before uploading.');
+      return;
+    }
     void saveDocument(async () => {
       await validateDocumentFile(replacementFile);
-      await uploadDocumentVersion(replacementDocumentId, replacementFile, replacementKey.current);
+      await uploadDocumentVersion(
+        replacementDocumentId,
+        replacementFile,
+        replacementKey.current,
+        replacementClassification
+      );
       setReplacementDocumentId(null);
       setReplacementFile(null);
+      setReplacementClassification('');
       setNotice('Replacement uploaded for approval.');
     }, 'Unable to upload the replacement.');
   }
@@ -210,7 +236,9 @@ export function DocumentsPage() {
       const reviewed = await classifyDocument(
         classificationTarget.id,
         classification,
-        classificationReason
+        classificationReason,
+        classificationTarget.classification,
+        classificationTarget.updated_at
       );
       queryClient.setQueryData<DocumentRecord>(['documents', 'detail', reviewed.id], reviewed);
       setClassificationTarget(null);
@@ -395,6 +423,17 @@ export function DocumentsPage() {
             type="date"
             value={expiryDate}
           />
+          {!['contract', 'invoice'].includes(documentType.trim().toLowerCase()) ? (
+            <EvidenceClassificationField
+              disabled={pending}
+              onChange={setUploadClassification}
+              value={uploadClassification}
+            />
+          ) : (
+            <p className="text-sm text-theme-text-muted">
+              Contracts and invoices are always financial and restricted.
+            </p>
+          )}
           <input
             accept={PDF_IMAGE_ACCEPT}
             aria-label="Document file"
@@ -491,6 +530,7 @@ export function DocumentsPage() {
                         disabled={pending}
                         onClick={() => {
                           setReplacementFile(null);
+                          setReplacementClassification('');
                           setReplacementDocumentId(document.id);
                         }}
                         type="button"
@@ -523,6 +563,12 @@ export function DocumentsPage() {
                 </div>
                 {replacementDocumentId === document.id ? (
                   <form className="mt-4 flex flex-wrap items-center gap-3" onSubmit={submitReplacement}>
+                    <EvidenceClassificationField
+                      disabled={pending}
+                      id={`replacement-classification-${document.id}`}
+                      onChange={setReplacementClassification}
+                      value={replacementClassification}
+                    />
                     <label className="text-sm">
                       Replacement file · PDF, JPEG, PNG up to 60 MiB
                       <input
@@ -545,6 +591,7 @@ export function DocumentsPage() {
                       onClick={() => {
                         setReplacementDocumentId(null);
                         setReplacementFile(null);
+                        setReplacementClassification('');
                       }}
                       type="button"
                     >

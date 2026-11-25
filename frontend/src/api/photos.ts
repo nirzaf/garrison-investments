@@ -4,6 +4,7 @@ import { classifyReportFile, type ReportFileKind } from './fileValidation';
 import type { OfflineScope } from './offlineDb';
 import { normalizeProtectedFileUrl } from './fileUrls';
 import type { components } from './schema';
+import type { EvidenceClassification } from '../components/evidence/EvidenceClassificationField';
 
 export type PhotoRecord = components['schemas']['PhotoResponse'];
 export type PhotoListResponse = components['schemas']['PhotoListResponse'];
@@ -12,6 +13,7 @@ export type ProtectedFileUrl = components['schemas']['ProtectedFileUrlResponse']
 export type MediaUploadIntent = {
   file: File;
   kind: ReportFileKind;
+  classification: EvidenceClassification;
   key: string;
   expectedReportRevision?: number;
 };
@@ -19,7 +21,8 @@ export type MediaUploadIntent = {
 export async function prepareMediaFiles(
   files: FileList | File[],
   kind: ReportFileKind,
-  remainingSlots: number
+  remainingSlots: number,
+  classification: EvidenceClassification = 'unclassified'
 ) {
   const items: MediaUploadIntent[] = [];
   const errors: string[] = [];
@@ -29,7 +32,7 @@ export async function prepareMediaFiles(
       if (normalizedKind === 'photo' && remainingSlots <= 0) {
         throw new Error('This draft already has all five photo slots in use.');
       }
-      items.push({ file, kind: normalizedKind, key: crypto.randomUUID() });
+      items.push({ file, kind: normalizedKind, classification, key: crypto.randomUUID() });
       if (normalizedKind === 'photo') remainingSlots -= 1;
     } catch (error) {
       errors.push(`${file.name} — ${error instanceof Error ? error.message : 'Invalid file.'}`);
@@ -58,6 +61,7 @@ export async function uploadMediaFiles(
         entityType,
         entityId,
         kind: intent.kind,
+        classification: intent.classification,
         files: [intent.file],
         idempotencyKey: intent.key,
         scope,
@@ -79,6 +83,7 @@ type UploadEntityFiles = {
   entityType: string;
   entityId: string;
   kind: 'photo' | 'attachment';
+  classification?: EvidenceClassification;
   files: FileList | File[];
   idempotencyKey?: string;
   scope?: OfflineScope;
@@ -96,6 +101,7 @@ export async function uploadEntityFilesWithRevision(
   formData.append('entity_type', params.entityType);
   formData.append('entity_id', params.entityId);
   formData.append('kind', params.kind);
+  formData.append('classification', params.classification ?? 'unclassified');
   if (params.expectedReportRevision !== undefined) {
     formData.append('expected_report_revision', String(params.expectedReportRevision));
   }
@@ -146,11 +152,15 @@ export async function deletePhoto(photoId: string, reason?: string): Promise<voi
 export async function classifyPhoto(
   photoId: string,
   classification: 'operational' | 'financial',
-  reason: string
+  reason: string,
+  expectedClassification: EvidenceClassification,
+  expectedUpdatedAt: string
 ): Promise<PhotoRecord> {
   const response = await apiClient.patch<PhotoRecord>(`/photos/${photoId}/classification`, {
     classification,
-    reason
+    reason,
+    expected_classification: expectedClassification,
+    expected_updated_at: expectedUpdatedAt
   });
   return response.data;
 }

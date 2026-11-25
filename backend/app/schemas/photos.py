@@ -7,26 +7,28 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PhotoResponse(BaseModel):
     id: UUID
-    filename: str
-    original_name: str
-    storage_path: str
-    compressed_path: str | None
-    thumbnail_path: str | None
-    mime_type: str
-    size_bytes: int
-    width: int | None
-    height: int | None
+    filename: str | None = None
+    original_name: str | None = None
+    storage_path: str | None = None
+    compressed_path: str | None = None
+    thumbnail_path: str | None = None
+    mime_type: str | None = None
+    size_bytes: int | None = None
+    width: int | None = None
+    height: int | None = None
     entity_type: str
     entity_id: UUID
     kind: str
     classification: Literal["unclassified", "operational", "financial"]
-    caption: str | None
-    taken_at: datetime | None
+    caption: str | None = None
+    taken_at: datetime | None = None
     uploaded_by: UUID | None
     processing_status: str
     can_delete: bool = False
     deleted_at: datetime | None = None
     recoverable_until: datetime | None = None
+    restricted: bool = False
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

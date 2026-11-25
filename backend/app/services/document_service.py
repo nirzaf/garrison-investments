@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import structlog
 from fastapi import UploadFile
 from minio import Minio
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -26,8 +26,10 @@ from app.services.evidence_classification import (
     OPERATIONAL,
     UNCLASSIFIED,
     EvidenceClassification,
+    effective_document_classification,
     ensure_evidence_classification_access,
     ensure_evidence_classification_reviewer,
+    operational_document_predicate,
 )
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.notification_service import NotificationService
@@ -71,20 +73,24 @@ class DocumentService:
         expiry_date: date | None,
         file: UploadFile,
         actor: User,
+        classification: EvidenceClassification = UNCLASSIFIED,
     ) -> Document:
-        data = await file.read(MAX_DOCUMENT_SIZE + 1)
-        mime_type = self._validate_file(file.filename or "document", data)
+        if classification not in {UNCLASSIFIED, OPERATIONAL, FINANCIAL}:
+            raise AppException("Invalid evidence classification.", status_code=422)
         if project_id is not None:
             await ensure_project_access(self.session, project_id, actor)
+        data = await file.read(MAX_DOCUMENT_SIZE + 1)
+        mime_type = self._validate_file(file.filename or "document", data)
+        effective_classification = (
+            FINANCIAL
+            if document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
+            else classification
+        )
         document = await self.documents.add_document(
             Document(
                 title=title,
                 document_type=document_type,
-                classification=(
-                    FINANCIAL
-                    if document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
-                    else UNCLASSIFIED
-                ),
+                classification=effective_classification,
                 project_id=project_id,
                 status="pending_approval",
                 active_version=None,
@@ -94,7 +100,13 @@ class DocumentService:
             )
         )
         version = await self._store_version(
-            document, 1, file.filename or "document", mime_type, data, actor
+            document,
+            1,
+            file.filename or "document",
+            mime_type,
+            data,
+            actor,
+            classification=effective_classification,
         )
         await self.audit.record(
             action="documents.uploaded",
@@ -125,17 +137,48 @@ class DocumentService:
         return await self._get_required(document_id)
 
     async def upload_version(
-        self, document_id: UUID, file: UploadFile, actor: User, idempotency_key: str | None = None
+        self,
+        document_id: UUID,
+        file: UploadFile,
+        actor: User,
+        idempotency_key: str | None = None,
+        *,
+        classification: EvidenceClassification = UNCLASSIFIED,
     ) -> Document:
+        if classification not in {UNCLASSIFIED, OPERATIONAL, FINANCIAL}:
+            raise AppException("Invalid evidence classification.", status_code=422)
         document = await self.documents.lock_document(document_id)
         if document is None:
             raise NotFoundException("Document")
         await ensure_document_access(self.session, document, actor)
         self._ensure_evidence_classification_access(document, actor)
+        canonical_financial = document.document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
+        version_classification = FINANCIAL if canonical_financial else classification
+        effective_classification = max(
+            (document.classification, version_classification),
+            key={OPERATIONAL: 0, UNCLASSIFIED: 1, FINANCIAL: 2}.__getitem__,
+        )
         route = f"documents.version:{document_id}"
-        if idempotency_key and await resolve_or_reserve(
-            self.session, key=idempotency_key, user_id=actor.id, route=route
-        ):
+        existing_version_id = (
+            await resolve_or_reserve(
+                self.session, key=idempotency_key, user_id=actor.id, route=route
+            )
+            if idempotency_key
+            else None
+        )
+        if existing_version_id is not None:
+            existing_version = await self.documents.get_version(existing_version_id)
+            if (
+                existing_version is None
+                or existing_version.document_id != document_id
+                or existing_version.uploaded_by != actor.id
+                or existing_version.classification != version_classification
+            ):
+                raise AppException(
+                    "This upload key belongs to a different classification.",
+                    status_code=409,
+                    error_code="DOCUMENT_VERSION_KEY_CONFLICT",
+                )
             return await self._get_required(document_id)
         if document.status == "archived":
             raise AppException("Archived documents cannot be versioned.", status_code=409)
@@ -146,16 +189,36 @@ class DocumentService:
         object_key = self._version_object_key(document_id, version_number, mime_type)
         try:
             version = await self._store_version(
-                document, version_number, original_name, mime_type, data, actor, object_key
+                document,
+                version_number,
+                original_name,
+                mime_type,
+                data,
+                actor,
+                object_key,
+                version_classification,
             )
             if document.active_version is None:
                 document.status = "pending_approval"
+            if effective_classification != document.classification:
+                previous_classification = document.classification
+                document.classification = effective_classification
+            else:
+                previous_classification = None
             await self.audit.record(
                 action="documents.version_uploaded",
                 user_id=actor.id,
                 entity_type="documents",
                 entity_id=document.id,
-                new_values={"version": version_number},
+                old_values=(
+                    {"classification": previous_classification}
+                    if previous_classification is not None
+                    else None
+                ),
+                new_values={
+                    "version": version_number,
+                    "classification": document.classification,
+                },
             )
             if idempotency_key:
                 await bind(
@@ -286,17 +349,22 @@ class DocumentService:
         classification: EvidenceClassification,
         reason: str,
         actor: User,
+        expected_classification: EvidenceClassification,
+        expected_updated_at: datetime,
     ) -> Document:
         document = await self.documents.lock_document(document_id)
         if document is None:
             raise NotFoundException("Document")
         await ensure_document_access(self.session, document, actor)
         ensure_evidence_classification_reviewer(actor, document.uploaded_by, classification)
-        if document.classification != UNCLASSIFIED:
+        if (
+            document.classification != expected_classification
+            or document.updated_at != expected_updated_at
+        ):
             raise AppException(
-                "Evidence classification has already been reviewed.",
+                "Evidence classification changed. Reload it before reviewing.",
                 status_code=409,
-                error_code="EVIDENCE_CLASSIFICATION_ALREADY_REVIEWED",
+                error_code="EVIDENCE_CLASSIFICATION_CONFLICT",
             )
         if (
             document.document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
@@ -307,8 +375,31 @@ class DocumentService:
                 status_code=422,
                 error_code="EVIDENCE_CLASSIFICATION_INVALID",
             )
+        if document.classification == FINANCIAL and classification != FINANCIAL:
+            raise AppException(
+                "Financial evidence cannot be reclassified as operational.",
+                status_code=422,
+                error_code="EVIDENCE_CLASSIFICATION_INVALID",
+            )
+        if classification == OPERATIONAL and any(
+            version.classification == FINANCIAL for version in document.versions
+        ):
+            raise AppException(
+                "A document with a financial version cannot be reclassified as operational.",
+                status_code=422,
+                error_code="EVIDENCE_CLASSIFICATION_INVALID",
+            )
+        if document.classification == classification:
+            raise AppException(
+                "Choose a stricter or unresolved classification for this review.",
+                status_code=409,
+                error_code="EVIDENCE_CLASSIFICATION_ALREADY_REVIEWED",
+            )
         self._ensure_evidence_classification_access(document, actor)
         old_classification = document.classification
+        for version in document.versions:
+            if version.classification == UNCLASSIFIED:
+                version.classification = classification
         document.classification = classification
         await self.audit.record(
             action="documents.classification_reviewed",
@@ -330,6 +421,9 @@ class DocumentService:
         version_id: UUID | None,
         actor: User,
     ) -> tuple[str, bool]:
+        document = await self.documents.lock_document(document_id)
+        if document is None:
+            raise NotFoundException("Document")
         document = await self._get_required(document_id)
         await ensure_document_access(self.session, document, actor)
         self._ensure_evidence_classification_access(document, actor)
@@ -354,25 +448,17 @@ class DocumentService:
     @staticmethod
     def _ensure_evidence_classification_access(document: Document, actor: User) -> None:
         ensure_evidence_classification_access(
-            document.classification,
+            effective_document_classification(document),
             document.uploaded_by,
             actor,
-            financial_document=document.document_type.strip().lower()
-            in FINANCIAL_DOCUMENT_TYPES,
+            financial_document=document.document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES,
         )
 
     @staticmethod
     def _classification_filter(actor: User) -> ColumnElement[bool]:
-        visible = [Document.classification == OPERATIONAL]
-        if has_permission(actor, PERMISSION_DOCUMENTS_MANAGE):
-            visible.append(Document.classification == UNCLASSIFIED)
-        else:
-            visible.append(
-                and_(Document.classification == UNCLASSIFIED, Document.uploaded_by == actor.id)
-            )
         if has_permission(actor, PERMISSION_FINANCIAL_VIEW):
-            visible.append(Document.classification == FINANCIAL)
-        return or_(*visible)
+            return Document.classification.in_({UNCLASSIFIED, OPERATIONAL, FINANCIAL})
+        return operational_document_predicate()
 
     async def _store_version(
         self,
@@ -383,6 +469,7 @@ class DocumentService:
         data: bytes,
         actor: User,
         object_key: str | None = None,
+        classification: EvidenceClassification = UNCLASSIFIED,
     ) -> DocumentVersion:
         object_key = object_key or self._version_object_key(document.id, version_number, mime_type)
         await asyncio.to_thread(self._upload_object, object_key, data, mime_type)
@@ -391,6 +478,7 @@ class DocumentService:
                 document_id=document.id,
                 version=version_number,
                 status="pending_approval",
+                classification=classification,
                 storage_path=object_key,
                 original_name=original_name,
                 mime_type=mime_type,

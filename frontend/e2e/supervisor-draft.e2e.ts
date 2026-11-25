@@ -42,6 +42,7 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
   await expect(page.getByText('Draft saved.', { exact: true })).toBeVisible();
   const record = page.getByRole('article').filter({ hasText: 'North wing' });
   await expect(record.getByText('draft', { exact: true })).toBeVisible();
+  await page.getByLabel('Evidence classification').selectOption('operational');
   await page.locator('input[type="file"][capture="environment"]').setInputFiles({
     name: 'handrails.jpg',
     mimeType: 'image/jpeg',
@@ -49,7 +50,7 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
       new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url)
     )
   });
-  await expect(page.getByText('1 file saved.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: 'handrails.jpg' })).toBeVisible();
 
   await page.reload();
   await record.getByRole('button', { name: 'Resume draft' }).click({ timeout: 5_000 });
@@ -63,7 +64,14 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
     .getByLabel('Progress notes')
     .fill('Verified the handrails after the final inspection.');
   await page.clock.setFixedTime(new Date('2026-11-12T21:01:00Z'));
+  const submittedUpdate = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return /^\/api\/v1\/supervisor-updates\/[^/]+\/submit$/.test(url.pathname) &&
+      response.request().method() === 'POST';
+  });
   await page.getByRole('button', { name: 'Submit update' }).click();
+  const submissionResponse = await submittedUpdate;
+  expect(submissionResponse.ok(), `Site update submission returned ${submissionResponse.status()}`).toBeTruthy();
   await expect(page.getByText('Site update submitted.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Update date')).toHaveValue('2026-11-13');
   await page.reload();

@@ -4163,6 +4163,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/site-attendance/project-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Site Attendance Project Options */
+        get: operations["site_attendance_project_options_api_v1_hr_site_attendance_project_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/site-attendance/workers": {
         parameters: {
             query?: never;
@@ -8293,6 +8310,12 @@ export interface components {
         };
         /** Body_upload_document_api_v1_documents_post */
         Body_upload_document_api_v1_documents_post: {
+            /**
+             * Classification
+             * @default unclassified
+             * @enum {string}
+             */
+            classification: "unclassified" | "operational" | "financial";
             /** Document Type */
             document_type: string;
             /** Expiry Date */
@@ -8306,6 +8329,12 @@ export interface components {
         };
         /** Body_upload_document_version_api_v1_documents__document_id__versions_post */
         Body_upload_document_version_api_v1_documents__document_id__versions_post: {
+            /**
+             * Classification
+             * @default unclassified
+             * @enum {string}
+             */
+            classification: "unclassified" | "operational" | "financial";
             /** File */
             file: string;
         };
@@ -8313,6 +8342,12 @@ export interface components {
         Body_upload_files_api_v1_photos_upload_post: {
             /** Caption */
             caption?: string | null;
+            /**
+             * Classification
+             * @default unclassified
+             * @enum {string}
+             */
+            classification: "unclassified" | "operational" | "financial";
             /**
              * Entity Id
              * Format: uuid
@@ -9549,6 +9584,11 @@ export interface components {
             status: string;
             /** Title */
             title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
             /** Uploaded By */
             uploaded_by: string | null;
             /** Versions */
@@ -9562,6 +9602,11 @@ export interface components {
             approved_at: string | null;
             /** Approved By */
             approved_by: string | null;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "unclassified" | "operational" | "financial";
             /**
              * Document Id
              * Format: uuid
@@ -10443,15 +10488,43 @@ export interface components {
             /** Message */
             message: string;
         };
-        /** EvidenceClassificationRequest */
-        EvidenceClassificationRequest: {
+        /** EvidenceClassificationReviewRequest */
+        EvidenceClassificationReviewRequest: {
             /**
              * Classification
              * @enum {string}
              */
             classification: "operational" | "financial";
+            /**
+             * Expected Classification
+             * @enum {string}
+             */
+            expected_classification: "unclassified" | "operational" | "financial";
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
             /** Reason */
             reason: string;
+        };
+        /** EvidenceUploadReceipt */
+        EvidenceUploadReceipt: {
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "unclassified" | "operational" | "financial";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Restricted
+             * @default true
+             */
+            restricted: boolean;
         };
         /** ExpiringComplianceResponse */
         ExpiringComplianceResponse: {
@@ -13109,6 +13182,8 @@ export interface components {
             submission_revision?: number | null;
             /** Total Estimated Cost */
             total_estimated_cost: string | null;
+            /** Valuation Status */
+            valuation_status?: ("complete" | "incomplete") | null;
         };
         /** MaterialRequestResubmitRequest */
         MaterialRequestResubmitRequest: {
@@ -13247,6 +13322,8 @@ export interface components {
             requirements: components["schemas"]["MaterialSubmissionRequirements"];
             /** Valuation Complete */
             valuation_complete?: boolean | null;
+            /** Valuation Status */
+            valuation_status?: ("complete" | "incomplete") | null;
         };
         /** MaterialUsageRow */
         MaterialUsageRow: {
@@ -15321,14 +15398,14 @@ export interface components {
              */
             can_delete: boolean;
             /** Caption */
-            caption: string | null;
+            caption?: string | null;
             /**
              * Classification
              * @enum {string}
              */
             classification: "unclassified" | "operational" | "financial";
             /** Compressed Path */
-            compressed_path: string | null;
+            compressed_path?: string | null;
             /** Deleted At */
             deleted_at?: string | null;
             /**
@@ -15339,9 +15416,9 @@ export interface components {
             /** Entity Type */
             entity_type: string;
             /** Filename */
-            filename: string;
+            filename?: string | null;
             /** Height */
-            height: number | null;
+            height?: number | null;
             /**
              * Id
              * Format: uuid
@@ -15350,25 +15427,35 @@ export interface components {
             /** Kind */
             kind: string;
             /** Mime Type */
-            mime_type: string;
+            mime_type?: string | null;
             /** Original Name */
-            original_name: string;
+            original_name?: string | null;
             /** Processing Status */
             processing_status: string;
             /** Recoverable Until */
             recoverable_until?: string | null;
+            /**
+             * Restricted
+             * @default false
+             */
+            restricted: boolean;
             /** Size Bytes */
-            size_bytes: number;
+            size_bytes?: number | null;
             /** Storage Path */
-            storage_path: string;
+            storage_path?: string | null;
             /** Taken At */
-            taken_at: string | null;
+            taken_at?: string | null;
             /** Thumbnail Path */
-            thumbnail_path: string | null;
+            thumbnail_path?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
             /** Uploaded By */
             uploaded_by: string | null;
             /** Width */
-            width: number | null;
+            width?: number | null;
         };
         /** PolicyAcknowledgeRequest */
         PolicyAcknowledgeRequest: {
@@ -17179,6 +17266,24 @@ export interface components {
              */
             start_time: string;
         };
+        /** SiteAttendanceArrivalAssessment */
+        SiteAttendanceArrivalAssessment: {
+            /** Minutes After Start */
+            minutes_after_start?: number | null;
+            /** Scheduled Start At */
+            scheduled_start_at?: string | null;
+            /** Source */
+            source?: ("roster" | "shift" | "calendar") | null;
+            /** Source Reference Id */
+            source_reference_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "on_time" | "after_scheduled_start" | "not_applicable" | "unresolved";
+            /** Timezone */
+            timezone?: string | null;
+        };
         /** SiteAttendanceCompleteness */
         SiteAttendanceCompleteness: {
             /** Confirmed Workers */
@@ -17195,6 +17300,11 @@ export interface components {
             missing_workers: number;
             /** Recorded Workers */
             recorded_workers: number;
+            /**
+             * Unresolved Workers
+             * @default 0
+             */
+            unresolved_workers: number;
         };
         /** SiteAttendanceCorrectionRequest */
         SiteAttendanceCorrectionRequest: {
@@ -17218,6 +17328,11 @@ export interface components {
             expected_revision: number;
             /** Historical Reason */
             historical_reason?: string | null;
+            /**
+             * Historical Remediation
+             * @default false
+             */
+            historical_remediation: boolean;
             /** Notes */
             notes?: string | null;
             /**
@@ -17256,6 +17371,11 @@ export interface components {
             employee_id: string;
             /** Historical Reason */
             historical_reason?: string | null;
+            /**
+             * Historical Remediation
+             * @default false
+             */
+            historical_remediation: boolean;
             /** Notes */
             notes?: string | null;
             /**
@@ -17304,11 +17424,29 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** SiteAttendanceProjectOption */
+        SiteAttendanceProjectOption: {
+            /** Code */
+            code: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "completed";
+        };
         /**
          * SiteAttendanceRequirementsSnapshot
          * @description Immutable submitted inputs plus the schedule and arrival assessment at submission time.
          */
         SiteAttendanceRequirementsSnapshot: {
+            arrival_assessment?: components["schemas"]["SiteAttendanceArrivalAssessment"] | null;
             /** Arrival Variance Seconds */
             arrival_variance_seconds?: number | null;
             /**
@@ -17329,6 +17467,11 @@ export interface components {
             employee_id: string;
             /** Historical Reason */
             historical_reason?: string | null;
+            /**
+             * Historical Remediation
+             * @default false
+             */
+            historical_remediation: boolean;
             /** Notes */
             notes?: string | null;
             /**
@@ -21873,7 +22016,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentResponse"];
+                    "application/json": components["schemas"]["DocumentResponse"] | components["schemas"]["EvidenceUploadReceipt"];
                 };
             };
             /** @description Invalid request */
@@ -21962,7 +22105,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EvidenceClassificationRequest"];
+                "application/json": components["schemas"]["EvidenceClassificationReviewRequest"];
             };
         };
         responses: {
@@ -22073,7 +22216,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentResponse"];
+                    "application/json": components["schemas"]["DocumentResponse"] | components["schemas"]["EvidenceUploadReceipt"];
                 };
             };
             /** @description Invalid request */
@@ -31125,6 +31268,40 @@ export interface operations {
             };
         };
     };
+    site_attendance_project_options_api_v1_hr_site_attendance_project_options_get: {
+        parameters: {
+            query?: {
+                historical?: boolean;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteAttendanceProjectOption"][];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_site_attendance_workers_api_v1_hr_site_attendance_workers_get: {
         parameters: {
             query: {
@@ -33367,7 +33544,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EvidenceClassificationRequest"];
+                "application/json": components["schemas"]["EvidenceClassificationReviewRequest"];
             };
         };
         responses: {

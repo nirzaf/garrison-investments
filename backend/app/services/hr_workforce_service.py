@@ -2853,7 +2853,7 @@ class HrWorkforceService:
                 )
 
     async def _ensure_attendance_period_open(self, employee_id: UUID, work_date: date) -> None:
-        if await self.session.scalar(
+        timesheet_locked = await self.session.scalar(
             select(HrTimesheet.id)
             .where(
                 HrTimesheet.employee_id == employee_id,
@@ -2862,8 +2862,31 @@ class HrWorkforceService:
                 HrTimesheet.period_end >= work_date,
             )
             .limit(1)
-        ):
-            raise AppException("Attendance belongs to a locked timesheet period.", status_code=409)
+        )
+        payroll_period_locked = await self.session.scalar(
+            select(HrPayrollPeriod.id)
+            .where(
+                HrPayrollPeriod.period_start <= work_date,
+                HrPayrollPeriod.period_end >= work_date,
+                HrPayrollPeriod.status != "open",
+            )
+            .limit(1)
+        )
+        approved_run = await self.session.scalar(
+            select(HrPayrollRun.id)
+            .join(HrPayrollPeriod, HrPayrollPeriod.id == HrPayrollRun.payroll_period_id)
+            .where(
+                HrPayrollPeriod.period_start <= work_date,
+                HrPayrollPeriod.period_end >= work_date,
+                HrPayrollRun.status == "approved",
+            )
+            .limit(1)
+        )
+        if timesheet_locked or payroll_period_locked or approved_run:
+            raise AppException(
+                "Attendance belongs to a locked timesheet period or closed payroll period.",
+                status_code=409,
+            )
 
     async def _ensure_non_site_attendance(self, employee_id: UUID, work_date: date) -> None:
         roster = select(HrRosterAllocation.id).where(
@@ -2890,6 +2913,7 @@ class HrWorkforceService:
     async def record_attendance(
         self, payload: AttendanceEntryCreateRequest, actor: User
     ) -> HrAttendanceEntry:
+        await lock_payroll_periods(self.session)
         employee = await self._require_employee(payload.employee_id, for_update=True)
         entry = await self.prepare_attendance(payload, actor, employee)
         await self.persist_attendance([entry], actor)
@@ -2945,6 +2969,7 @@ class HrWorkforceService:
                     "expected_revision",
                     "correction_reason",
                     "historical_reason",
+                    "historical_remediation",
                 }
             ),
             **self._attendance_schedule_values(schedule),
@@ -2983,6 +3008,7 @@ class HrWorkforceService:
         )
         if employee_id is None:
             raise NotFoundException("Attendance entry")
+        await lock_payroll_periods(self.session)
         employee = await self._require_employee(employee_id, for_update=True)
         entry = await self.session.scalar(
             select(HrAttendanceEntry).where(HrAttendanceEntry.id == entry_id).with_for_update()
@@ -3041,6 +3067,7 @@ class HrWorkforceService:
     async def create_attendance_correction(
         self, payload: AttendanceCorrectionCreateRequest, actor: User
     ) -> HrAttendanceCorrection:
+        await lock_payroll_periods(self.session)
         employee = await self._require_employee(payload.employee_id, for_update=True)
         await self._ensure_attendance_period_open(payload.employee_id, payload.work_date)
         self._validate_attendance_time(
@@ -3117,6 +3144,13 @@ class HrWorkforceService:
     async def decide_attendance_correction(
         self, correction_id: UUID, payload: AttendanceCorrectionDecisionRequest, actor: User
     ) -> HrAttendanceCorrection:
+        initial = await self.session.scalar(
+            select(HrAttendanceCorrection).where(HrAttendanceCorrection.id == correction_id)
+        )
+        if initial is None:
+            raise NotFoundException("Attendance correction")
+        await lock_payroll_periods(self.session)
+        employee = await self._require_employee(initial.employee_id, for_update=True)
         corr = await self.session.scalar(
             select(HrAttendanceCorrection)
             .where(HrAttendanceCorrection.id == correction_id)
@@ -3124,7 +3158,8 @@ class HrWorkforceService:
         )
         if corr is None:
             raise NotFoundException("Attendance correction")
-        employee = await self._require_employee(corr.employee_id, for_update=True)
+        if corr.employee_id != employee.id or corr.work_date != initial.work_date:
+            raise AppException("Attendance correction changed; reload it.", status_code=409)
         if corr.status != "submitted":
             raise AppException("This correction is already decided.", status_code=409)
         if payload.decision == "approved" and actor.id in {corr.requested_by_id, employee.user_id}:

@@ -37,6 +37,7 @@ from app.schemas.inventory import (
     StockResponse,
 )
 from app.services.approval_service import ApprovalService
+from app.services.evidence_classification import readable_document_ids, readable_photo_ids
 from app.services.idempotency import validate_key
 from app.services.inventory_registration_service import InventoryRegistrationService
 from app.services.inventory_service import InventoryService
@@ -100,7 +101,22 @@ def material_request_response(
         if isinstance(request, MaterialRequestResponse)
         else MaterialRequestResponse.model_validate(request)
     )
-    if not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+    can_view_financial = has_permission(actor, PERMISSION_FINANCIAL_VIEW)
+    if can_view_financial and response.submission_revision is not None:
+        # Current line prices are persisted with the request. A null line cost
+        # means the stored total is only a known subtotal, not a full estimate.
+        complete = bool(response.lines) and all(
+            line.unit_cost is not None for line in response.lines
+        )
+        response = response.model_copy(
+            update={
+                "valuation_status": "complete" if complete else "incomplete",
+                "total_estimated_cost": response.total_estimated_cost if complete else None,
+            }
+        )
+    else:
+        response = response.model_copy(update={"valuation_status": None})
+    if not can_view_financial:
         response = response.model_copy(
             update={
                 "total_estimated_cost": None,
@@ -334,8 +350,50 @@ async def material_submission_history(
     submissions, decisions = await InventoryService(session).material_submission_history(
         request_id, current_user
     )
+    serialized_submissions = [MaterialSubmissionResponse.model_validate(row) for row in submissions]
+    if not has_permission(current_user, PERMISSION_FINANCIAL_VIEW):
+        photo_ids = [
+            photo_id
+            for item in serialized_submissions
+            for photo_id in item.requirements.evidence_file_ids
+        ]
+        document_ids = [
+            document_id
+            for item in serialized_submissions
+            for document_id in item.requirements.requirements.supporting_document_ids
+        ]
+        visible_photos = set(await readable_photo_ids(session, photo_ids, current_user))
+        visible_documents = set(await readable_document_ids(session, document_ids, current_user))
+        serialized_submissions = [
+            item.model_copy(
+                update={
+                    "requirements": item.requirements.model_copy(
+                        update={
+                            "valuation_complete": None,
+                            "valuation_status": None,
+                            "evidence_file_ids": [
+                                photo_id
+                                for photo_id in item.requirements.evidence_file_ids
+                                if photo_id in visible_photos
+                            ],
+                            "requirements": item.requirements.requirements.model_copy(
+                                update={
+                                    "supporting_document_ids": [
+                                        document_id
+                                        for document_id
+                                        in item.requirements.requirements.supporting_document_ids
+                                        if document_id in visible_documents
+                                    ]
+                                }
+                            ),
+                        }
+                    )
+                }
+            )
+            for item in serialized_submissions
+        ]
     return MaterialSubmissionHistoryResponse(
-        submissions=[MaterialSubmissionResponse.model_validate(row) for row in submissions],
+        submissions=serialized_submissions,
         decisions=await ApprovalService(session).describe_approvals(decisions, current_user),
     )
 
@@ -425,7 +483,7 @@ async def list_inventory_registrations(
         actor, limit=limit, offset=offset, registration_id=registration_id
     )
     return InventoryRegistrationPageResponse(
-        items=[InventoryRegistrationResponse.model_validate(row) for row in rows],
+        items=await _registration_responses(rows, session, actor),
         total=total,
     )
 
@@ -437,7 +495,7 @@ async def inventory_registration_history(
     registration_id: UUID, actor: CanViewInventory, session: DbSession
 ) -> list[InventoryRegistrationResponse]:
     rows = await InventoryRegistrationService(session).history(registration_id, actor)
-    return [InventoryRegistrationResponse.model_validate(row) for row in rows]
+    return await _registration_responses(rows, session, actor)
 
 
 @router.post(
@@ -449,7 +507,7 @@ async def create_inventory_registration(
     payload: InventoryRegistrationCreateRequest, actor: CanViewInventory, session: DbSession
 ) -> InventoryRegistrationResponse:
     row = await InventoryRegistrationService(session).create(payload, actor)
-    return InventoryRegistrationResponse.model_validate(row)
+    return (await _registration_responses([row], session, actor))[0]
 
 
 @router.post(
@@ -464,7 +522,7 @@ async def submit_inventory_registration(
     row = await InventoryRegistrationService(session).submit(
         registration_id, payload.expected_submission_revision, actor
     )
-    return InventoryRegistrationResponse.model_validate(row)
+    return (await _registration_responses([row], session, actor))[0]
 
 
 @router.post(
@@ -477,7 +535,7 @@ async def decide_inventory_registration(
     session: DbSession,
 ) -> InventoryRegistrationResponse:
     row = await InventoryRegistrationService(session).decide(registration_id, payload, actor)
-    return InventoryRegistrationResponse.model_validate(row)
+    return (await _registration_responses([row], session, actor))[0]
 
 
 @router.get(
@@ -520,4 +578,22 @@ async def correct_inventory_registration(
     session: DbSession,
 ) -> InventoryRegistrationResponse:
     row = await InventoryRegistrationService(session).correct(registration_id, payload, actor)
-    return InventoryRegistrationResponse.model_validate(row)
+    return (await _registration_responses([row], session, actor))[0]
+
+
+async def _registration_responses(rows, session, actor) -> list[InventoryRegistrationResponse]:
+    responses = [InventoryRegistrationResponse.model_validate(row) for row in rows]
+    if has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+        return responses
+    photo_ids = [photo_id for response in responses for photo_id in response.evidence_ids]
+    visible_ids = set(await readable_photo_ids(session, photo_ids, actor))
+    return [
+        response.model_copy(
+            update={
+                "evidence_ids": [
+                    photo_id for photo_id in response.evidence_ids if photo_id in visible_ids
+                ]
+            }
+        )
+        for response in responses
+    ]

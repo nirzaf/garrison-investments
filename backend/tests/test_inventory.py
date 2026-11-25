@@ -347,7 +347,11 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         assert reloaded.json()[0]["draft_payload"]["notes"] == stored_payload["notes"]
         assert reloaded.json()[0]["submission_revision"] is None
         draft = saved.json()
-        fields = {"entity_type": "material_request", "entity_id": draft["id"]}
+        fields = {
+            "entity_type": "material_request",
+            "entity_id": draft["id"],
+            "classification": "operational",
+        }
         upload = await client.post(
             "/api/v1/photos/upload",
             data=fields,
@@ -490,6 +494,18 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             assert returned_notice is not None
             assert await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
             returned_notice_id = returned_notice.id
+            original_decider = returned_approval.decided_by
+            original_decided_at = returned_approval.decided_at
+            returned_approval.decided_by = requester.id
+            await session.commit()
+            assert not await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+            returned_approval.decided_by = original_decider
+            returned_approval.decided_at = None
+            await session.commit()
+            assert not await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+            returned_approval.decided_at = original_decided_at
+            await session.commit()
+            assert await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
             request_row = await session.get(MaterialRequest, UUID(request_id))
             assert request_row is not None
             request_row.status = "cancelled"
@@ -518,7 +534,11 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         correction_draft = correction.json()
         correction_upload = await client.post(
             "/api/v1/photos/upload",
-            data={"entity_type": "material_request", "entity_id": correction_draft["id"]},
+            data={
+                "entity_type": "material_request",
+                "entity_id": correction_draft["id"],
+                "classification": "operational",
+            },
             files={"files": ("correction.jpg", jpeg_bytes(), "image/jpeg")},
             headers=owner_headers,
         )
@@ -944,7 +964,11 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
         async def upload_and_submit(row: dict, revision: int) -> None:
             uploaded = await client.post(
                 "/api/v1/photos/upload",
-                data={"entity_type": "inventory_registration", "entity_id": row["id"]},
+                data={
+                    "entity_type": "inventory_registration",
+                    "entity_id": row["id"],
+                    "classification": "operational",
+                },
                 files={"files": ("equipment.jpg", jpeg_bytes(), "image/jpeg")},
                 headers=owner,
             )
@@ -1170,6 +1194,7 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
         ("1000", None, "1000", (1, 2, 3), ""),
         (None, "5000", "5000", (1, 2, 4), ""),
         ("1000", "5000", "5000", (1, 2, 3, 4), ""),
+        ("0", None, "0", (1, 2, 3), ""),
         ("1000", None, "1000", (1, 2, 3), "frozen"),
         ("1000", None, "1000", (1, 2, 3), "correct"),
         ("1000", None, "1000", (1, 2, 3), "unavailable"),
@@ -1186,6 +1211,7 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
         "operations-boundary",
         "md-only",
         "all",
+        "zero-threshold-known-zero",
         "frozen",
         "correct",
         "unavailable",
@@ -1251,12 +1277,31 @@ async def test_material_director_stage_sequence(
                     unit_cost=Decimal(cost) if cost is not None else None,
                 )
             )
+            known_item_id = uuid4()
+            if cost is None:
+                session.add(
+                    InventoryItem(
+                        id=known_item_id,
+                        name="Known subtotal item",
+                        unit="Nos",
+                        item_type="consumable",
+                        category="Civil",
+                        unit_cost=Decimal("1.25"),
+                    )
+                )
         owner = await login_for_token(client, supervisor, supervisor_password)
         payload = {
             "project_id": str(project.id),
             "from_location_id": location.json()["id"],
             "requirements": material_requirements(),
-            "lines": [{"item_id": str(item_id), "quantity": "1"}],
+            "lines": [
+                {"item_id": str(item_id), "quantity": "1"},
+                *(
+                    [{"item_id": str(known_item_id), "quantity": "1"}]
+                    if cost is None
+                    else []
+                ),
+            ],
         }
         owner_headers = {"Authorization": f"Bearer {owner}"}
         created = await client.post(
@@ -1273,11 +1318,27 @@ async def test_material_director_stage_sequence(
             assert history.status_code == 200, history.text
             frozen = history.json()["submissions"][0]["requirements"]
             assert frozen["valuation_complete"] is False
+            assert frozen["valuation_status"] == "incomplete"
             assert frozen["approval_stages"] == list(stages)
             current = await client.get(
                 "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
             )
             assert current.json()[0]["total_estimated_cost"] is None
+            assert current.json()[0]["valuation_status"] == "incomplete"
+            owner_history = await client.get(
+                f"/api/v1/inventory/requests/{request_id}/submissions",
+                headers=owner_headers,
+            )
+            assert owner_history.status_code == 200
+            assert owner_history.json()["submissions"][0]["requirements"][
+                "valuation_status"
+            ] is None
+            from app.models.inventory import MaterialRequest
+
+            async with AsyncSessionLocal() as session:
+                stored_request = await session.get(MaterialRequest, UUID(request_id))
+                assert stored_request is not None
+                assert stored_request.total_estimated_cost == Decimal("1.25")
         if scenario == "frozen":
             policy = Settings(
                 material_operations_approval_threshold=None, material_md_approval_threshold=None

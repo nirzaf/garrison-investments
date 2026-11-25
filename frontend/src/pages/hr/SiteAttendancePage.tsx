@@ -9,6 +9,7 @@ import {
   getSiteAttendanceCompleteness,
   listSiteAttendance,
   listSiteAttendanceHistory,
+  listSiteAttendanceProjectOptions,
   listSiteAttendanceWorkers,
   reviewSiteAttendance,
   writeSiteAttendance,
@@ -36,10 +37,17 @@ export function SiteAttendancePage() {
   const queryClient = useQueryClient();
   const term = useDebouncedSearch(projectSearch);
   const projectChoices = useQuery({
-    queryKey: ['site-attendance-projects', user?.id, term],
-    queryFn: () => user?.role === 'hr_manager'
-      ? listHrAssignmentProjects(term, pageSize)
-      : listReportProjectOptions({ search: term || undefined, limit: pageSize }),
+    queryKey: ['site-attendance-projects', user?.id, term, historical],
+    queryFn: async () => {
+      if (historical) {
+        return listSiteAttendanceProjectOptions({
+          historical: true, search: term || undefined, limit: pageSize, offset: 0
+        });
+      }
+      return user?.role === 'hr_manager'
+        ? listHrAssignmentProjects(term, pageSize)
+        : listReportProjectOptions({ search: term || undefined, limit: pageSize });
+    },
     enabled: Boolean(user && !focusedEntry)
   });
   const entries = useQuery({
@@ -106,7 +114,7 @@ export function SiteAttendancePage() {
         </div>
       )}
       {!focusedEntry && isSupervisor(user?.role) && project && <label className="flex items-center gap-2">
-        <input type="checkbox" checked={historical}
+        <input type="checkbox" checked={historical} disabled={workDate >= businessDate()}
           onChange={(event) => setHistorical(event.target.checked)} />
         Record historical attendance using dated employment and project-assignment evidence
       </label>}
@@ -115,6 +123,9 @@ export function SiteAttendancePage() {
         <section aria-label="Attendance completeness" className="space-y-2">
           <p>Expected: {completeness.data.expected_workers} · Recorded: {completeness.data.recorded_workers}
             {' · '}Missing: {completeness.data.missing_workers} · Confirmed: {completeness.data.confirmed_workers}</p>
+          {completeness.data.unresolved_workers > 0 && (
+            <p>{completeness.data.unresolved_workers} worker obligation(s) need HR reconciliation.</p>
+          )}
           {completeness.data.empty_roster && <p>No eligible workers are rostered for this project and date.</p>}
           {completeness.data.is_complete && <p>Attendance is complete.</p>}
           <ul>{completeness.data.items.map((worker) => (
@@ -195,7 +206,8 @@ function AttendanceForm({ projectId, workDate, correction, historical, onCancel,
       worked_hours: status === 'present' ? worked : '0',
       overtime_hours: status === 'present' ? overtime : '0',
       notes: notes || null,
-      historical_reason: historicalMode ? historicalReason.trim() : null
+      historical_reason: historicalMode ? historicalReason.trim() : null,
+      historical_remediation: historicalMode
     }, correction, correctionReason.trim()),
     onSuccess: () => {
       setWorker({ id: '', employee_code: '', full_name: '' });
@@ -319,10 +331,17 @@ function SiteAttendanceDetails({ record, userId, role, onCorrection, refresh }: 
       </summary>
       <div className="mt-3 space-y-2">
         <p>{details.attendance_status.replace(/_/g, ' ')} · {details.worked_hours} worked hours · {details.overtime_hours} overtime</p>
-        {details.check_in_at && <p>Arrival {new Date(details.check_in_at).toLocaleString()}</p>}
-        {details.scheduled_start_at && <p>Scheduled start {new Date(details.scheduled_start_at).toLocaleString()}</p>}
-        {details.arrival_variance_seconds !== null && details.arrival_variance_seconds !== undefined && (
-          <p>{formatArrivalVariance(details.arrival_variance_seconds)}</p>
+        {details.arrival_assessment ? (
+          <ArrivalAssessmentView
+            assessment={details.arrival_assessment}
+            actualArrival={details.check_in_at}
+          />
+        ) : (
+          <p>
+            {details.check_in_at
+              ? `Recorded arrival ${new Date(details.check_in_at).toISOString().replace('T', ' ').replace('Z', ' UTC')}`
+              : 'Arrival assessment unavailable for this submission.'}
+          </p>
         )}
         {details.correction_reason && <p>Correction reason: {details.correction_reason}</p>}
         {details.notes && <p>{details.notes}</p>}
@@ -356,18 +375,38 @@ function SiteAttendanceDetails({ record, userId, role, onCorrection, refresh }: 
   );
 }
 
-function formatArrivalVariance(seconds: number): string {
-  if (seconds === 0) return 'Arrival was at scheduled start.';
-  const absolute = Math.abs(seconds);
-  const hours = Math.floor(absolute / 3600);
-  const minutes = Math.floor((absolute % 3600) / 60);
-  const remainder = absolute % 60;
-  const parts = [
-    hours ? `${hours} hour${hours === 1 ? '' : 's'}` : '',
-    minutes ? `${minutes} minute${minutes === 1 ? '' : 's'}` : '',
-    remainder ? `${remainder} second${remainder === 1 ? '' : 's'}` : ''
-  ].filter(Boolean);
-  return `Arrival was ${parts.join(' ')} ${seconds < 0 ? 'before' : 'after'} scheduled start.`;
+function ArrivalAssessmentView({ assessment, actualArrival }: {
+  assessment: NonNullable<SiteAttendanceRecord['submission']['requirements']['arrival_assessment']>;
+  actualArrival?: string | null;
+}) {
+  const actual = actualArrival
+    ? assessment.timezone
+      ? new Intl.DateTimeFormat(undefined, {
+        dateStyle: 'medium', timeStyle: 'short', timeZone: assessment.timezone, timeZoneName: 'short'
+      }).format(new Date(actualArrival))
+      : new Date(actualArrival).toISOString().replace('T', ' ').replace('Z', ' UTC')
+    : null;
+  if (assessment.status === 'unresolved') {
+    return <p>{actual ? `Recorded arrival ${actual} · ` : ''}Arrival timing unresolved from the saved schedule.</p>;
+  }
+  if (assessment.status === 'not_applicable') {
+    return <p>{actual ? `Recorded arrival ${actual} · ` : ''}Arrival timing is not applicable.</p>;
+  }
+  const scheduled = assessment.scheduled_start_at && assessment.timezone
+    ? new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium', timeStyle: 'short', timeZone: assessment.timezone, timeZoneName: 'short'
+    }).format(new Date(assessment.scheduled_start_at))
+    : null;
+  if (!scheduled) {
+    return <p>{actual ? `Recorded arrival ${actual} · ` : ''}Arrival timing unresolved from the saved schedule.</p>;
+  }
+  return (
+    <p>
+      Planned start {scheduled} · Actual arrival {actual ?? 'not recorded'} · {assessment.status === 'on_time'
+        ? 'arrived on or before start'
+        : `arrived ${assessment.minutes_after_start ?? 0} minute${assessment.minutes_after_start === 1 ? '' : 's'} after start`}
+    </p>
+  );
 }
 
 function toClockInput(value?: string | null) {

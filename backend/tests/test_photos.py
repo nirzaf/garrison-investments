@@ -60,6 +60,7 @@ async def test_photo_upload_download_url_and_delete_lock() -> None:
             "entity_type": "daily_report",
             "entity_id": report["id"],
             "kind": "photo",
+            "classification": "operational",
             "expected_report_revision": str(report["revision"]),
         }
         upload_headers = {
@@ -167,7 +168,7 @@ async def test_photo_quota_serializes_concurrent_uploads() -> None:
         owner = {"entity_type": "daily_report", "entity_id": report["id"]}
         upload = await client.post(
             "/api/v1/photos/upload",
-            data={**owner, "kind": "photo"},
+            data={**owner, "kind": "photo", "classification": "operational"},
             files=[("files", (f"site{i}.jpg", jpeg_bytes(), "image/jpeg")) for i in range(5)],
             headers=engineer,
         )
@@ -186,6 +187,7 @@ async def test_photo_quota_serializes_concurrent_uploads() -> None:
                 kind="photo",
                 caption=None,
                 actor=actor,
+                classification="operational",
             )
             return 201
 
@@ -239,7 +241,12 @@ async def test_photo_upload_and_report_submission_serialize(submit_first: bool) 
         engineer_id = UUID(report["engineer_id"])
         first_photo = await client.post(
             "/api/v1/photos/upload",
-            data={"entity_type": "daily_report", "entity_id": str(report_id), "kind": "photo"},
+            data={
+                "entity_type": "daily_report",
+                "entity_id": str(report_id),
+                "kind": "photo",
+                "classification": "operational",
+            },
             files={"files": ("existing.jpg", jpeg_bytes(), "image/jpeg")},
             headers=engineer,
         )
@@ -261,6 +268,7 @@ async def test_photo_upload_and_report_submission_serialize(submit_first: bool) 
                 kind="photo",
                 caption=None,
                 actor=actor,
+                classification="operational",
             )
             return 201
 
@@ -335,7 +343,7 @@ async def test_supervisor_photo_quota_and_final_state_are_checked() -> None:
         file = ("site.heic", b"\x00\x00\x00\x18ftypheic" + b"\x00" * 12, "image/heic")
         response = await client.post(
             "/api/v1/photos/upload",
-            data=data,
+            data={**data, "classification": "operational"},
             files=[("files", file)] * 5,
             headers={**actor, "Idempotency-Key": "supervisor-quota"},
         )
@@ -347,13 +355,16 @@ async def test_supervisor_photo_quota_and_final_state_are_checked() -> None:
             for photo in response.json()
         )
         blocked = await client.post(
-            "/api/v1/photos/upload", data=data, files={"files": file}, headers=actor
+            "/api/v1/photos/upload",
+            data={**data, "classification": "operational"},
+            files={"files": file},
+            headers=actor,
         )
         assert blocked.status_code == 409
         assert blocked.json()["error_code"] == "REPORT_PHOTO_LIMIT_REACHED"
         repeated = await client.post(
             "/api/v1/photos/upload",
-            data=data,
+            data={**data, "classification": "operational"},
             files=[("files", file)] * 5,
             headers={**actor, "Idempotency-Key": "supervisor-quota"},
         )
@@ -392,7 +403,12 @@ async def test_director_cannot_use_retired_admin_media_override() -> None:
         report_id = report_response.json()["id"]
         upload = await client.post(
             "/api/v1/photos/upload",
-            data={"entity_type": "daily_report", "entity_id": report_id, "kind": "photo"},
+            data={
+                "entity_type": "daily_report",
+                "entity_id": report_id,
+                "kind": "photo",
+                "classification": "operational",
+            },
             files={"files": ("site.jpg", jpeg_bytes(), "image/jpeg")},
             headers=engineer,
         )
@@ -448,8 +464,13 @@ async def test_unclassified_photo_metadata_and_urls_are_restricted_until_review(
         assert uploaded.headers["cache-control"] == "no-store"
         photo = uploaded.json()[0]
         assert photo["classification"] == "unclassified"
+        assert photo["restricted"] is True
+        assert photo["filename"] is None
+        assert photo["original_name"] is None
+        assert photo["storage_path"] is None
+        assert photo["thumbnail_path"] is None
 
-        manager = {"Authorization": f"Bearer {team['manager_token']}"}
+        manager = {"Authorization": f"Bearer {team['engineer_token']}"}
         for path in (
             f"/api/v1/photos/{photo['id']}",
             f"/api/v1/photos/{photo['id']}/download",
@@ -467,7 +488,12 @@ async def test_unclassified_photo_metadata_and_urls_are_restricted_until_review(
         assert photo["id"] in {item["id"] for item in listed.json()["items"]}
         reviewed = await client.patch(
             f"/api/v1/photos/{photo['id']}/classification",
-            json={"classification": "operational", "reason": "Verified site photo."},
+            json={
+                "classification": "operational",
+                "expected_classification": photo["classification"],
+                "expected_updated_at": photo["updated_at"],
+                "reason": "Verified site photo.",
+            },
             headers=reviewer,
         )
         assert reviewed.status_code == 200, reviewed.text

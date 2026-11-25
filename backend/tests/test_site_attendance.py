@@ -171,6 +171,36 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
         assert entry["submission"]["requirements"]["scheduled_start_at"].startswith(
             f"{day.isoformat()}T04:00:00"
         )
+        assessment = entry["submission"]["requirements"]["arrival_assessment"]
+        assert assessment["source"] == "shift"
+        assert assessment["timezone"] == "Asia/Qatar"
+        assert assessment["status"] == "after_scheduled_start"
+        assert assessment["minutes_after_start"] == 12
+        from app.schemas.hr import SiteAttendanceCreateRequest
+        from app.services.hr_site_attendance_service import HrSiteAttendanceService
+
+        async with AsyncSessionLocal() as session:
+            worker_row = await session.get(HrEmployee, employee.id)
+            assert worker_row is not None
+            service = HrSiteAttendanceService(session)
+            for check_in, expected_status, expected_minutes in (
+                (f"{day.isoformat()}T06:59:59+03:00", "on_time", None),
+                (f"{day.isoformat()}T07:00:00+03:00", "on_time", None),
+                (f"{day.isoformat()}T07:00:01+03:00", "after_scheduled_start", 1),
+                (None, "unresolved", None),
+            ):
+                arrival_payload = SiteAttendanceCreateRequest.model_validate(
+                    {
+                        **payload,
+                        "check_in_at": check_in,
+                        "check_out_at": payload["check_out_at"] if check_in else None,
+                    }
+                )
+                _, _, saved_assessment = await service._arrival_schedule_snapshot(
+                    arrival_payload, worker_row
+                )
+                assert saved_assessment.status == expected_status
+                assert saved_assessment.minutes_after_start == expected_minutes
         action = f"{site_path}/{entry_id}/decision"
         proposed = {"expected_revision": entry["record_revision"], "decision": "approved"}
         early = await client.post(action, json={**proposed, "stage": "hr"}, headers=hr)
@@ -539,6 +569,20 @@ async def test_historical_site_attendance_uses_evidence_and_preserves_period_loc
         )
         assert workers.status_code == 200, workers.text
         assert [row["id"] for row in workers.json()["items"]] == [str(employee.id)]
+        project_options = await client.get(
+            "/api/v1/hr/site-attendance/project-options",
+            params={"historical": True, "search": project.name},
+            headers=writer,
+        )
+        assert project_options.status_code == 200, project_options.text
+        assert [row["id"] for row in project_options.json()] == [str(project.id)]
+        active_options = await client.get(
+            "/api/v1/hr/site-attendance/project-options",
+            params={"search": project.name},
+            headers=writer,
+        )
+        assert active_options.status_code == 200, active_options.text
+        assert active_options.json() == []
 
         missing_reason = await client.post("/api/v1/hr/site-attendance", json=body, headers=writer)
         assert missing_reason.status_code == 409, missing_reason.text
@@ -554,6 +598,7 @@ async def test_historical_site_attendance_uses_evidence_and_preserves_period_loc
         assert submitted.json()["submission"]["requirements"]["historical_reason"] == (
             "Reconcile the verified site register."
         )
+        assert submitted.json()["submission"]["requirements"]["historical_remediation"] is True
         engineer_decision = await client.post(
             f"/api/v1/hr/site-attendance/{entry_id}/decision",
             json={"expected_revision": 1, "stage": "engineer", "decision": "approved"},
@@ -570,6 +615,18 @@ async def test_historical_site_attendance_uses_evidence_and_preserves_period_loc
             headers=hr_headers,
         )
         assert hr_decision.status_code == 200, hr_decision.text
+
+        dropped_mode = await client.post(
+            f"/api/v1/hr/site-attendance/{entry_id}/correction",
+            json={
+                **body,
+                "expected_revision": hr_decision.json()["record_revision"],
+                "correction_reason": "Check the historical record again.",
+            },
+            headers=writer,
+        )
+        assert dropped_mode.status_code == 422, dropped_mode.text
+        assert dropped_mode.json()["error_code"] == "HISTORICAL_REASON_REQUIRED"
 
         corrected = await client.post(
             f"/api/v1/hr/site-attendance/{entry_id}/correction",
@@ -614,6 +671,7 @@ async def test_historical_site_attendance_uses_evidence_and_preserves_period_loc
         assert history.json()[0]["requirements"]["correction_reason"].startswith(
             "Correct the recorded arrival"
         )
+        assert history.json()[0]["requirements"]["historical_remediation"] is True
 
         async with AsyncSessionLocal.begin() as session:
             session.add(

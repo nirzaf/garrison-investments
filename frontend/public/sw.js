@@ -445,6 +445,7 @@ async function uploadQueuedFile(item, intent, accessToken, signal) {
   formData.append('entity_type', item.entityType);
   formData.append('entity_id', intent.reportId);
   formData.append('kind', intent.kind);
+  formData.append('classification', intent.classification ?? item.classification ?? 'unclassified');
   formData.append('expected_report_revision', String(intent.expectedRevision));
   formData.append('files', item.file);
   const response = await signedRequest('/photos/upload', accessToken, signal, {
@@ -487,7 +488,12 @@ async function syncQueuedPhoto(scope, item, draft, hasLock, accessToken, signal)
   const intent =
     claim.intent ??
     (reportId && revision !== undefined
-      ? { reportId, expectedRevision: revision, kind }
+      ? {
+          reportId,
+          expectedRevision: revision,
+          kind,
+          classification: claim.classification ?? 'unclassified'
+        }
       : undefined);
   if (!intent) {
     await patchClaim(scope, claim, {

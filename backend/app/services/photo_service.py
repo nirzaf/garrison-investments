@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -11,10 +11,12 @@ from minio.error import S3Error
 from PIL import Image, ImageDraw
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.models.daily_report import DailyReport
+from app.models.document import Document
 from app.models.inventory import InventoryRegistration, MaterialRequest
 from app.models.photo import Photo
 from app.models.project import Project
@@ -34,15 +36,16 @@ from app.services.evidence_classification import (
     OPERATIONAL,
     UNCLASSIFIED,
     EvidenceClassification,
+    effective_document_classification,
     ensure_evidence_classification_access,
     ensure_evidence_classification_reviewer,
+    operational_document_predicate,
 )
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     OFFICIAL_REPORT_AUTHOR_ROLES,
-    PERMISSION_DOCUMENTS_MANAGE,
     PERMISSION_FINANCIAL_VIEW,
     PERMISSION_REPORTS_SUBMIT,
     PERMISSION_REPORTS_VIEW,
@@ -90,12 +93,15 @@ class PhotoService:
         kind: str,
         caption: str | None,
         actor: User,
+        classification: EvidenceClassification = UNCLASSIFIED,
         idempotency_key: str | None = None,
         expected_report_revision: int | None = None,
     ) -> Photo:
         ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
         self._validate_entity_type(entity_type)
         normalized_kind = self._validate_kind(kind)
+        if classification not in {UNCLASSIFIED, OPERATIONAL, FINANCIAL}:
+            raise AppException("Invalid evidence classification.", status_code=422)
         data = await file.read(MAX_FILE_SIZE + 1)
         mime_type = self._validate_file(file.filename or "upload", data, normalized_kind)
         if mime_type == "application/pdf":
@@ -109,18 +115,33 @@ class PhotoService:
                 route=IDEMPOTENCY_ROUTE,
             )
             if existing_id is not None:
-                # A replay is still subject to current access to the original photo.
-                existing = await self.get(existing_id, actor=actor)
-                if (existing.entity_type, existing.entity_id, existing.kind) != (
-                    entity_type,
-                    entity_id,
-                    normalized_kind,
+                existing = await self.photos.get_by_id(existing_id)
+                if existing is None:
+                    raise NotFoundException("Photo")
+                if (
+                    (existing.entity_type, existing.entity_id, existing.kind)
+                    != (
+                        entity_type,
+                        entity_id,
+                        normalized_kind,
+                    )
+                    or existing.classification != classification
+                    or existing.uploaded_by != actor.id
                 ):
                     raise AppException(
-                        "This upload key belongs to a different file operation.",
+                        "This upload key belongs to a different owner, file kind, "
+                        "or classification.",
                         status_code=409,
                         error_code="PHOTO_UPLOAD_KEY_CONFLICT",
                     )
+                # A retry can arrive after the source draft was submitted. Do not
+                # repeat write-time draft/quota checks; revalidate current read
+                # scope and let the API return an opaque receipt if needed.
+                await ensure_entity_access(
+                    self.session, existing.entity_type, existing.entity_id, actor
+                )
+                if existing.uploaded_by != actor.id:
+                    await self._ensure_evidence_classification_access(existing, actor)
                 if expected_report_revision is not None and (
                     existing.report_revision != expected_report_revision + 1
                 ):
@@ -172,7 +193,7 @@ class PhotoService:
             entity_type=entity_type,
             entity_id=entity_id,
             kind=normalized_kind,
-            classification=UNCLASSIFIED,
+            classification=classification,
             caption=caption,
             uploaded_by=actor.id,
             processing_status="ready",
@@ -249,7 +270,9 @@ class PhotoService:
             kind=kind,
             limit=limit,
             offset=offset,
-            classification_filter=self._classification_filter(actor),
+            classification_filter=self._classification_filter(
+                actor, editable_owner=(entity_type, entity_id)
+            ),
         )
 
     async def list_recent(
@@ -293,11 +316,24 @@ class PhotoService:
         )
 
     async def get(self, photo_id: UUID, *, actor: User) -> Photo:
-        photo = await self.photos.get_by_id(photo_id)
-        if not photo:
+        candidate = await self.photos.get_by_id(photo_id)
+        if candidate is None:
+            raise NotFoundException("Photo")
+        if candidate.entity_type == "document":
+            parent = await self.session.scalar(
+                select(Document)
+                .where(Document.id == candidate.entity_id, Document.deleted_at.is_(None))
+                .options(selectinload(Document.versions))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if parent is None:
+                raise NotFoundException("Photo")
+        photo = await self.photos.get_by_id(photo_id, for_update=True)
+        if photo is None:
             raise NotFoundException("Photo")
         await ensure_entity_access(self.session, photo.entity_type, photo.entity_id, actor)
-        self._ensure_evidence_classification_access(photo, actor)
+        await self._ensure_evidence_classification_access(photo, actor)
         return photo
 
     async def classify(
@@ -306,15 +342,55 @@ class PhotoService:
         classification: EvidenceClassification,
         reason: str,
         actor: User,
+        expected_classification: EvidenceClassification,
+        expected_updated_at: datetime,
     ) -> Photo:
+        candidate = await self.photos.get_by_id(photo_id)
+        if candidate is None:
+            raise NotFoundException("Photo")
+        parent: Document | None = None
+        if candidate.entity_type == "document":
+            parent = await self.session.scalar(
+                select(Document)
+                .where(Document.id == candidate.entity_id, Document.deleted_at.is_(None))
+                .options(selectinload(Document.versions))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if parent is None:
+                raise NotFoundException("Photo")
         photo = await self.photos.get_by_id(photo_id, for_update=True)
         if photo is None:
             raise NotFoundException("Photo")
         await ensure_entity_access(self.session, photo.entity_type, photo.entity_id, actor)
         ensure_evidence_classification_reviewer(actor, photo.uploaded_by, classification)
-        if photo.classification != UNCLASSIFIED:
+        if parent is not None and (
+            effective_document_classification(parent) == FINANCIAL
+            or parent.document_type.strip().lower() in {"contract", "invoice"}
+        ) and classification != FINANCIAL:
             raise AppException(
-                "Evidence classification has already been reviewed.",
+                "Media attached to financial documents must remain restricted.",
+                status_code=422,
+                error_code="EVIDENCE_CLASSIFICATION_INVALID",
+            )
+        if (
+            photo.classification != expected_classification
+            or photo.updated_at != expected_updated_at
+        ):
+            raise AppException(
+                "Evidence classification changed. Reload it before reviewing.",
+                status_code=409,
+                error_code="EVIDENCE_CLASSIFICATION_CONFLICT",
+            )
+        if photo.classification == FINANCIAL and classification != FINANCIAL:
+            raise AppException(
+                "Financial evidence cannot be reclassified as operational.",
+                status_code=422,
+                error_code="EVIDENCE_CLASSIFICATION_INVALID",
+            )
+        if photo.classification == classification:
+            raise AppException(
+                "Choose a stricter or unresolved classification for this review.",
                 status_code=409,
                 error_code="EVIDENCE_CLASSIFICATION_ALREADY_REVIEWED",
             )
@@ -344,7 +420,7 @@ class PhotoService:
             user_id=actor.id,
             entity_type=photo.entity_type,
             entity_id=photo.entity_id,
-            new_values={"photo_id": str(photo.id), "object_key": object_key},
+            new_values={"photo_id": str(photo.id)},
         )
         await self.session.commit()
         return minio_signed_url_client(self.settings).presigned_get_object(
@@ -354,77 +430,187 @@ class PhotoService:
             response_headers={"response-cache-control": "no-store"},
         )
 
-    @staticmethod
-    def _ensure_evidence_classification_access(photo: Photo, actor: User) -> None:
-        ensure_evidence_classification_access(
-            photo.classification, photo.uploaded_by, actor
-        )
+    async def _ensure_evidence_classification_access(self, photo: Photo, actor: User) -> None:
+        ensure_evidence_classification_access(photo.classification, photo.uploaded_by, actor)
+        if photo.entity_type == "document":
+            document = await self.session.scalar(
+                select(Document)
+                .where(Document.id == photo.entity_id, Document.deleted_at.is_(None))
+                .options(selectinload(Document.versions))
+            )
+            if document is None:
+                raise NotFoundException("Evidence")
+            ensure_evidence_classification_access(
+                effective_document_classification(document),
+                document.uploaded_by,
+                actor,
+                financial_document=document.document_type.strip().lower()
+                in {"contract", "invoice"},
+            )
 
     @staticmethod
-    def _classification_filter(actor: User) -> ColumnElement[bool]:
-        visible = [Photo.classification == OPERATIONAL]
-        if has_permission(actor, PERMISSION_DOCUMENTS_MANAGE):
-            visible.append(Photo.classification == UNCLASSIFIED)
-        else:
-            visible.append(
-                and_(Photo.classification == UNCLASSIFIED, Photo.uploaded_by == actor.id)
-            )
+    def _classification_filter(
+        actor: User, editable_owner: tuple[str, UUID] | None = None
+    ) -> ColumnElement[bool]:
         if has_permission(actor, PERMISSION_FINANCIAL_VIEW):
-            visible.append(Photo.classification == FINANCIAL)
-        return or_(*visible)
+            return Photo.classification.in_({UNCLASSIFIED, OPERATIONAL, FINANCIAL})
+        operational_document = (
+            select(Document.id)
+            .where(
+                Document.id == Photo.entity_id,
+                Document.deleted_at.is_(None),
+            operational_document_predicate(),
+            )
+            .exists()
+        )
+        operational = and_(
+            Photo.classification == OPERATIONAL,
+            or_(Photo.entity_type != "document", operational_document),
+        )
+        if editable_owner is None:
+            return operational
+        entity_type, entity_id = editable_owner
+        owner: ColumnElement[bool]
+        if entity_type == "daily_report":
+            owner = (
+                select(DailyReport.id)
+                .where(
+                    DailyReport.id == entity_id,
+                    DailyReport.engineer_id == actor.id,
+                    DailyReport.status == "draft",
+                    DailyReport.deleted_at.is_(None),
+                )
+                .exists()
+            )
+        elif entity_type == "supervisor_update":
+            owner = (
+                select(SupervisorUpdate.id)
+                .where(
+                    SupervisorUpdate.id == entity_id,
+                    SupervisorUpdate.supervisor_id == actor.id,
+                    SupervisorUpdate.status == "draft",
+                    SupervisorUpdate.deleted_at.is_(None),
+                )
+                .exists()
+            )
+        elif entity_type == "material_request":
+            owner = (
+                select(MaterialRequest.id)
+                .where(
+                    MaterialRequest.id == entity_id,
+                    MaterialRequest.requester_id == actor.id,
+                    MaterialRequest.status == "draft",
+                    MaterialRequest.deleted_at.is_(None),
+                )
+                .exists()
+            )
+        elif entity_type == "inventory_registration":
+            owner = (
+                select(InventoryRegistration.id)
+                .where(
+                    InventoryRegistration.id == entity_id,
+                    InventoryRegistration.created_by == actor.id,
+                    InventoryRegistration.status == "draft",
+                )
+                .exists()
+            )
+        else:
+            return operational
+        restricted_receipt = and_(
+            Photo.entity_type == entity_type,
+            Photo.entity_id == entity_id,
+            Photo.classification.in_({UNCLASSIFIED, FINANCIAL}),
+            owner,
+        )
+        return or_(operational, restricted_receipt)
 
     async def deletable_ids(self, photos: list[Photo], actor: User) -> set[UUID]:
         if not has_permission(actor, PERMISSION_REPORTS_SUBMIT):
             return set()
         project_ids = await accessible_project_ids(self.session, actor)
-        project_filter = (
-            DailyReport.project_id.is_not(None)
-            if project_ids is None
-            else DailyReport.project_id.in_(project_ids or [])
-        )
+        editable_by_type: dict[str, set[UUID]] = {}
         if actor.role in OFFICIAL_REPORT_AUTHOR_ROLES:
             report_ids = [
                 photo.entity_id for photo in photos if photo.entity_type == "daily_report"
             ]
-            if not report_ids:
-                return set()
-            owners = await self.session.scalars(
-                select(DailyReport.id).where(
-                    DailyReport.id.in_(report_ids),
-                    DailyReport.engineer_id == actor.id,
-                    project_filter,
-                    DailyReport.status == "draft",
-                    DailyReport.deleted_at.is_(None),
+            if report_ids:
+                project_filter = (
+                    DailyReport.project_id.is_not(None)
+                    if project_ids is None
+                    else DailyReport.project_id.in_(project_ids or [])
                 )
-            )
-            entity_type = "daily_report"
-        elif actor.role in SUPERVISOR_ROLES:
+                owners = await self.session.scalars(
+                    select(DailyReport.id).where(
+                        DailyReport.id.in_(report_ids),
+                        DailyReport.engineer_id == actor.id,
+                        project_filter,
+                        DailyReport.status == "draft",
+                        DailyReport.deleted_at.is_(None),
+                    )
+                )
+                editable_by_type["daily_report"] = set(owners)
+        if actor.role in SUPERVISOR_ROLES:
             update_ids = [
                 photo.entity_id for photo in photos if photo.entity_type == "supervisor_update"
             ]
-            if not update_ids:
-                return set()
-            owners = await self.session.scalars(
-                select(SupervisorUpdate.id).where(
-                    SupervisorUpdate.id.in_(update_ids),
-                    SupervisorUpdate.supervisor_id == actor.id,
-                    (
-                        SupervisorUpdate.project_id.is_not(None)
-                        if project_ids is None
-                        else SupervisorUpdate.project_id.in_(project_ids or [])
-                    ),
-                    SupervisorUpdate.status == "draft",
-                    SupervisorUpdate.deleted_at.is_(None),
+            if update_ids:
+                owners = await self.session.scalars(
+                    select(SupervisorUpdate.id).where(
+                        SupervisorUpdate.id.in_(update_ids),
+                        SupervisorUpdate.supervisor_id == actor.id,
+                        (
+                            SupervisorUpdate.project_id.is_not(None)
+                            if project_ids is None
+                            else SupervisorUpdate.project_id.in_(project_ids or [])
+                        ),
+                        SupervisorUpdate.status == "draft",
+                        SupervisorUpdate.deleted_at.is_(None),
+                    )
                 )
-            )
-            entity_type = "supervisor_update"
-        else:
-            return set()
-        editable = set(owners)
+                editable_by_type["supervisor_update"] = set(owners)
+            material_ids = [
+                photo.entity_id for photo in photos if photo.entity_type == "material_request"
+            ]
+            if material_ids:
+                active_projects = select(Project.id).where(
+                    Project.status == "active", Project.deleted_at.is_(None)
+                )
+                owners = await self.session.scalars(
+                    select(MaterialRequest.id).where(
+                        MaterialRequest.id.in_(material_ids),
+                        MaterialRequest.requester_id == actor.id,
+                        MaterialRequest.status == "draft",
+                        MaterialRequest.deleted_at.is_(None),
+                        MaterialRequest.project_id.in_(active_projects),
+                        (
+                            MaterialRequest.project_id.is_not(None)
+                            if project_ids is None
+                            else MaterialRequest.project_id.in_(project_ids or [])
+                        ),
+                    )
+                )
+                editable_by_type["material_request"] = set(owners)
+            registration_ids = [
+                photo.entity_id for photo in photos if photo.entity_type == "inventory_registration"
+            ]
+            if registration_ids:
+                owners = await self.session.scalars(
+                    select(InventoryRegistration.id).where(
+                        InventoryRegistration.id.in_(registration_ids),
+                        InventoryRegistration.created_by == actor.id,
+                        InventoryRegistration.status == "draft",
+                        (
+                            InventoryRegistration.project_id.is_not(None)
+                            if project_ids is None
+                            else InventoryRegistration.project_id.in_(project_ids or [])
+                        ),
+                    )
+                )
+                editable_by_type["inventory_registration"] = set(owners)
         return {
             photo.id
             for photo in photos
-            if photo.entity_type == entity_type and photo.entity_id in editable
+            if photo.entity_id in editable_by_type.get(photo.entity_type, set())
         }
 
     async def list_deleted(
@@ -455,7 +641,15 @@ class PhotoService:
 
     async def delete(self, photo_id: UUID, actor: User, reason: str | None = None) -> None:
         ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
-        existing = await self.get(photo_id, actor=actor)
+        existing = await self.photos.get_by_id(photo_id)
+        if existing is None:
+            raise NotFoundException("Photo")
+        if (
+            existing.classification in {UNCLASSIFIED, FINANCIAL}
+            and not has_permission(actor, PERMISSION_FINANCIAL_VIEW)
+            and existing.uploaded_by != actor.id
+        ):
+            raise NotFoundException("Photo")
         owner = await self._lock_owner(existing.entity_type, existing.entity_id, actor)
         photo = await self.photos.get_by_id(photo_id, for_update=True)
         if photo is None:
@@ -499,12 +693,12 @@ class PhotoService:
         photo = await self.photos.get_deleted_by_id(photo_id)
         if photo is None:
             raise NotFoundException("Photo")
-        self._ensure_evidence_classification_access(photo, actor)
+        await self._ensure_evidence_classification_access(photo, actor)
         owner = await self._lock_owner(photo.entity_type, photo.entity_id, actor)
         photo = await self.photos.get_deleted_by_id(photo_id, for_update=True)
         if photo is None:
             raise NotFoundException("Photo")
-        self._ensure_evidence_classification_access(photo, actor)
+        await self._ensure_evidence_classification_access(photo, actor)
         recovery_cutoff = utc_now() - timedelta(days=PHOTO_RECOVERY_DAYS)
         if photo.deleted_at and photo.deleted_at < recovery_cutoff:
             raise AppException(

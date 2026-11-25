@@ -23,6 +23,10 @@ import {
   type StorageLocationRecord
 } from '../../api/inventory';
 import { deletePhoto, getPhotoDownloadUrl, listPhotos, uploadEntityFiles } from '../../api/photos';
+import {
+  EvidenceClassificationField,
+  type EvidenceClassification
+} from '../../components/evidence/EvidenceClassificationField';
 import { useAuth } from '../../context/useAuth';
 import { useDebouncedSearch } from '../../useDebouncedSearch';
 
@@ -76,6 +80,7 @@ export function MaterialRequestForm({
   const [locationId, setLocationId] = useState(saved?.from_location_id ?? correction?.request.from_location_id ?? '');
   const [reason, setReason] = useState(saved?.reason ?? '');
   const [notes, setNotes] = useState(saved?.notes ?? snapshot?.notes ?? correction?.request.notes ?? '');
+  const [evidenceClassification, setEvidenceClassification] = useState<EvidenceClassification | ''>('');
   const [requirements, setRequirements] = useState<MaterialRequestCreatePayload['requirements']>(
     saved ? {
       required_date: saved.required_date ?? '', urgency: saved.urgency ?? 'routine',
@@ -149,7 +154,11 @@ export function MaterialRequestForm({
     onError: (cause) => setError(formatApiError(cause, 'Unable to save the material request draft.'))
   });
   const media = useMutation({
-    mutationFn: async (action: { files: File[] } | { remove: string }) => {
+    mutationFn: async (
+      action:
+        | { files: File[]; classification: EvidenceClassification }
+        | { remove: string }
+    ) => {
       if ('remove' in action) {
         await deletePhoto(action.remove);
         return;
@@ -160,6 +169,7 @@ export function MaterialRequestForm({
           await uploadEntityFiles({
             entityType: 'material_request', entityId: owner.id, files: [file],
             kind: file.type === 'application/pdf' ? 'attachment' : 'photo',
+            classification: action.classification,
             idempotencyKey: crypto.randomUUID()
           });
         }
@@ -421,21 +431,32 @@ export function MaterialRequestForm({
       )}
       {supervisor && projectId && !correction?.replaceRemainder && (
         <div className="space-y-2">
+          <EvidenceClassificationField
+            disabled={media.isPending || create.isPending || save.isPending}
+            onChange={setEvidenceClassification}
+            value={evidenceClassification}
+          />
           <label className="block text-sm">Upload request evidence
             <input type="file" className="form-field" multiple accept="image/jpeg,image/png,.heic,application/pdf"
               disabled={media.isPending || create.isPending || save.isPending}
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
-                if (files.length) media.mutate({ files });
+                if (files.length) {
+                  if (!evidenceClassification) {
+                    setError('Select an evidence classification before uploading.');
+                  } else {
+                    media.mutate({ files, classification: evidenceClassification });
+                  }
+                }
                 event.target.value = '';
               }} />
           </label>
           {media.isError && <p role="alert">{formatApiError(media.error, 'Unable to update evidence.')}</p>}
           {attached.data?.items.map((file) => (
             <div className="flex gap-2" key={file.id}>
-              <span>{file.original_name}</span>
-              <button type="button" disabled={media.isPending || create.isPending || save.isPending}
-                onClick={() => media.mutate({ remove: file.id })}>Remove {file.original_name}</button>
+              <span>{file.restricted ? 'Restricted evidence receipt' : file.original_name ?? 'Evidence file'}</span>
+              {file.can_delete && <button type="button" disabled={media.isPending || create.isPending || save.isPending}
+                onClick={() => media.mutate({ remove: file.id })}>Remove evidence</button>}
             </div>
           ))}
         </div>

@@ -851,13 +851,17 @@ describes an arrival before or after that start as a factual time difference;
 it does not apply a grace period, disciplinary rule, or payroll deduction.
 Corrections require a reason and create a new reviewed submission revision.
 
-For a past date, a supervisor may record an explicitly reasoned historical
-exception against a completed project or a former employee only when effective
-employment dates and a project-specific roster allocation or shift assignment
-support that date. Historical entries still require independent engineer and HR
-reviews, and a locked timesheet period remains read-only. Unresolved employment
-dates or missing assignment evidence require HR reconciliation; the workflow
-does not infer attendance or reopen a project.
+For a past date, an assigned supervisor may record an explicitly reasoned
+historical entry against an active or completed project only when effective
+employment dates and an unambiguous project-specific roster allocation or shift
+assignment support that date. A current former-employee status does not reject
+an otherwise evidenced date. The current account and project membership must
+still be authorized. Historical entries require independent MEP Project
+Manager and HR Manager reviews. Locked timesheet or payroll periods remain
+read-only; the workflow does not infer attendance, reopen a project, or bypass
+an unavailable reviewer. Unresolved employment dates, conflicting project/date
+assignments, duplicate entries, or missing source evidence require HR
+reconciliation.
 
 ## Workforce roster
 

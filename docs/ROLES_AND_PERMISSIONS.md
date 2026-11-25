@@ -80,17 +80,22 @@ Rollback: revert the BOQ route/service and matching frontend/API contract change
 
 ## Evidence classification and confidentiality
 
-Document and photo uploads are initially `unclassified` unless an invoice or
-contract document type is already classified as financial. The uploader may
-access their own pending material, while a separate actor with `documents:manage`
-can classify it with a reason; the decision is audited. A reviewer cannot use
-this permission to bypass the owning record's existing project or entity scope.
-Operational evidence becomes visible under those same existing scope rules.
-Financial evidence requires `financial:view` for metadata, file links, originals,
-and previews. Search and list queries apply the same classification boundary.
-No role grants were changed for this workflow. Historical evidence left
-unclassified by the migration requires manual review. D04's business confirmation
-about company and private document scope remains pending.
+Document and photo uploads default to `unclassified`; contract and invoice
+documents are always `financial`, regardless of casing or whitespace. A user
+may explicitly declare new evidence `operational`; this is an uploader
+attestation, not automated content inspection. An unclassified or financial
+depositor without `financial:view` receives only an opaque upload receipt and
+may not read the evidence metadata or content. A separate in-scope director
+with `documents:manage` and `financial:view` can review an unclassified item
+with a reason; the decision is audited and cannot downgrade known financial
+evidence. The owning record's existing project or entity scope still applies.
+Operational evidence is visible under those same scope rules. Financial and
+unclassified evidence requires `financial:view` for metadata, file links,
+originals, previews, lists and exports. Search and count queries apply the same
+classification boundary. No role grants were changed. Historical unclassified
+evidence requires manual review. An already issued signed URL remains usable
+until its configured expiry; new unauthorized URLs are denied. D04's business
+confirmation about company and private document scope remains pending.
 
 ## Permission matrix
 

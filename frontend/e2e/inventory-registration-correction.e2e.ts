@@ -76,6 +76,7 @@ test('correction asset selector shows eligible assets and revalidates after cust
       ['-c', 'import sys; from tests.test_photos import jpeg_bytes; sys.stdout.buffer.write(jpeg_bytes())'],
       { cwd: BACKEND_DIR }
     );
+    await page.getByLabel('Evidence classification').selectOption('operational');
     await page.getByLabel('Item photographs').setInputFiles({
       name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: jpg
     });
@@ -141,6 +142,7 @@ test('correction asset selector shows eligible assets and revalidates after cust
       headers: supervisorHeaders,
       multipart: {
         entity_type: 'inventory_registration', entity_id: correction.id,
+        classification: 'operational',
         files: { name: 'count.jpg', mimeType: 'image/jpeg', buffer: jpg }
       }
     });

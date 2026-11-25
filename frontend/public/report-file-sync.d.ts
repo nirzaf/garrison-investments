@@ -3,6 +3,7 @@ export type UploadIntent = {
   reportId: string;
   expectedRevision: number;
   kind: QueuedFileKind;
+  classification?: 'unclassified' | 'operational' | 'financial';
 };
 export type UploadFailure =
   { state: 'blocked'; reason: string; conflict?: boolean } | { state: 'suspended' | 'retry' };

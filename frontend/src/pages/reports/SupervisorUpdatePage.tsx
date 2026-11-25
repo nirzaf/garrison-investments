@@ -38,6 +38,10 @@ import { businessDate } from '../../businessDate';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import {
+  EvidenceClassificationField,
+  type EvidenceClassification
+} from '../../components/evidence/EvidenceClassificationField';
 import { useAuth } from '../../context/useAuth';
 import { SupervisorSubmissionHistory } from './SupervisorEvidence';
 
@@ -146,6 +150,7 @@ export function SupervisorUpdatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const [evidenceClassification, setEvidenceClassification] = useState<EvidenceClassification | ''>('');
   const [openingFile, setOpeningFile] = useState(false);
   const [failedUpload, setFailedUpload] = useState<{
     entityId: string;
@@ -351,11 +356,16 @@ export function SupervisorUpdatePage() {
 
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
     if (!scope || !files?.length) return;
+    if (!evidenceClassification) {
+      setError('Select an evidence classification before uploading.');
+      return;
+    }
     await updateMedia(async () => {
       const { items, errors } = await prepareMediaFiles(
         files,
         kind,
-        MAX_REPORT_PHOTOS - uploadedFiles.filter((file) => file.kind === 'photo').length
+        MAX_REPORT_PHOTOS - uploadedFiles.filter((file) => file.kind === 'photo').length,
+        evidenceClassification
       );
       if (errors.length) setError(errors.join(' '));
       if (!items.length) return;
@@ -366,17 +376,19 @@ export function SupervisorUpdatePage() {
   }
 
   async function removeFile(file: PhotoRecord) {
-    if (!savedDraft || savedDraft.status !== 'draft') return;
-    if (!window.confirm(`Remove ${file.original_name} from this site update (${savedDraft.id})?`))
+    if (!file.can_delete || !savedDraft || savedDraft.status !== 'draft') return;
+    const label = file.restricted ? 'restricted evidence' : file.original_name ?? 'evidence file';
+    if (!window.confirm(`Remove ${label} from this site update (${savedDraft.id})?`))
       return;
     await updateMedia(async () => {
       await deletePhoto(file.id);
       setUploadedFiles((current) => current.filter((item) => item.id !== file.id));
-      setNotice(`${file.original_name} removed.`);
+      setNotice(`${label} removed.`);
     });
   }
 
   async function openFile(file: PhotoRecord, preview: boolean) {
+    if (file.restricted) return;
     setOpeningFile(true);
     setError(null);
     try {
@@ -552,6 +564,13 @@ export function SupervisorUpdatePage() {
             </Field>
 
             <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <EvidenceClassificationField
+                  disabled={isSaving}
+                  onChange={setEvidenceClassification}
+                  value={evidenceClassification}
+                />
+              </div>
               <div>
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium text-theme-text-secondary">
                   <Image className="h-4 w-4" />
@@ -604,14 +623,14 @@ export function SupervisorUpdatePage() {
                     key={file.id}
                   >
                     <div>
-                      <p>{file.original_name}</p>
+                      <p>{file.restricted ? 'Restricted evidence receipt' : file.original_name ?? 'Evidence file'}</p>
                       {file.mime_type === 'image/heic' && (
                         <p className="text-theme-text-muted">Original only</p>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge tone="success">{file.processing_status}</StatusBadge>
-                      {file.thumbnail_path && (
+                      <StatusBadge tone={file.restricted ? 'warning' : 'success'}>{file.processing_status}</StatusBadge>
+                      {!file.restricted && file.thumbnail_path && (
                         <button
                           className="form-field"
                           disabled={openingFile || isSaving}
@@ -621,15 +640,15 @@ export function SupervisorUpdatePage() {
                           Preview
                         </button>
                       )}
-                      <button
+                      {!file.restricted && <button
                         className="form-field"
                         disabled={openingFile || isSaving}
                         onClick={() => void openFile(file, false)}
                         type="button"
                       >
                         {file.mime_type === 'image/heic' ? 'Download original' : 'Open file'}
-                      </button>
-                      {savedDraft?.status === 'draft' ? (
+                      </button>}
+                      {file.can_delete && savedDraft?.status === 'draft' ? (
                         <button
                           className="form-field"
                           disabled={isSaving}

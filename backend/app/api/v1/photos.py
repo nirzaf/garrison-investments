@@ -1,12 +1,13 @@
 from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile, status
 
 from app.api.dependencies import CurrentUser, DbSession, require_permission
+from app.models.photo import Photo
 from app.models.user import User
-from app.schemas.documents import EvidenceClassificationRequest
+from app.schemas.documents import EvidenceClassificationReviewRequest
 from app.schemas.photos import (
     PhotoDecisionRequest,
     PhotoListResponse,
@@ -16,7 +17,11 @@ from app.schemas.photos import (
 from app.services.idempotency import validate_key
 from app.services.photo_service import PHOTO_RECOVERY_DAYS, SIGNED_URL_SECONDS, PhotoService
 from app.utils.exceptions import AppException
-from app.utils.permissions import PERMISSION_REPORTS_SUBMIT
+from app.utils.permissions import (
+    PERMISSION_FINANCIAL_VIEW,
+    PERMISSION_REPORTS_SUBMIT,
+    has_permission,
+)
 
 router = APIRouter(prefix="/photos", tags=["Photos"])
 CanSubmitReports = Annotated[User, Depends(require_permission(PERMISSION_REPORTS_SUBMIT))]
@@ -38,6 +43,9 @@ async def upload_files(
     entity_id: Annotated[UUID, Form()],
     kind: Annotated[str, Form()] = "photo",
     caption: Annotated[str | None, Form()] = None,
+    classification: Annotated[
+        Literal["unclassified", "operational", "financial"], Form()
+    ] = "unclassified",
     files: Annotated[list[UploadFile] | None, File()] = None,
     expected_report_revision: Annotated[
         int | None,
@@ -77,6 +85,7 @@ async def upload_files(
             status_code=422,
             error_code="INVALID_VERSIONED_UPLOAD",
         )
+    can_view_financial = has_permission(current_user, PERMISSION_FINANCIAL_VIEW)
     service = PhotoService(session)
     uploaded = [
         await service.upload(
@@ -86,6 +95,7 @@ async def upload_files(
             kind=kind,
             caption=caption,
             actor=current_user,
+            classification=classification,
             # One key per queue item: a multi-file request derives a stable key per file
             # so replaying the batch cannot duplicate any individual upload.
             idempotency_key=f"{base_key}:{index}" if base_key else None,
@@ -95,7 +105,43 @@ async def upload_files(
     ]
     if len(uploaded) == 1 and uploaded[0].report_revision is not None:
         response.headers["X-Report-Revision"] = str(uploaded[0].report_revision)
-    return [PhotoResponse.model_validate(photo) for photo in uploaded]
+    return [
+        _upload_response(photo, current_user, can_view_financial=can_view_financial)
+        for photo in uploaded
+    ]
+
+
+def _upload_response(
+    photo: Photo, actor: User, *, can_view_financial: bool | None = None
+) -> PhotoResponse:
+    return _project_photo(
+        photo, actor, can_delete=True, can_view_financial=can_view_financial
+    )
+
+
+def _project_photo(
+    photo: Photo,
+    actor: User,
+    *,
+    can_delete: bool,
+    can_view_financial: bool | None = None,
+) -> PhotoResponse:
+    if can_view_financial is None:
+        can_view_financial = has_permission(actor, PERMISSION_FINANCIAL_VIEW)
+    if photo.classification != "operational" and not can_view_financial:
+        return PhotoResponse(
+            id=photo.id,
+            entity_type=photo.entity_type,
+            entity_id=photo.entity_id,
+            kind=photo.kind,
+            classification=photo.classification,
+            uploaded_by=photo.uploaded_by,
+            processing_status="restricted",
+            can_delete=can_delete,
+            restricted=True,
+            updated_at=photo.updated_at,
+        )
+    return PhotoResponse.model_validate(photo).model_copy(update={"can_delete": can_delete})
 
 
 @router.get("", response_model=PhotoListResponse)
@@ -123,7 +169,7 @@ async def list_files(
         )
         return PhotoListResponse(
             items=[
-                PhotoResponse.model_validate(photo).model_copy(
+                _project_photo(photo, current_user, can_delete=False).model_copy(
                     update={
                         "recoverable_until": photo.deleted_at + timedelta(days=PHOTO_RECOVERY_DAYS)
                         if photo.deleted_at
@@ -154,9 +200,7 @@ async def list_files(
     deletable = await service.deletable_ids(photos, current_user)
     return PhotoListResponse(
         items=[
-            PhotoResponse.model_validate(photo).model_copy(
-                update={"can_delete": photo.id in deletable}
-            )
+            _project_photo(photo, current_user, can_delete=photo.id in deletable)
             for photo in photos
         ],
         total=total,
@@ -172,7 +216,7 @@ async def get_file(
 ) -> PhotoResponse:
     response.headers["Cache-Control"] = "no-store"
     photo = await PhotoService(session).get(photo_id, actor=current_user)
-    return PhotoResponse.model_validate(photo)
+    return _project_photo(photo, current_user, can_delete=False)
 
 
 @router.get("/{photo_id}/download", response_model=ProtectedFileUrlResponse)
@@ -202,14 +246,19 @@ async def get_thumbnail_url(
 @router.patch("/{photo_id}/classification", response_model=PhotoResponse)
 async def classify_photo(
     photo_id: UUID,
-    payload: EvidenceClassificationRequest,
+    payload: EvidenceClassificationReviewRequest,
     current_user: CurrentUser,
     session: DbSession,
     response: Response,
 ) -> PhotoResponse:
     response.headers["Cache-Control"] = "no-store"
     photo = await PhotoService(session).classify(
-        photo_id, payload.classification, payload.reason, current_user
+        photo_id,
+        payload.classification,
+        payload.reason,
+        current_user,
+        expected_classification=payload.expected_classification,
+        expected_updated_at=payload.expected_updated_at,
     )
     return PhotoResponse.model_validate(photo)
 

@@ -182,7 +182,11 @@ async def setup_project_team(
         supervisor_headers = {"Authorization": f"Bearer {supervisor_token}"}
         uploaded = await client.post(
             "/api/v1/photos/upload",
-            data={"entity_type": "supervisor_update", "entity_id": supervisor_update["id"]},
+                data={
+                    "entity_type": "supervisor_update",
+                    "entity_id": supervisor_update["id"],
+                    "classification": "operational",
+                },
             files={"files": ("progress.jpg", jpeg_bytes(), "image/jpeg")},
             headers=supervisor_headers,
         )

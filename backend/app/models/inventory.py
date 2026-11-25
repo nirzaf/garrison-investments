@@ -173,8 +173,10 @@ class MaterialRequest(TimestampMixin, SoftDeleteMixin, Base):
         )
     )
     correction_expected_revision: Mapped[int | None] = mapped_column(Integer)
-    total_estimated_cost: Mapped[Decimal | None] = mapped_column(
-        Numeric(14, 2), nullable=True
+    # For incomplete valuations this is only the known line subtotal. The API
+    # projection masks it rather than presenting it as a complete estimate.
+    total_estimated_cost: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, server_default=text("0")
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

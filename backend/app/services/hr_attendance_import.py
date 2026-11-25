@@ -13,6 +13,7 @@ from app.schemas.hr import (
     AttendanceImportPreviewResponse,
     AttendanceImportRowResponse,
 )
+from app.services.hr_payroll_snapshot import lock_payroll_periods
 from app.services.hr_workforce_service import HrWorkforceService
 from app.utils.exceptions import AppException
 
@@ -57,6 +58,7 @@ async def review_attendance_csv(
         .order_by(HrEmployee.id)
     )
     if expected_digest is not None:
+        await lock_payroll_periods(service.session)
         query = query.with_for_update().execution_options(populate_existing=True)
     employees = {
         employee.employee_code: employee for employee in await service.session.scalars(query)

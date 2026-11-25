@@ -3251,6 +3251,16 @@
       },
       "Body_upload_document_api_v1_documents_post": {
         "properties": {
+          "classification": {
+            "default": "unclassified",
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "document_type": {
             "title": "Document Type",
             "type": "string"
@@ -3299,6 +3309,16 @@
       },
       "Body_upload_document_version_api_v1_documents__document_id__versions_post": {
         "properties": {
+          "classification": {
+            "default": "unclassified",
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "file": {
             "contentMediaType": "application/octet-stream",
             "title": "File",
@@ -3323,6 +3343,16 @@
               }
             ],
             "title": "Caption"
+          },
+          "classification": {
+            "default": "unclassified",
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
           },
           "entity_id": {
             "format": "uuid",
@@ -6892,6 +6922,11 @@
             "title": "Title",
             "type": "string"
           },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
           "uploaded_by": {
             "anyOf": [
               {
@@ -6923,7 +6958,8 @@
           "metadata_json",
           "expiry_date",
           "uploaded_by",
-          "versions"
+          "versions",
+          "updated_at"
         ],
         "title": "DocumentResponse",
         "type": "object"
@@ -6964,6 +7000,15 @@
               }
             ],
             "title": "Approved By"
+          },
+          "classification": {
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
           },
           "document_id": {
             "format": "uuid",
@@ -7017,6 +7062,7 @@
           "document_id",
           "version",
           "status",
+          "classification",
           "storage_path",
           "original_name",
           "mime_type",
@@ -10094,7 +10140,7 @@
         "title": "ErrorDetail",
         "type": "object"
       },
-      "EvidenceClassificationRequest": {
+      "EvidenceClassificationReviewRequest": {
         "properties": {
           "classification": {
             "enum": [
@@ -10102,6 +10148,20 @@
               "financial"
             ],
             "title": "Classification",
+            "type": "string"
+          },
+          "expected_classification": {
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Expected Classification",
+            "type": "string"
+          },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
             "type": "string"
           },
           "reason": {
@@ -10113,9 +10173,40 @@
         },
         "required": [
           "classification",
+          "expected_classification",
+          "expected_updated_at",
           "reason"
         ],
-        "title": "EvidenceClassificationRequest",
+        "title": "EvidenceClassificationReviewRequest",
+        "type": "object"
+      },
+      "EvidenceUploadReceipt": {
+        "properties": {
+          "classification": {
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "restricted": {
+            "default": true,
+            "title": "Restricted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "classification"
+        ],
+        "title": "EvidenceUploadReceipt",
         "type": "object"
       },
       "ExpiringComplianceResponse": {
@@ -17317,6 +17408,21 @@
               }
             ],
             "title": "Total Estimated Cost"
+          },
+          "valuation_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "incomplete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Status"
           }
         },
         "required": [
@@ -17673,6 +17779,21 @@
               }
             ],
             "title": "Valuation Complete"
+          },
+          "valuation_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "complete",
+                  "incomplete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Status"
           }
         },
         "required": [
@@ -23639,8 +23760,15 @@
             "type": "string"
           },
           "filename": {
-            "title": "Filename",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
           },
           "height": {
             "anyOf": [
@@ -23663,12 +23791,26 @@
             "type": "string"
           },
           "mime_type": {
-            "title": "Mime Type",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
           },
           "original_name": {
-            "title": "Original Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
           },
           "processing_status": {
             "title": "Processing Status",
@@ -23686,13 +23828,32 @@
             ],
             "title": "Recoverable Until"
           },
+          "restricted": {
+            "default": false,
+            "title": "Restricted",
+            "type": "boolean"
+          },
           "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           },
           "storage_path": {
-            "title": "Storage Path",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Path"
           },
           "taken_at": {
             "anyOf": [
@@ -23716,6 +23877,11 @@
               }
             ],
             "title": "Thumbnail Path"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           },
           "uploaded_by": {
             "anyOf": [
@@ -23743,23 +23909,13 @@
         },
         "required": [
           "id",
-          "filename",
-          "original_name",
-          "storage_path",
-          "compressed_path",
-          "thumbnail_path",
-          "mime_type",
-          "size_bytes",
-          "width",
-          "height",
           "entity_type",
           "entity_id",
           "kind",
           "classification",
-          "caption",
-          "taken_at",
           "uploaded_by",
-          "processing_status"
+          "processing_status",
+          "updated_at"
         ],
         "title": "PhotoResponse",
         "type": "object"
@@ -28962,6 +29118,87 @@
         "title": "ShiftAssignmentResponse",
         "type": "object"
       },
+      "SiteAttendanceArrivalAssessment": {
+        "properties": {
+          "minutes_after_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes After Start"
+          },
+          "scheduled_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Start At"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "roster",
+                  "shift",
+                  "calendar"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "source_reference_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Reference Id"
+          },
+          "status": {
+            "enum": [
+              "on_time",
+              "after_scheduled_start",
+              "not_applicable",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SiteAttendanceArrivalAssessment",
+        "type": "object"
+      },
       "SiteAttendanceCompleteness": {
         "properties": {
           "confirmed_workers": {
@@ -28993,6 +29230,11 @@
           },
           "recorded_workers": {
             "title": "Recorded Workers",
+            "type": "integer"
+          },
+          "unresolved_workers": {
+            "default": 0,
+            "title": "Unresolved Workers",
             "type": "integer"
           }
         },
@@ -29072,6 +29314,11 @@
               }
             ],
             "title": "Historical Reason"
+          },
+          "historical_remediation": {
+            "default": false,
+            "title": "Historical Remediation",
+            "type": "boolean"
           },
           "notes": {
             "anyOf": [
@@ -29188,6 +29435,11 @@
               }
             ],
             "title": "Historical Reason"
+          },
+          "historical_remediation": {
+            "default": false,
+            "title": "Historical Remediation",
+            "type": "boolean"
           },
           "notes": {
             "anyOf": [
@@ -29325,9 +29577,52 @@
         "title": "SiteAttendancePageResponse",
         "type": "object"
       },
+      "SiteAttendanceProjectOption": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "status"
+        ],
+        "title": "SiteAttendanceProjectOption",
+        "type": "object"
+      },
       "SiteAttendanceRequirementsSnapshot": {
         "description": "Immutable submitted inputs plus the schedule and arrival assessment at submission time.",
         "properties": {
+          "arrival_assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SiteAttendanceArrivalAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "arrival_variance_seconds": {
             "anyOf": [
               {
@@ -29401,6 +29696,11 @@
               }
             ],
             "title": "Historical Reason"
+          },
+          "historical_remediation": {
+            "default": false,
+            "title": "Historical Remediation",
+            "type": "boolean"
           },
           "notes": {
             "anyOf": [
@@ -40449,7 +40749,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DocumentResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EvidenceUploadReceipt"
+                    }
+                  ],
+                  "title": "Response Upload Document Api V1 Documents Post"
                 }
               }
             },
@@ -40646,7 +40954,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EvidenceClassificationRequest"
+                "$ref": "#/components/schemas/EvidenceClassificationReviewRequest"
               }
             }
           },
@@ -40870,7 +41178,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DocumentResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EvidenceUploadReceipt"
+                    }
+                  ],
+                  "title": "Response Upload Document Version Api V1 Documents  Document Id  Versions Post"
                 }
               }
             },
@@ -58797,6 +59113,106 @@
         ]
       }
     },
+    "/api/v1/hr/site-attendance/project-options": {
+      "get": {
+        "operationId": "site_attendance_project_options_api_v1_hr_site_attendance_project_options_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "historical",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Historical",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SiteAttendanceProjectOption"
+                  },
+                  "title": "Response Site Attendance Project Options Api V1 Hr Site Attendance Project Options Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Site Attendance Project Options Api V1 Hr Site Attendance Project Options Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Site Attendance Project Options",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/site-attendance/workers": {
       "get": {
         "operationId": "list_site_attendance_workers_api_v1_hr_site_attendance_workers_get",
@@ -63670,7 +64086,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EvidenceClassificationRequest"
+                "$ref": "#/components/schemas/EvidenceClassificationReviewRequest"
               }
             }
           },

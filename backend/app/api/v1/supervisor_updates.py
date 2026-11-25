@@ -13,7 +13,9 @@ from app.schemas.supervisor_updates import (
     SupervisorUpdateSubmissionResponse,
     SupervisorUpdateSubmitRequest,
 )
+from app.services.evidence_classification import readable_photo_ids
 from app.services.reporting_service import ReportingService
+from app.utils.permissions import PERMISSION_FINANCIAL_VIEW, has_permission
 
 router = APIRouter(prefix="/supervisor-updates", tags=["Supervisor Updates"])
 
@@ -56,7 +58,8 @@ async def create_supervisor_update(
 
 
 @router.post(
-    "/{update_id}/correction", response_model=SupervisorUpdateResponse,
+    "/{update_id}/correction",
+    response_model=SupervisorUpdateResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def correct_verified_supervisor_update(
@@ -102,7 +105,21 @@ async def supervisor_submission_history(
     update_id: UUID, current_user: CurrentUser, session: DbSession
 ) -> list[SupervisorUpdateSubmissionResponse]:
     history = await ReportingService(session).supervisor_submission_history(update_id, current_user)
-    return [SupervisorUpdateSubmissionResponse.model_validate(row) for row in history]
+    responses = [SupervisorUpdateSubmissionResponse.model_validate(row) for row in history]
+    if has_permission(current_user, PERMISSION_FINANCIAL_VIEW):
+        return responses
+    photo_ids = [photo_id for response in responses for photo_id in response.evidence_ids]
+    visible_ids = set(await readable_photo_ids(session, photo_ids, current_user))
+    return [
+        response.model_copy(
+            update={
+                "evidence_ids": [
+                    photo_id for photo_id in response.evidence_ids if photo_id in visible_ids
+                ]
+            }
+        )
+        for response in responses
+    ]
 
 
 @router.put("/{update_id}", response_model=SupervisorUpdateResponse)

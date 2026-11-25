@@ -87,10 +87,12 @@ test('offline report photos and verified supervisor evidence survive rejection a
   await supervisorPage.getByLabel('Completed quantity', { exact: true }).fill('12.5');
   await supervisorPage.getByLabel('Quantity unit').fill('m²');
   await supervisorPage.getByLabel('Required notes').fill('Inspect again before concrete.');
+  await supervisorPage.getByLabel('Evidence classification').selectOption('operational');
   await supervisorPage.getByLabel(/Drop photos here or tap to use camera/).setInputFiles({
     name: 'supervisor-evidence.jpg', mimeType: 'image/jpeg', buffer: photo
   });
-  await expect(supervisorPage.getByText('1 file saved.', { exact: true })).toBeVisible();
+  await expect(supervisorPage.getByRole('listitem').filter({ hasText: 'supervisor-evidence.jpg' }))
+    .toBeVisible();
   await supervisorPage.getByRole('button', { name: 'Submit update' }).click();
   await expect(supervisorPage.getByText('Site update submitted.', { exact: true })).toBeVisible();
   await supervisorPage.close();
@@ -146,6 +148,7 @@ test('offline report photos and verified supervisor evidence survive rejection a
 
   const photosInput = page.getByLabel('Upload photos');
   const file = (name: string) => ({ name, mimeType: 'image/jpeg', buffer: photo });
+  await page.getByLabel('Evidence classification').selectOption('operational');
   await context.setOffline(true);
   try {
     await photosInput.setInputFiles([file('formwork.jpg'), file('site.jpg')]);
@@ -207,7 +210,14 @@ test('offline report photos and verified supervisor evidence survive rejection a
   }
   await page.reload();
   await expect(page.getByLabel('Next-day plan')).toHaveValue('Pour concrete after inspection.');
+  const submittedReport = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return /^\/api\/v1\/reports\/[^/]+\/submit$/.test(url.pathname) &&
+      response.request().method() === 'POST';
+  });
   await page.getByRole('button', { name: 'Submit report' }).click();
+  const submissionResponse = await submittedReport;
+  expect(submissionResponse.ok(), `Daily report submission returned ${submissionResponse.status()}`).toBeTruthy();
   await expect(page.getByText(/^Daily report .* submitted\.$/)).toBeVisible();
   const submitted = await getReports();
   expect(submitted.total).toBe(1);

@@ -68,7 +68,10 @@ requirements and the corresponding local gap-closure work.
   project-assignment evidence, retain both review stages, and continue to honor
   locked timesheet periods. Unknown material valuations remain null and are
   reported for manual review.
-- Documents and uploaded media use explicit, audited classifications. Historical
-  non-financial evidence remains restricted until reviewed; contracts and invoices
-  are classified as financial. Existing project/entity scope and `financial:view`
-  remain required. A read-only report identifies unclassified legacy evidence.
+- Documents and uploaded media use explicit, audited classifications. New uploads
+  default to restricted `unclassified`; the uploader can declare operational
+  evidence, while contracts and invoices are always financial. Unclassified and
+  financial metadata, previews and new download URLs require the existing scoped
+  `financial:view` grant. Non-financial depositors receive an opaque receipt.
+  Existing signed URLs remain usable until expiry. A read-only report identifies
+  unclassified legacy evidence for manual review.

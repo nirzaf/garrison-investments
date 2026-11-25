@@ -500,7 +500,7 @@ class InventoryService:
             request_number=f"MR-{sequence:05d}",
             project_id=project_id,
             requester_id=actor.id,
-            total_estimated_cost=None,
+            total_estimated_cost=Decimal("0"),
             lines=[],
         )
 
@@ -690,7 +690,7 @@ class InventoryService:
         request.status = "pending_engineer"
         request.draft_payload = None
         request.notes = payload.notes
-        request.total_estimated_cost = None
+        request.total_estimated_cost = Decimal("0")
         self.session.add(request)
         await self.session.flush()
         total = Decimal("0")
@@ -727,11 +727,14 @@ class InventoryService:
                 status_code=422,
                 error_code="MATERIAL_REQUEST_AMOUNT_TOO_LARGE",
             )
-        request.total_estimated_cost = total if valuation_complete else None
+        # Keep the known subtotal for internal reconciliation; response
+        # projections must not present it as a complete estimate.
+        request.total_estimated_cost = total
         snapshot = payload.model_dump(mode="json", exclude={"expected_revision", "reason"})
         snapshot["lines"] = line_snapshots
         snapshot["evidence_versions"] = evidence_versions
         snapshot["valuation_complete"] = valuation_complete
+        snapshot["valuation_status"] = "complete" if valuation_complete else "incomplete"
         evidence_owner_id = correction_draft.id if correction_draft else request.id
         snapshot["evidence_file_ids"] = [
             str(file_id)

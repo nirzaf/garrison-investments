@@ -1,6 +1,6 @@
 # document_versions
 
-Version-specific object-storage keys, file metadata, and approval status.
+Version-specific classification, object-storage keys, file metadata, and approval status.
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/document.py)
 
@@ -12,6 +12,7 @@ Version-specific object-storage keys, file metadata, and approval status.
 | `document_id` | `uuid` | No | — |
 | `version` | `integer` | No | — |
 | `status` | `varchar(20)` | No | `'pending_approval'` |
+| `classification` | `varchar(20)` | No | `'unclassified'` |
 | `storage_path` | `varchar(500)` | No | — |
 | `original_name` | `varchar(255)` | No | — |
 | `mime_type` | `varchar(80)` | No | — |
@@ -30,6 +31,7 @@ Version-specific object-storage keys, file metadata, and approval status.
 | --- | --- |
 | `pk_document_versions` | `PRIMARY KEY (id)` |
 | `ck_document_versions_ck_document_versions_status_valid` | `CHECK ((status IN ('pending_approval', 'active', 'superseded', 'rejected')))` |
+| `ck_document_versions_classification` | `CHECK (classification IN ('unclassified', 'operational', 'financial'))` |
 
 ## Foreign keys
 

@@ -47,6 +47,10 @@ import {
 import { businessDate } from '../../businessDate';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import {
+  EvidenceClassificationField,
+  type EvidenceClassification
+} from '../../components/evidence/EvidenceClassificationField';
 import { useAuth } from '../../context/useAuth';
 
 const storageFullMessage =
@@ -223,6 +227,7 @@ export function DailyReportPage() {
   const [photoNames, setPhotoNames] = useState('');
   const [attachmentNames, setAttachmentNames] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const [evidenceClassification, setEvidenceClassification] = useState<EvidenceClassification | ''>('');
   const [failedUpload, setFailedUpload] = useState<{
     entityId: string;
     items: MediaUploadIntent[];
@@ -861,6 +866,10 @@ export function DailyReportPage() {
 
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
     if (!scope || !files?.length || uploadInProgress.current) return;
+    if (!evidenceClassification) {
+      setError('Select an evidence classification before uploading.');
+      return;
+    }
     uploadInProgress.current = true;
     setUploadPending(true);
     setError(null);
@@ -873,7 +882,8 @@ export function DailyReportPage() {
       const { items, errors } = await prepareMediaFiles(
         selection,
         kind,
-        MAX_REPORT_PHOTOS - serverPhotos - queued
+        MAX_REPORT_PHOTOS - serverPhotos - queued,
+        evidenceClassification
       );
       if (errors.length) setError(errors.join(' '));
       if (!items.length) return;
@@ -889,6 +899,7 @@ export function DailyReportPage() {
             entityId,
             localDraftId,
             kind: entry.kind,
+            classification: entry.classification,
             files: [entry.file]
           });
           if (saved) queuedFilesCount += 1;
@@ -1545,6 +1556,11 @@ export function DailyReportPage() {
               {queuedDraftPhotos > 0 ? ` · ${queuedDraftPhotos} photos queued for this draft` : ''}.
               JPEG, PNG and HEIC photos or PDF, JPEG and PNG attachments, up to 10 MiB per file.
             </p>
+            <EvidenceClassificationField
+              disabled={isSaving || uploadPending}
+              onChange={setEvidenceClassification}
+              value={evidenceClassification}
+            />
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Upload photos">
                 <input
@@ -1618,8 +1634,8 @@ export function DailyReportPage() {
                     className="flex items-center justify-between rounded-md border border-theme-border px-3 py-2"
                     key={file.id}
                   >
-                    <span>{file.original_name}</span>
-                    <StatusBadge tone="success">{file.processing_status}</StatusBadge>
+                    <span>{file.restricted ? 'Restricted evidence receipt' : file.original_name ?? 'Evidence file'}</span>
+                    <StatusBadge tone={file.restricted ? 'warning' : 'success'}>{file.processing_status}</StatusBadge>
                   </div>
                 ))}
               </div>

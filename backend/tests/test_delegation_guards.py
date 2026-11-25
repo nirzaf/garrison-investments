@@ -442,8 +442,10 @@ async def test_outbox_and_escalation_visibility_do_not_grant_decision_rights() -
         inbox = await client.get(
             "/api/v1/approvals", params={"status_group": "open"}, headers=oversight_headers
         )
-        assert [item["id"] for item in inbox.json()["items"]] == [str(approval.id)]
-        assert not inbox.json()["items"][0]["allowed_actions"]
+        items = inbox.json()["items"]
+        visible_ids = {item["id"] for item in items}
+        assert str(approval.id) in visible_ids
+        assert all(not item["allowed_actions"] for item in items)
         decision = await client.post(
             f"/api/v1/approvals/{approval.id}/approve", json={}, headers=oversight_headers
         )

@@ -7,7 +7,8 @@ from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.database import engine
+from app.database import AsyncSessionLocal, engine
+from app.models.document import DocumentVersion
 from app.models.user import User
 from app.repositories.document_repository import DocumentRepository
 from app.services.document_service import DocumentService
@@ -81,7 +82,12 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         for item in documents:
             classified = await client.patch(
                 f"/api/v1/documents/{item['id']}/classification",
-                json={"classification": "operational", "reason": "Verified WIR evidence."},
+                json={
+                    "classification": "operational",
+                    "expected_classification": item["classification"],
+                    "expected_updated_at": item["updated_at"],
+                    "reason": "Verified WIR evidence.",
+                },
                 headers=approver_headers,
             )
             assert classified.status_code == 200, classified.text
@@ -121,6 +127,7 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
 
         version_response = await client.post(
             f"/api/v1/documents/{document['id']}/versions",
+            data={"classification": "operational"},
             files={"file": ("wir-rev2.pdf", pdf_bytes("v2"), "application/pdf")},
             headers=uploader_headers,
         )
@@ -198,7 +205,12 @@ async def test_document_search_finds_uploaded_metadata() -> None:
         reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
         classified = await client.patch(
             f"/api/v1/documents/{uploaded.json()['id']}/classification",
-            json={"classification": "operational", "reason": "Verified delivery note."},
+            json={
+                "classification": "operational",
+                "expected_classification": uploaded.json()["classification"],
+                "expected_updated_at": uploaded.json()["updated_at"],
+                "reason": "Verified delivery note.",
+            },
             headers={"Authorization": f"Bearer {reviewer_token}"},
         )
         assert classified.status_code == 200, classified.text
@@ -362,7 +374,7 @@ async def test_unclassified_documents_are_restricted_until_independent_review() 
         document = uploaded.json()
         assert document["classification"] == "unclassified"
 
-        manager = {"Authorization": f"Bearer {team['manager_token']}"}
+        manager = {"Authorization": f"Bearer {team['supervisor_token']}"}
         for path in (
             f"/api/v1/documents/{document['id']}",
             f"/api/v1/documents/{document['id']}/download",
@@ -376,7 +388,12 @@ async def test_unclassified_documents_are_restricted_until_independent_review() 
 
         denied_review = await client.patch(
             f"/api/v1/documents/{document['id']}/classification",
-            json={"classification": "operational", "reason": "Reviewed"},
+            json={
+                "classification": "operational",
+                "expected_classification": document["classification"],
+                "expected_updated_at": document["updated_at"],
+                "reason": "Reviewed",
+            },
             headers=manager,
         )
         assert denied_review.status_code == 403
@@ -386,7 +403,12 @@ async def test_unclassified_documents_are_restricted_until_independent_review() 
         reviewer = {"Authorization": f"Bearer {reviewer_token}"}
         reviewed = await client.patch(
             f"/api/v1/documents/{document['id']}/classification",
-            json={"classification": "operational", "reason": "Verified site evidence."},
+            json={
+                "classification": "operational",
+                "expected_classification": document["classification"],
+                "expected_updated_at": document["updated_at"],
+                "reason": "Verified site evidence.",
+            },
             headers=reviewer,
         )
         assert reviewed.status_code == 200, reviewed.text
@@ -399,7 +421,12 @@ async def test_unclassified_documents_are_restricted_until_independent_review() 
 
         duplicate = await client.patch(
             f"/api/v1/documents/{document['id']}/classification",
-            json={"classification": "financial", "reason": "Second review."},
+            json={
+                "classification": "operational",
+                "expected_classification": reviewed.json()["classification"],
+                "expected_updated_at": reviewed.json()["updated_at"],
+                "reason": "Second review.",
+            },
             headers=reviewer,
         )
         assert duplicate.status_code == 409
@@ -422,3 +449,86 @@ async def test_unclassified_documents_are_restricted_until_independent_review() 
             headers={"Authorization": f"Bearer {team['supervisor_token']}"},
         )
         assert manager_invoice.status_code == 404
+
+
+async def test_restricted_document_version_keeps_parent_fail_closed() -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        team = await setup_project_team(client)
+        uploader = {"Authorization": f"Bearer {team['op_token']}"}
+        uploaded = await client.post(
+            "/api/v1/documents",
+            data={
+                "title": "Mixed Classification Version",
+                "document_type": "wir",
+                "project_id": team["project_id"],
+            },
+            files={"file": ("mixed.pdf", pdf_bytes(), "application/pdf")},
+            headers=uploader,
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        document = uploaded.json()
+        version_id = UUID(document["versions"][0]["id"])
+        async with AsyncSessionLocal.begin() as session:
+            version = await session.get(DocumentVersion, version_id)
+            assert version is not None
+            version.classification = "financial"
+
+        supervisor = {"Authorization": f"Bearer {team['supervisor_token']}"}
+        for path in (
+            f"/api/v1/documents/{document['id']}",
+            f"/api/v1/documents/{document['id']}/versions",
+            f"/api/v1/documents/{document['id']}/download",
+        ):
+            denied = await client.get(path, headers=supervisor)
+            assert denied.status_code == 404, (path, denied.text)
+        listed = await client.get("/api/v1/documents", headers=supervisor)
+        assert document["id"] not in {item["id"] for item in listed.json()["items"]}
+
+        reviewer_email, reviewer_password = await create_user("managing_director")
+        reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+        stale_downgrade = await client.patch(
+            f"/api/v1/documents/{document['id']}/classification",
+            json={
+                "classification": "operational",
+                "expected_classification": "unclassified",
+                "expected_updated_at": document["updated_at"],
+                "reason": "Review version classifications.",
+            },
+            headers={"Authorization": f"Bearer {reviewer_token}"},
+        )
+        assert stale_downgrade.status_code == 422, stale_downgrade.text
+        assert stale_downgrade.json()["error_code"] == "EVIDENCE_CLASSIFICATION_INVALID"
+        financial_read = await client.get(
+            f"/api/v1/documents/{document['id']}",
+            headers={"Authorization": f"Bearer {reviewer_token}"},
+        )
+        assert financial_read.status_code == 200, financial_read.text
+        assert financial_read.json()["versions"][0]["classification"] == "financial"
+
+        operational_upload = await client.post(
+            "/api/v1/documents",
+            data={
+                "title": "Version Restriction Filter",
+                "document_type": "wir",
+                "project_id": team["project_id"],
+                "classification": "operational",
+            },
+            files={"file": ("filter.pdf", pdf_bytes(), "application/pdf")},
+            headers=uploader,
+        )
+        assert operational_upload.status_code == 201, operational_upload.text
+        operational_document = operational_upload.json()
+        operational_version_id = UUID(operational_document["versions"][0]["id"])
+        async with AsyncSessionLocal.begin() as session:
+            version = await session.get(DocumentVersion, operational_version_id)
+            assert version is not None
+            version.classification = "financial"
+        direct_denial = await client.get(
+            f"/api/v1/documents/{operational_document['id']}", headers=supervisor
+        )
+        assert direct_denial.status_code == 404, direct_denial.text
+        listed = await client.get("/api/v1/documents", headers=supervisor)
+        assert operational_document["id"] not in {
+            item["id"] for item in listed.json()["items"]
+        }

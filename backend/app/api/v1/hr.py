@@ -275,6 +275,7 @@ from app.schemas.hr import (
     SiteAttendanceCreateRequest,
     SiteAttendanceDecisionRequest,
     SiteAttendancePageResponse,
+    SiteAttendanceProjectOption,
     SiteAttendanceResponse,
     SiteAttendanceSubmissionResponse,
     SiteAttendanceWorkerPage,
@@ -3775,6 +3776,20 @@ async def list_site_attendance_workers(
     return await HrSiteAttendanceService(session).list_workers(
         project_id, work_date, actor, search=search, limit=limit, offset=offset,
         historical=historical,
+    )
+
+
+@router.get("/site-attendance/project-options", response_model=list[SiteAttendanceProjectOption])
+async def site_attendance_project_options(
+    actor: CurrentUser,
+    session: DbSession,
+    historical: bool = False,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[SiteAttendanceProjectOption]:
+    return await HrSiteAttendanceService(session).project_options(
+        actor, historical=historical, search=search, limit=limit, offset=offset
     )
 
 

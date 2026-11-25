@@ -77,14 +77,16 @@ class DocumentRepository:
             query = query.where(classification_filter)
         if exclude_document_types:
             query = query.where(
-                func.lower(Document.document_type).notin_(
+                func.lower(func.trim(Document.document_type)).notin_(
                     {value.lower() for value in exclude_document_types}
                 )
             )
         if project_id:
             query = query.where(Document.project_id == project_id)
         if document_type:
-            query = query.where(func.lower(Document.document_type) == document_type.strip().lower())
+            query = query.where(
+                func.lower(func.trim(Document.document_type)) == document_type.strip().lower()
+            )
         if search:
             clean = search.strip()
             if clean:

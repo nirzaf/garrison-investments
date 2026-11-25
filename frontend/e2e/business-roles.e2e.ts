@@ -387,10 +387,23 @@ test('site registration posts stock only after assigned engineer review and mate
       ['-c', 'import sys; from tests.test_photos import jpeg_bytes; sys.stdout.buffer.write(jpeg_bytes())'],
       { cwd: BACKEND_DIR }
     );
+    await page.getByLabel('Evidence classification').selectOption('unclassified');
+    const restrictedUpload = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/photos/upload') && response.request().method() === 'POST'
+    );
     await page.getByLabel('Item photographs').setInputFiles({
       name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: jpg
     });
-    await expect(page.getByRole('button', { name: 'receipt.jpg', exact: true })).toBeVisible();
+    const restrictedUploadResponse = await restrictedUpload;
+    expect(restrictedUploadResponse.status()).toBe(201);
+    const [restrictedReceipt] = await restrictedUploadResponse.json();
+    expect(restrictedReceipt).toMatchObject({ restricted: true, original_name: null });
+    await expect(page.getByRole('button', { name: 'receipt.jpg', exact: true })).toHaveCount(0);
+    await page.getByLabel('Evidence classification').selectOption('operational');
+    await page.getByLabel('Item photographs').setInputFiles({
+      name: 'site-evidence.jpg', mimeType: 'image/jpeg', buffer: jpg
+    });
+    await expect(page.getByRole('button', { name: 'site-evidence.jpg', exact: true })).toBeVisible();
     await submit.click();
     await expect(draft).toContainText('pending engineer');
 
@@ -439,12 +452,14 @@ test('site registration posts stock only after assigned engineer review and mate
     await materialArticle.getByRole('button', { name: 'Resume draft' }).click();
     await expect(materialArticle.getByLabel('Purpose and work scope')).toHaveValue('Site test');
     await expect(materialArticle.getByLabel('Quantity 1', { exact: true })).toHaveValue('2');
+    await materialArticle.getByLabel('Evidence classification').selectOption('operational');
     await materialArticle.getByLabel('Upload request evidence').setInputFiles({
       name: 'material-evidence.jpg',
       mimeType: 'image/jpeg',
       buffer: readFileSync(new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url))
     });
-    await expect(materialArticle.getByRole('button', { name: 'Remove material-evidence.jpg' })).toBeVisible();
+    await expect(materialArticle.getByRole('button', { name: 'Remove evidence', exact: true }))
+      .toBeVisible();
     const submitted = page.waitForResponse((response) =>
       /\/inventory\/requests\/[^/]+\/resubmit$/.test(response.url()) && response.request().method() === 'POST'
     );
@@ -562,6 +577,14 @@ test('quantity_surveyor submits daily reports via report-options without reports
     await qsPage.getByRole('button', { name: 'Save draft' }).click();
     await expect(qsPage.getByText('Daily report draft saved.', { exact: true })).toBeVisible();
 
+    await qsPage.getByLabel('Evidence classification').selectOption('operational');
+    await qsPage.getByLabel('Upload photos').setInputFiles({
+      name: 'quantity-check.jpg',
+      mimeType: 'image/jpeg',
+      buffer: readFileSync(new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url))
+    });
+    await expect(qsPage.getByText('1 of 5 photos saved.')).toBeVisible();
+
     await qsPage.getByRole('button', { name: 'Submit report' }).click();
     await expect(
       qsPage.getByRole('status').filter({ hasText: /^Daily report .+ submitted\.$/ })
@@ -624,11 +647,12 @@ test('supervisors navigate to supervisor updates via report-options including mo
     await mobilePage.getByLabel('Progress notes').fill('Completed slab formwork check.');
     await mobilePage.getByLabel('Remaining work').fill('Review the spacers.');
     await mobilePage.getByLabel('Required notes').fill('Rebar spacer inspection before pour.');
+    await mobilePage.getByLabel('Evidence classification').selectOption('operational');
     await mobilePage.getByLabel(/Drop photos here or tap to use camera/).setInputFiles({
       name: 'slab.jpg', mimeType: 'image/jpeg',
       buffer: readFileSync(new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url))
     });
-    await expect(mobilePage.getByText('1 file saved.', { exact: true })).toBeVisible();
+    await expect(mobilePage.getByRole('listitem').filter({ hasText: 'slab.jpg' })).toBeVisible();
     await mobilePage.getByRole('button', { name: 'Submit update' }).click();
     await expect(mobilePage.getByText('Site update submitted.', { exact: true })).toBeVisible();
   } finally {

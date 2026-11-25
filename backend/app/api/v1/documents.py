@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile, status
@@ -11,14 +11,21 @@ from app.schemas.documents import (
     DocumentDownloadResponse,
     DocumentListResponse,
     DocumentResponse,
+    DocumentUploadResponse,
     DocumentVersionResponse,
-    EvidenceClassificationRequest,
+    EvidenceClassificationReviewRequest,
+    EvidenceUploadReceipt,
 )
 from app.schemas.projects import ProjectOption, ProjectOptionListResponse
 from app.services.document_service import SIGNED_URL_SECONDS, DocumentService
 from app.services.idempotency import validate_key
 from app.services.project_service import ProjectService
-from app.utils.permissions import PERMISSION_DOCUMENTS_MANAGE, PERMISSION_DOCUMENTS_VIEW
+from app.utils.permissions import (
+    PERMISSION_DOCUMENTS_MANAGE,
+    PERMISSION_DOCUMENTS_VIEW,
+    PERMISSION_FINANCIAL_VIEW,
+    has_permission,
+)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 CanManageDocuments = Annotated[User, Depends(require_permission(PERMISSION_DOCUMENTS_MANAGE))]
@@ -67,7 +74,7 @@ async def list_documents(
     )
 
 
-@router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     current_user: CanManageDocuments,
     session: DbSession,
@@ -77,8 +84,12 @@ async def upload_document(
     file: Annotated[UploadFile, File()],
     project_id: Annotated[UUID | None, Form()] = None,
     expiry_date: Annotated[date | None, Form()] = None,
-) -> DocumentResponse:
+    classification: Annotated[Literal["unclassified", "operational", "financial"], Form()] = (
+        "unclassified"
+    ),
+) -> DocumentUploadResponse:
     response.headers["Cache-Control"] = "no-store"
+    can_view_financial = has_permission(current_user, PERMISSION_FINANCIAL_VIEW)
     document = await DocumentService(session).upload_document(
         title=title,
         document_type=document_type,
@@ -86,7 +97,13 @@ async def upload_document(
         expiry_date=expiry_date,
         file=file,
         actor=current_user,
+        classification=classification,
     )
+    if not can_view_financial and (
+        document.classification != "operational"
+        or document.document_type.strip().lower() in {"contract", "invoice"}
+    ):
+        return EvidenceUploadReceipt(id=document.id, classification=document.classification)
     return DocumentResponse.model_validate(document)
 
 
@@ -102,19 +119,32 @@ async def get_document(
     return DocumentResponse.model_validate(document)
 
 
-@router.post("/{document_id}/versions", response_model=DocumentResponse)
+@router.post("/{document_id}/versions", response_model=DocumentUploadResponse)
 async def upload_document_version(
     document_id: UUID,
     current_user: CanManageDocuments,
     session: DbSession,
     response: Response,
     file: Annotated[UploadFile, File()],
+    classification: Annotated[Literal["unclassified", "operational", "financial"], Form()] = (
+        "unclassified"
+    ),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> DocumentResponse:
+) -> DocumentUploadResponse:
     response.headers["Cache-Control"] = "no-store"
+    can_view_financial = has_permission(current_user, PERMISSION_FINANCIAL_VIEW)
     document = await DocumentService(session).upload_version(
-        document_id, file, current_user, validate_key(idempotency_key)
+        document_id,
+        file,
+        current_user,
+        classification=classification,
+        idempotency_key=validate_key(idempotency_key),
     )
+    if not can_view_financial and (
+        document.classification != "operational"
+        or document.document_type.strip().lower() in {"contract", "invoice"}
+    ):
+        return EvidenceUploadReceipt(id=document.id, classification=document.classification)
     return DocumentResponse.model_validate(document)
 
 
@@ -173,13 +203,18 @@ async def get_document_download_url(
 @router.patch("/{document_id}/classification", response_model=DocumentResponse)
 async def classify_document(
     document_id: UUID,
-    payload: EvidenceClassificationRequest,
+    payload: EvidenceClassificationReviewRequest,
     current_user: CurrentUser,
     session: DbSession,
     response: Response,
 ) -> DocumentResponse:
     response.headers["Cache-Control"] = "no-store"
     document = await DocumentService(session).classify_document(
-        document_id, payload.classification, payload.reason, current_user
+        document_id,
+        payload.classification,
+        payload.reason,
+        current_user,
+        expected_classification=payload.expected_classification,
+        expected_updated_at=payload.expected_updated_at,
     )
     return DocumentResponse.model_validate(document)

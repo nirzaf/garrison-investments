@@ -5,7 +5,7 @@ Document metadata, optional project association, evidence classification, expiry
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/document.py)
 
 `active_version` is the selected version number within the document. See [document versions](document_versions.md) and the [document service](../../backend/app/services/document_service.py) for version selection.
-`classification` is `unclassified`, `operational`, or `financial`. New non-financial documents start unclassified; existing contracts and invoices are backfilled as financial. Review is reasoned, independent, audited, and does not change existing project scope. Financial evidence requires `financial:view`; unclassified evidence is visible only to its uploader or a reviewer with `documents:manage`.
+`classification` is `unclassified`, `operational`, or `financial`. New uploads default to unclassified; canonical contract and invoice types are always financial. Each version also stores its classification, and the parent document retains the most restrictive classification across its versions. An independent, in-scope director with `documents:manage` and `financial:view` can review unclassified evidence with a reason. Unclassified and financial metadata and content require `financial:view` plus the existing document scope; an uploader without that grant receives an opaque receipt only.
 
 ## Columns
 

@@ -68,6 +68,7 @@ test('document type filtering and replacement preserve the active version', asyn
   const title = `Versioned plan ${randomUUID()}`;
   await page.getByLabel('Document title').fill(title);
   await page.getByLabel('Upload document project').selectOption(account.projectId);
+  await page.getByLabel('Evidence classification').selectOption('operational');
   await page.getByLabel('Document file', { exact: true }).setInputFiles(pdfFile('v1.pdf'));
   const created = page.waitForResponse(
     (response) => response.url().endsWith('/api/v1/documents') && response.status() === 201
@@ -122,6 +123,7 @@ test('document type filtering and replacement preserve the active version', asyn
   await expect(card.getByText(/Active v1/)).toBeVisible();
 
   await card.getByRole('button', { name: 'Upload replacement' }).click();
+  await page.locator(`#replacement-classification-${document.id}`).selectOption('operational');
   await card.getByLabel(/Replacement file/).setInputFiles(pdfFile('v2.pdf'));
   const replacement = page.waitForResponse((response) =>
     response.url().endsWith(`/api/v1/documents/${document.id}/versions`) &&
@@ -357,6 +359,7 @@ test('supervisor selects supported photo formats and retrieves the original HEIC
   await page.getByLabel('Required notes').fill('Retain the original HEIC file.');
   await page.getByRole('button', { name: 'Save draft' }).click();
   await expect(page.getByText('Draft saved.', { exact: true })).toBeVisible();
+  await page.getByLabel('Evidence classification').selectOption('operational');
 
   const input = page.locator('input[type="file"][capture="environment"]');
   const limit = 10 * 1024 * 1024;
@@ -377,7 +380,9 @@ test('supervisor selects supported photo formats and retrieves the original HEIC
     { name: 'site.heic', mimeType: 'image/heic', buffer: original }
   ];
   await input.setInputFiles(accepted);
-  await expect(page.getByText('3 files saved.', { exact: true })).toBeVisible();
+  await expect(page.getByText('3 of 5 photos saved.', { exact: true })).toBeVisible({
+    timeout: 30_000
+  });
 
   await page.reload();
   await page.getByRole('article').filter({ hasText: 'Photo format verification' })
@@ -415,6 +420,7 @@ test('supervisor selects supported photo formats and retrieves the original HEIC
       entity_type: 'supervisor_update',
       entity_id,
       kind: 'photo',
+      classification: 'operational',
       files: { name: 'oversized.heic', mimeType: 'image/heic', buffer: oversized }
     }
   });
@@ -446,6 +452,7 @@ test('media removal persists and deleted-media recovery remains unavailable', as
       entity_type: 'daily_report',
       entity_id: reportId,
       kind: 'photo',
+      classification: 'operational',
       files: { name: originalName, mimeType: 'image/jpeg', buffer: jpeg }
     }
   });

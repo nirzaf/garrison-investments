@@ -83,7 +83,13 @@ export function PhotosPage() {
     setError('');
     setNotice('');
     try {
-      await classifyPhoto(classificationTarget.id, classification, classificationReason);
+      await classifyPhoto(
+        classificationTarget.id,
+        classification,
+        classificationReason,
+        classificationTarget.classification,
+        classificationTarget.updated_at
+      );
       setClassificationTarget(null);
       setClassificationReason('');
       setNotice('Evidence classification reviewed.');
@@ -140,7 +146,9 @@ export function PhotosPage() {
                 <div>
                   <p className="font-medium text-theme-text-primary">{photo.original_name}</p>
                   <p className="text-theme-text-muted">
-                    {owner} · {photo.kind} · {(photo.size_bytes / 1024 / 1024).toFixed(2)} MiB
+                    {owner} · {photo.kind} · {photo.size_bytes == null
+                      ? 'Restricted upload'
+                      : `${(photo.size_bytes / 1024 / 1024).toFixed(2)} MiB`}
                   </p>
                   <p className="text-theme-text-muted">
                     {photo.classification === 'unclassified' ? 'Unclassified · restricted' : `${photo.classification} evidence`}
@@ -229,7 +237,7 @@ export function PhotosPage() {
       {classificationTarget ? (
         <div aria-labelledby="photo-classification-title" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" role="dialog">
           <form className="w-full max-w-lg space-y-4 rounded-lg bg-theme-card p-5" onSubmit={reviewClassification}>
-            <h3 className="font-semibold" id="photo-classification-title">Review {classificationTarget.original_name}</h3>
+            <h3 className="font-semibold" id="photo-classification-title">Review {classificationTarget.original_name ?? 'evidence'}</h3>
             <p className="text-sm text-theme-text-secondary">The original, metadata and previews remain restricted until classification is reviewed.</p>
             <label className="block space-y-1 text-sm">
               <span>Classification</span>

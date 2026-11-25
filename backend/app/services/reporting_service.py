@@ -331,6 +331,7 @@ class ReportingService:
                     Photo.uploaded_by == actor.id,
                     Photo.deleted_at.is_(None),
                     Photo.processing_status == "ready",
+                    Photo.classification == "operational",
                 )
                 .order_by(Photo.created_at, Photo.id)
             )

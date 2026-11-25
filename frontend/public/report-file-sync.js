@@ -56,7 +56,8 @@ export function sameUploadIntent(left, right) {
   return (
     left?.reportId === right.reportId &&
     left.expectedRevision === right.expectedRevision &&
-    left.kind === right.kind
+    left.kind === right.kind &&
+    (left.classification ?? 'unclassified') === (right.classification ?? 'unclassified')
   );
 }
 

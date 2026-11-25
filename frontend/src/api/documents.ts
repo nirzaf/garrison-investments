@@ -5,6 +5,9 @@ import type { components } from './schema';
 export type DocumentVersionRecord = components['schemas']['DocumentVersionResponse'];
 
 export type DocumentRecord = components['schemas']['DocumentResponse'];
+export type DocumentUploadResult =
+  | DocumentRecord
+  | components['schemas']['EvidenceUploadReceipt'];
 
 export type DocumentListResponse = components['schemas']['DocumentListResponse'];
 export type DocumentDownloadUrl = components['schemas']['DocumentDownloadResponse'];
@@ -31,12 +34,14 @@ export async function uploadDocument(params: {
   projectId?: string;
   expiryDate?: string;
   file: File;
-}): Promise<DocumentRecord> {
+  classification: 'unclassified' | 'operational' | 'financial';
+}): Promise<DocumentUploadResult> {
   const formData = new FormData();
   formData.append('title', params.title);
   formData.append('document_type', params.documentType);
   if (params.projectId) formData.append('project_id', params.projectId);
   if (params.expiryDate) formData.append('expiry_date', params.expiryDate);
+  formData.append('classification', params.classification);
   formData.append('file', params.file);
   const response = await apiClient.post<DocumentRecord>('/documents', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
@@ -59,21 +64,36 @@ export async function approveDocumentVersion(params: {
 export async function classifyDocument(
   documentId: string,
   classification: 'operational' | 'financial',
-  reason: string
+  reason: string,
+  expectedClassification: 'unclassified' | 'operational' | 'financial',
+  expectedUpdatedAt: string
 ): Promise<DocumentRecord> {
   const response = await apiClient.patch<DocumentRecord>(
     `/documents/${documentId}/classification`,
-    { classification, reason }
+    {
+      classification,
+      reason,
+      expected_classification: expectedClassification,
+      expected_updated_at: expectedUpdatedAt
+    }
   );
   return response.data;
 }
 
-export async function uploadDocumentVersion(documentId: string, file: File, idempotencyKey: string) {
+export async function uploadDocumentVersion(
+  documentId: string,
+  file: File,
+  idempotencyKey: string,
+  classification: 'unclassified' | 'operational' | 'financial'
+) {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await apiClient.post<DocumentRecord>(`/documents/${documentId}/versions`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data', 'Idempotency-Key': idempotencyKey }
-  });
+  formData.append('classification', classification);
+  const response = await apiClient.post<DocumentUploadResult>(
+    `/documents/${documentId}/versions`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data', 'Idempotency-Key': idempotencyKey } }
+  );
   return response.data;
 }
 

@@ -223,6 +223,7 @@ class MaterialSubmissionSnapshot(BaseModel):
     evidence_versions: dict[str, int]
     evidence_file_ids: list[UUID] = Field(default_factory=list)
     valuation_complete: bool | None = None
+    valuation_status: Literal["complete", "incomplete"] | None = None
     approval_stages: list[int] = Field(default_factory=lambda: [1, 2])
 
 
@@ -278,6 +279,7 @@ class MaterialRequestResponse(BaseModel):
     revision: int
     submission_revision: int | None = None
     total_estimated_cost: Decimal | None
+    valuation_status: Literal["complete", "incomplete"] | None = None
     notes: str | None
     lines: list[MaterialRequestLineResponse]
     draft_payload: MaterialDraftPayload | None = None

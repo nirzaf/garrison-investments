@@ -4,6 +4,7 @@ import type { components } from './schema';
 export type SiteAttendanceRecord = components['schemas']['SiteAttendanceResponse'];
 export type SiteAttendanceDraft = components['schemas']['SiteAttendanceCreateRequest'];
 export type SiteAttendanceWorker = components['schemas']['SiteAttendanceWorker'];
+export type SiteAttendanceProjectOption = components['schemas']['SiteAttendanceProjectOption'];
 
 export async function getSiteAttendanceCompleteness(params: {
   project_id: string; work_date: string; limit: number; offset: number;
@@ -12,6 +13,15 @@ export async function getSiteAttendanceCompleteness(params: {
     '/hr/site-attendance/completeness', { params }
   );
   return data;
+}
+
+export async function listSiteAttendanceProjectOptions(params: {
+  historical: boolean; search?: string; limit: number; offset: number;
+}) {
+  const { data } = await apiClient.get<SiteAttendanceProjectOption[]>(
+    '/hr/site-attendance/project-options', { params }
+  );
+  return { items: data, total: data.length };
 }
 
 export async function listSiteAttendance(params: {

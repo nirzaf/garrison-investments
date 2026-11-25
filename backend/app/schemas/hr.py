@@ -3512,6 +3512,7 @@ class SiteAttendanceCreateRequest(BaseModel):
     worked_hours: Decimal = Field(ge=0, le=24, decimal_places=2)
     overtime_hours: Decimal = Field(default=Decimal("0"), ge=0, le=24, decimal_places=2)
     notes: str | None = Field(default=None, max_length=2000)
+    historical_remediation: bool = False
     historical_reason: str | None = Field(default=None, min_length=2, max_length=500)
 
     @model_validator(mode="after")
@@ -3524,6 +3525,12 @@ class SiteAttendanceCreateRequest(BaseModel):
             raise ValueError("Arrival times and worked hours are for present workers only.")
         if self.historical_reason is not None and len(self.historical_reason.strip()) < 2:
             raise ValueError("Enter a reason for recording historical attendance.")
+        if self.historical_reason is not None and not self.historical_remediation:
+            # Older clients opted in by supplying a reason. Preserve that request
+            # contract while making the mode explicit in all new snapshots.
+            object.__setattr__(self, "historical_remediation", True)
+        if self.historical_remediation and self.historical_reason is None:
+            raise ValueError("A reason is required for historical attendance.")
         return self
 
 
@@ -3556,9 +3563,17 @@ class SiteAttendanceCompleteness(BaseModel):
     recorded_workers: int
     missing_workers: int
     confirmed_workers: int
+    unresolved_workers: int = 0
     is_complete: bool
     empty_roster: bool
     items: list[SiteAttendanceWorker]
+
+
+class SiteAttendanceProjectOption(BaseModel):
+    id: UUID
+    code: str
+    name: str
+    status: Literal["active", "completed"]
 
 
 class SiteAttendanceWorkerPage(BaseModel):
@@ -3566,11 +3581,21 @@ class SiteAttendanceWorkerPage(BaseModel):
     total: int
 
 
+class SiteAttendanceArrivalAssessment(BaseModel):
+    scheduled_start_at: datetime | None = None
+    timezone: str | None = None
+    source: Literal["roster", "shift", "calendar"] | None = None
+    source_reference_id: UUID | None = None
+    status: Literal["on_time", "after_scheduled_start", "not_applicable", "unresolved"]
+    minutes_after_start: int | None = None
+
+
 class SiteAttendanceRequirementsSnapshot(SiteAttendanceCreateRequest):
     """Immutable submitted inputs plus the schedule and arrival assessment at submission time."""
 
     scheduled_start_at: datetime | None = None
     arrival_variance_seconds: int | None = None
+    arrival_assessment: SiteAttendanceArrivalAssessment | None = None
     correction_reason: str | None = None
 
 

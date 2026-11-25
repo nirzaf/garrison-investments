@@ -13,7 +13,7 @@ from app.models.approval import Approval
 from app.models.daily_report import DailyReport
 from app.models.document import Document
 from app.models.finance import Invoice
-from app.models.inventory import MaterialRequest, MaterialRequestSubmission
+from app.models.inventory import MaterialRequest, MaterialRequestLine, MaterialRequestSubmission
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
@@ -337,7 +337,8 @@ class ApprovalService:
                 )
             )
         if material_submission_keys:
-            valuation_rows = await self.session.execute(
+            valuation_rows = (
+                await self.session.execute(
                 select(
                     MaterialRequestSubmission.request_id,
                     MaterialRequestSubmission.submission_revision,
@@ -348,13 +349,49 @@ class ApprovalService:
                         MaterialRequestSubmission.submission_revision,
                     ).in_(material_submission_keys)
                 )
-            )
+                )
+            ).all()
             complete_valuations = {
                 (request_id, revision)
                 for request_id, revision, requirements in valuation_rows
                 if isinstance(requirements, dict)
-                and requirements.get("valuation_complete") is True
+                and (
+                    requirements.get("valuation_status") == "complete"
+                    or requirements.get("valuation_complete") is True
+                )
             }
+            legacy_keys = {
+                (request_id, revision)
+                for request_id, revision, requirements in valuation_rows
+                if isinstance(requirements, dict)
+                and "valuation_status" not in requirements
+                and "valuation_complete" not in requirements
+            }
+            if legacy_keys:
+                has_lines = select(MaterialRequestLine.id).where(
+                    MaterialRequestLine.request_id == MaterialRequest.id,
+                    MaterialRequestLine.deleted_at.is_(None),
+                ).exists()
+                has_unknown_line = select(MaterialRequestLine.id).where(
+                    MaterialRequestLine.request_id == MaterialRequest.id,
+                    MaterialRequestLine.deleted_at.is_(None),
+                    MaterialRequestLine.unit_cost.is_(None),
+                ).exists()
+                verified_legacy = await self.session.execute(
+                    select(MaterialRequest.id, MaterialRequest.submission_revision).where(
+                        tuple_(MaterialRequest.id, MaterialRequest.submission_revision).in_(
+                            legacy_keys
+                        ),
+                        MaterialRequest.deleted_at.is_(None),
+                        has_lines,
+                        ~has_unknown_line,
+                    )
+                )
+                complete_valuations.update(
+                    (request_id, revision)
+                    for request_id, revision in verified_legacy.all()
+                    if revision is not None
+                )
         if invoice_ids:
             ready_invoices = set(
                 await self.session.scalars(
@@ -919,6 +956,16 @@ class ApprovalService:
             return False
         if notification.title in {"Approval rejected", "Approval returned"}:
             decision = "returned" if notification.title == "Approval returned" else "rejected"
+            if decision == "returned":
+                stages = frozen_material_stages(submission)
+                if (
+                    not stages
+                    or approval.step_order not in stages
+                    or approval.decided_by is None
+                    or approval.decided_at is None
+                    or approval.decided_by == submission.submitted_by
+                ):
+                    return False
             return approval.status == decision and request.status == decision
         stages = frozen_material_stages(submission)
         if approval.status != "approved" or approval.step_order not in stages:
@@ -1536,7 +1583,10 @@ class ApprovalService:
                     amount=(
                         request.total_estimated_cost
                         if isinstance(submission.requirements, dict)
-                        and submission.requirements.get("valuation_complete") is True
+                        and (
+                            submission.requirements.get("valuation_status") == "complete"
+                            or submission.requirements.get("valuation_complete") is True
+                        )
                         else None
                     ),
                 ),

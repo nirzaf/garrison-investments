@@ -75,6 +75,7 @@ async function queueReport(
   filename: string
 ) {
   await fillReport(page, projectId, text);
+  await page.getByLabel('Evidence classification').selectOption('operational');
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await context.setOffline(true);
   await page.getByLabel('Upload photos').setInputFiles({

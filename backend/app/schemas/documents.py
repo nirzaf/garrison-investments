@@ -10,6 +10,7 @@ class DocumentVersionResponse(BaseModel):
     document_id: UUID
     version: int
     status: str
+    classification: Literal["unclassified", "operational", "financial"]
     storage_path: str
     original_name: str
     mime_type: str
@@ -34,6 +35,7 @@ class DocumentResponse(BaseModel):
     expiry_date: date | None
     uploaded_by: UUID | None
     versions: list[DocumentVersionResponse]
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,12 +45,23 @@ class DocumentListResponse(BaseModel):
     total: int
 
 
+class EvidenceUploadReceipt(BaseModel):
+    id: UUID
+    classification: Literal["unclassified", "operational", "financial"]
+    restricted: bool = True
+
+
+DocumentUploadResponse = DocumentResponse | EvidenceUploadReceipt
+
+
 class DocumentDecisionRequest(BaseModel):
     comments: str | None = None
 
 
-class EvidenceClassificationRequest(BaseModel):
+class EvidenceClassificationReviewRequest(BaseModel):
     classification: Literal["operational", "financial"]
+    expected_classification: Literal["unclassified", "operational", "financial"]
+    expected_updated_at: datetime
     reason: str = Field(min_length=3, max_length=500)
 
     @field_validator("reason")

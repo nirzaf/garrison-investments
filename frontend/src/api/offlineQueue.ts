@@ -22,6 +22,7 @@ import {
 } from './offlineDb';
 import { uploadEntityFilesWithRevision } from './photos';
 import { createDailyReport, updateDailyReport, type DailyReportPayload } from './reports';
+import type { EvidenceClassification } from '../components/evidence/EvidenceClassificationField';
 
 /** A claim older than this is assumed dead (tab closed mid-upload) and may be reclaimed. */
 const STALE_CLAIM_MS = 5 * 60_000;
@@ -34,6 +35,7 @@ export type QueuedPhoto = {
   entityType: string;
   entityId: string;
   kind: 'photo' | 'attachment';
+  classification?: EvidenceClassification;
   file: File;
   createdAt: string;
   claimedAt: string;
@@ -247,6 +249,7 @@ export async function queueFiles(
     entityId: string;
     localDraftId: string;
     kind: 'photo' | 'attachment';
+    classification: EvidenceClassification;
     files: FileList | File[];
   }
 ): Promise<boolean> {
@@ -264,6 +267,7 @@ export async function queueFiles(
           entityType: args.entityType,
           entityId: args.entityId,
           kind: args.kind,
+          classification: args.classification,
           file,
           createdAt: new Date().toISOString(),
           claimedAt: '',
@@ -613,7 +617,12 @@ async function syncQueuedPhoto(
   const intent =
     claim.intent ??
     (reportId && revision !== undefined
-      ? { reportId, expectedRevision: revision, kind }
+      ? {
+          reportId,
+          expectedRevision: revision,
+          kind,
+          classification: claim.classification ?? 'unclassified'
+        }
       : undefined);
   if (!intent) {
     await patchClaim(scope, claim, {
@@ -629,6 +638,7 @@ async function syncQueuedPhoto(
       entityType: claim.entityType,
       entityId: intent.reportId,
       kind: intent.kind,
+      classification: intent.classification ?? claim.classification ?? 'unclassified',
       files: [claim.file],
       idempotencyKey: claim.id,
       expectedReportRevision: intent.expectedRevision,

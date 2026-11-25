@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, String, Text, text
@@ -18,7 +18,7 @@ class Document(TimestampMixin, SoftDeleteMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     document_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    classification: Mapped[str] = mapped_column(
+    classification: Mapped[Literal["unclassified", "operational", "financial"]] = mapped_column(
         String(20), nullable=False, server_default=text("'unclassified'")
     )
     project_id: Mapped[UUID | None] = mapped_column(
@@ -54,6 +54,9 @@ class DocumentVersion(TimestampMixin, SoftDeleteMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'pending_approval'")
+    )
+    classification: Mapped[Literal["unclassified", "operational", "financial"]] = mapped_column(
+        String(20), nullable=False, server_default=text("'unclassified'")
     )
     storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)

@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
+from app.models.hr import HrAttendanceEntry, HrEmployee
 from app.models.inventory import (
     InventoryItem,
     InventoryLocationStock,
@@ -209,10 +210,20 @@ async def test_legacy_report_flags_unknown_material_valuation_without_mutating_i
         project_id=project_id,
         from_location_id=location_id,
         status="requested",
-        total_estimated_cost=None,
+        total_estimated_cost=Decimal("0"),
     )
     async with AsyncSessionLocal.begin() as session:
-        session.add(request)
+        session.add_all(
+            [
+                request,
+                MaterialRequestLine(
+                    request_id=request.id,
+                    item_id=inventory_ids[1],
+                    quantity=Decimal("1"),
+                    unit_cost=None,
+                ),
+            ]
+        )
 
     await report_legacy_site_workflows()
     records = [json.loads(row) for row in capsys.readouterr().out.splitlines()]
@@ -222,10 +233,64 @@ async def test_legacy_report_flags_unknown_material_valuation_without_mutating_i
         if row.get("finding") == "incomplete_material_valuation"
         and row.get("id") == str(request.id)
     )
-    assert finding["total_estimated_cost"] is None
-    assert finding["disposition"] == "manual_review"
+    assert finding["approval_stages"] == []
+    assert finding["disposition"] == "valuation_review_required"
     async with AsyncSessionLocal() as session:
         stored = await session.get(MaterialRequest, request.id)
         assert stored is not None
-        assert stored.total_estimated_cost is None
+        assert stored.total_estimated_cost == Decimal("0")
         assert stored.status == "requested"
+
+
+async def test_legacy_report_flags_unresolved_historical_attendance_evidence(
+    inventory_ids: tuple[UUID, UUID, UUID], capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_id, _, _ = inventory_ids
+    employee = HrEmployee(
+        id=uuid4(),
+        employee_code=f"HIST-{uuid4().hex[:8]}",
+        first_name="Synthetic",
+        last_name="Worker",
+        full_name="Synthetic Worker",
+        employment_status="terminated",
+        join_date=None,
+    )
+    entry = HrAttendanceEntry(
+        id=uuid4(),
+        employee_id=employee.id,
+        project_id=project_id,
+        work_date=date(2025, 1, 15),
+        attendance_status="present",
+        status="returned",
+        worked_hours=Decimal("8.00"),
+        source="site",
+    )
+    async with AsyncSessionLocal.begin() as session:
+        session.add(employee)
+        await session.flush()
+        session.add(entry)
+
+    try:
+        await report_legacy_site_workflows()
+        records = [json.loads(row) for row in capsys.readouterr().out.splitlines()]
+        finding = next(
+            row
+            for row in records
+            if row.get("finding") == "historical_attendance_eligibility"
+            and row.get("id") == str(entry.id)
+        )
+        assert finding["employee_id"] == str(employee.id)
+        assert finding["project_id"] == str(project_id)
+        assert finding["reason_code"] == (
+            "legacy_employment_start_unresolved,assignment_evidence_missing"
+        )
+        assert finding["disposition"] == "manual_reconciliation"
+        async with AsyncSessionLocal() as session:
+            persisted = await session.get(HrAttendanceEntry, entry.id)
+            assert persisted is not None
+            assert persisted.status == "returned"
+            assert persisted.record_revision == 1
+    finally:
+        async with AsyncSessionLocal.begin() as session:
+            await session.delete(entry)
+            await session.delete(employee)
