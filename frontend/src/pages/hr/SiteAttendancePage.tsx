@@ -32,6 +32,7 @@ export function SiteAttendancePage() {
   const [projectSearch, setProjectSearch] = useState('');
   const [offset, setOffset] = useState(0);
   const [correction, setCorrection] = useState<SiteAttendanceRecord>();
+  const [historical, setHistorical] = useState(false);
   const queryClient = useQueryClient();
   const term = useDebouncedSearch(projectSearch);
   const projectChoices = useQuery({
@@ -77,7 +78,7 @@ export function SiteAttendancePage() {
         <div className="grid gap-3 sm:grid-cols-3">
           <label>Attendance date
             <input className="form-field" type="date" value={workDate}
-              onChange={(event) => { setWorkDate(event.target.value); setMissingOffset(0); setOffset(0); setCorrection(undefined); }} />
+              onChange={(event) => { setWorkDate(event.target.value); setMissingOffset(0); setOffset(0); setCorrection(undefined); setHistorical(false); }} />
           </label>
           <>
             <label>Search projects
@@ -91,6 +92,7 @@ export function SiteAttendancePage() {
                   setMissingOffset(0);
                   setOffset(0);
                   setCorrection(undefined);
+                  setHistorical(false);
                 }}>
                 <option value="">All accessible projects</option>
                 {project && !projectChoices.data?.items.some((row) => row.id === project.id) && (
@@ -103,6 +105,11 @@ export function SiteAttendancePage() {
           </>
         </div>
       )}
+      {!focusedEntry && isSupervisor(user?.role) && project && <label className="flex items-center gap-2">
+        <input type="checkbox" checked={historical}
+          onChange={(event) => setHistorical(event.target.checked)} />
+        Record historical attendance using dated employment and project-assignment evidence
+      </label>}
       {project && !focusedEntry && completeness.isError && <p role="alert">Unable to load attendance completeness.</p>}
       {completeness.data && (
         <section aria-label="Attendance completeness" className="space-y-2">
@@ -124,12 +131,13 @@ export function SiteAttendancePage() {
           projectId={correction.submission.requirements.project_id}
           workDate={correction.submission.requirements.work_date}
           correction={correction}
+          historical={Boolean(correction.submission.requirements.historical_reason)}
           onCancel={() => setCorrection(undefined)}
           onSuccess={() => { setCorrection(undefined); refresh(); }}
         />
       ) : maySubmit && project && (
         <AttendanceForm key={`${project.id}:${workDate}`} projectId={project.id}
-          workDate={workDate} onSuccess={refresh} />
+          workDate={workDate} historical={historical} onSuccess={refresh} />
       )}
       {entries.isPending && <p role="status">Loading attendance…</p>}
       {entries.isError && <p role="alert">{formatApiError(entries.error, 'Unable to load attendance.')}</p>}
@@ -153,26 +161,30 @@ export function SiteAttendancePage() {
   );
 }
 
-function AttendanceForm({ projectId, workDate, correction, onCancel, onSuccess }: {
+function AttendanceForm({ projectId, workDate, correction, historical, onCancel, onSuccess }: {
   projectId: string;
   workDate: string;
   correction?: SiteAttendanceRecord;
+  historical?: boolean;
   onCancel?: () => void;
   onSuccess: () => void;
 }) {
   const [workerSearch, setWorkerSearch] = useState('');
   const [worker, setWorker] = useState<SiteAttendanceWorker>(correction?.worker ?? { id: '', employee_code: '', full_name: '' });
   const saved = correction?.submission.requirements;
+  const historicalMode = historical ?? Boolean(saved?.historical_reason);
   const [status, setStatus] = useState<SiteAttendanceDraft['attendance_status']>(saved?.attendance_status ?? 'present');
   const [arrival, setArrival] = useState(toClockInput(saved?.check_in_at));
   const [departure, setDeparture] = useState(toClockInput(saved?.check_out_at));
   const [worked, setWorked] = useState(String(saved?.worked_hours ?? '0'));
   const [overtime, setOvertime] = useState(String(saved?.overtime_hours ?? '0'));
   const [notes, setNotes] = useState(saved?.notes ?? '');
+  const [historicalReason, setHistoricalReason] = useState(saved?.historical_reason ?? '');
+  const [correctionReason, setCorrectionReason] = useState('');
   const term = useDebouncedSearch(workerSearch);
   const workers = useQuery({
-    queryKey: ['site-attendance-workers', projectId, workDate, term],
-    queryFn: () => listSiteAttendanceWorkers({ project_id: projectId, work_date: workDate, search: term, limit: pageSize, offset: 0 }),
+    queryKey: ['site-attendance-workers', projectId, workDate, historicalMode, term],
+    queryFn: () => listSiteAttendanceWorkers({ project_id: projectId, work_date: workDate, historical: historicalMode, search: term, limit: pageSize, offset: 0 }),
     enabled: !correction
   });
   const submit = useMutation({
@@ -182,8 +194,9 @@ function AttendanceForm({ projectId, workDate, correction, onCancel, onSuccess }
       check_out_at: status === 'present' && departure ? new Date(departure).toISOString() : null,
       worked_hours: status === 'present' ? worked : '0',
       overtime_hours: status === 'present' ? overtime : '0',
-      notes: notes || null
-    }, correction),
+      notes: notes || null,
+      historical_reason: historicalMode ? historicalReason.trim() : null
+    }, correction, correctionReason.trim()),
     onSuccess: () => {
       setWorker({ id: '', employee_code: '', full_name: '' });
       setNotes('');
@@ -192,6 +205,7 @@ function AttendanceForm({ projectId, workDate, correction, onCancel, onSuccess }
       setStatus('present');
       setWorked('0');
       setOvertime('0');
+      setHistoricalReason('');
       onSuccess();
     }
   });
@@ -210,7 +224,7 @@ function AttendanceForm({ projectId, workDate, correction, onCancel, onSuccess }
                 const match = workers.data?.items.find((row) => row.id === event.target.value);
                 setWorker(match ?? { id: '', employee_code: '', full_name: '' });
               }}>
-              <option value="">Choose a rostered worker</option>
+              <option value="">Choose a {historicalMode ? 'historically assigned' : 'rostered'} worker</option>
               {worker.id && !workers.data?.items.some((row) => row.id === worker.id) && (
                 <option value={worker.id}>{worker.full_name}</option>
               )}
@@ -252,8 +266,17 @@ function AttendanceForm({ projectId, workDate, correction, onCancel, onSuccess }
           <textarea className="form-field" maxLength={2000} value={notes}
             onChange={(event) => setNotes(event.target.value)} />
         </label>
+        {historicalMode && <label>Historical attendance reason
+          <textarea className="form-field" required minLength={2} maxLength={500}
+            value={historicalReason} onChange={(event) => setHistoricalReason(event.target.value)} />
+        </label>}
+        {correction && <label>Correction reason
+          <textarea className="form-field" required minLength={2} maxLength={500}
+            value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} />
+        </label>}
         <div className="flex gap-3">
-          <button className="form-button" type="submit" disabled={!worker.id}>
+          <button className="form-button" type="submit"
+            disabled={!worker.id || (Boolean(correction) && correctionReason.trim().length < 2) || (historicalMode && historicalReason.trim().length < 2)}>
             {submit.isPending ? 'Submitting…' : correction ? 'Resubmit attendance' : 'Submit site attendance'}
           </button>
           {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
@@ -297,6 +320,11 @@ function SiteAttendanceDetails({ record, userId, role, onCorrection, refresh }: 
       <div className="mt-3 space-y-2">
         <p>{details.attendance_status.replace(/_/g, ' ')} · {details.worked_hours} worked hours · {details.overtime_hours} overtime</p>
         {details.check_in_at && <p>Arrival {new Date(details.check_in_at).toLocaleString()}</p>}
+        {details.scheduled_start_at && <p>Scheduled start {new Date(details.scheduled_start_at).toLocaleString()}</p>}
+        {details.arrival_variance_seconds !== null && details.arrival_variance_seconds !== undefined && (
+          <p>{formatArrivalVariance(details.arrival_variance_seconds)}</p>
+        )}
+        {details.correction_reason && <p>Correction reason: {details.correction_reason}</p>}
         {details.notes && <p>{details.notes}</p>}
         {history.data?.map((entry) => (
           <p key={entry.submission_revision}>Submission {entry.submission_revision} · Site Engineer: {entry.engineer_decision ?? 'Pending'} · HR: {entry.hr_decision ?? 'Pending'}
@@ -326,6 +354,20 @@ function SiteAttendanceDetails({ record, userId, role, onCorrection, refresh }: 
       </div>
     </details>
   );
+}
+
+function formatArrivalVariance(seconds: number): string {
+  if (seconds === 0) return 'Arrival was at scheduled start.';
+  const absolute = Math.abs(seconds);
+  const hours = Math.floor(absolute / 3600);
+  const minutes = Math.floor((absolute % 3600) / 60);
+  const remainder = absolute % 60;
+  const parts = [
+    hours ? `${hours} hour${hours === 1 ? '' : 's'}` : '',
+    minutes ? `${minutes} minute${minutes === 1 ? '' : 's'}` : '',
+    remainder ? `${remainder} second${remainder === 1 ? '' : 's'}` : ''
+  ].filter(Boolean);
+  return `Arrival was ${parts.join(' ')} ${seconds < 0 ? 'before' : 'after'} scheduled start.`;
 }
 
 function toClockInput(value?: string | null) {

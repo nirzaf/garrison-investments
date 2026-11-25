@@ -222,6 +222,8 @@ class MaterialSubmissionSnapshot(BaseModel):
     lines: list[MaterialSubmissionLine]
     evidence_versions: dict[str, int]
     evidence_file_ids: list[UUID] = Field(default_factory=list)
+    valuation_complete: bool | None = None
+    approval_stages: list[int] = Field(default_factory=lambda: [1, 2])
 
 
 class MaterialSubmissionResponse(BaseModel):

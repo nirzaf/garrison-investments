@@ -6837,6 +6837,15 @@
             ],
             "title": "Active Version"
           },
+          "classification": {
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "document_type": {
             "title": "Document Type",
             "type": "string"
@@ -6907,6 +6916,7 @@
           "id",
           "title",
           "document_type",
+          "classification",
           "project_id",
           "status",
           "active_version",
@@ -10082,6 +10092,30 @@
           "message"
         ],
         "title": "ErrorDetail",
+        "type": "object"
+      },
+      "EvidenceClassificationRequest": {
+        "properties": {
+          "classification": {
+            "enum": [
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "classification",
+          "reason"
+        ],
+        "title": "EvidenceClassificationRequest",
         "type": "object"
       },
       "ExpiringComplianceResponse": {
@@ -17576,6 +17610,13 @@
       },
       "MaterialSubmissionSnapshot": {
         "properties": {
+          "approval_stages": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Approval Stages",
+            "type": "array"
+          },
           "evidence_file_ids": {
             "items": {
               "format": "uuid",
@@ -17621,6 +17662,17 @@
           },
           "requirements": {
             "$ref": "#/components/schemas/MaterialSubmissionRequirements"
+          },
+          "valuation_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Complete"
           }
         },
         "required": [
@@ -23545,6 +23597,15 @@
             ],
             "title": "Caption"
           },
+          "classification": {
+            "enum": [
+              "unclassified",
+              "operational",
+              "financial"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
           "compressed_path": {
             "anyOf": [
               {
@@ -23694,6 +23755,7 @@
           "entity_type",
           "entity_id",
           "kind",
+          "classification",
           "caption",
           "taken_at",
           "uploaded_by",
@@ -28982,6 +29044,12 @@
             ],
             "title": "Check Out At"
           },
+          "correction_reason": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Correction Reason",
+            "type": "string"
+          },
           "employee_id": {
             "format": "uuid",
             "title": "Employee Id",
@@ -28991,6 +29059,19 @@
             "minimum": 1.0,
             "title": "Expected Revision",
             "type": "integer"
+          },
+          "historical_reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historical Reason"
           },
           "notes": {
             "anyOf": [
@@ -29048,12 +29129,13 @@
           "work_date",
           "attendance_status",
           "worked_hours",
-          "expected_revision"
+          "expected_revision",
+          "correction_reason"
         ],
         "title": "SiteAttendanceCorrectionRequest",
         "type": "object"
       },
-      "SiteAttendanceCreateRequest-Input": {
+      "SiteAttendanceCreateRequest": {
         "properties": {
           "attendance_status": {
             "enum": [
@@ -29093,6 +29175,19 @@
             "format": "uuid",
             "title": "Employee Id",
             "type": "string"
+          },
+          "historical_reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historical Reason"
           },
           "notes": {
             "anyOf": [
@@ -29142,89 +29237,6 @@
               }
             ],
             "title": "Worked Hours"
-          }
-        },
-        "required": [
-          "employee_id",
-          "project_id",
-          "work_date",
-          "attendance_status",
-          "worked_hours"
-        ],
-        "title": "SiteAttendanceCreateRequest",
-        "type": "object"
-      },
-      "SiteAttendanceCreateRequest-Output": {
-        "properties": {
-          "attendance_status": {
-            "enum": [
-              "present",
-              "absent",
-              "on_leave",
-              "off_day"
-            ],
-            "title": "Attendance Status",
-            "type": "string"
-          },
-          "check_in_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Check In At"
-          },
-          "check_out_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Check Out At"
-          },
-          "employee_id": {
-            "format": "uuid",
-            "title": "Employee Id",
-            "type": "string"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "overtime_hours": {
-            "default": "0",
-            "title": "Overtime Hours",
-            "type": "string"
-          },
-          "project_id": {
-            "format": "uuid",
-            "title": "Project Id",
-            "type": "string"
-          },
-          "work_date": {
-            "format": "date",
-            "title": "Work Date",
-            "type": "string"
-          },
-          "worked_hours": {
-            "title": "Worked Hours",
-            "type": "string"
           }
         },
         "required": [
@@ -29311,6 +29323,137 @@
           "confirmed_present"
         ],
         "title": "SiteAttendancePageResponse",
+        "type": "object"
+      },
+      "SiteAttendanceRequirementsSnapshot": {
+        "description": "Immutable submitted inputs plus the schedule and arrival assessment at submission time.",
+        "properties": {
+          "arrival_variance_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Variance Seconds"
+          },
+          "attendance_status": {
+            "enum": [
+              "present",
+              "absent",
+              "on_leave",
+              "off_day"
+            ],
+            "title": "Attendance Status",
+            "type": "string"
+          },
+          "check_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In At"
+          },
+          "check_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out At"
+          },
+          "correction_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Reason"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "historical_reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historical Reason"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "overtime_hours": {
+            "default": "0",
+            "title": "Overtime Hours",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scheduled_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Start At"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          },
+          "worked_hours": {
+            "title": "Worked Hours",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "project_id",
+          "work_date",
+          "attendance_status",
+          "worked_hours"
+        ],
+        "title": "SiteAttendanceRequirementsSnapshot",
         "type": "object"
       },
       "SiteAttendanceResponse": {
@@ -29445,7 +29588,7 @@
             "title": "Hr Id"
           },
           "requirements": {
-            "$ref": "#/components/schemas/SiteAttendanceCreateRequest-Output"
+            "$ref": "#/components/schemas/SiteAttendanceRequirementsSnapshot"
           },
           "submission_revision": {
             "title": "Submission Revision",
@@ -40479,6 +40622,72 @@
           }
         ],
         "summary": "Get Document",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/classification": {
+      "patch": {
+        "operationId": "classify_document_api_v1_documents__document_id__classification_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceClassificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Classify Document Api V1 Documents  Document Id  Classification Patch"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Classify Document",
         "tags": [
           "Documents"
         ]
@@ -58452,7 +58661,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SiteAttendanceCreateRequest-Input"
+                "$ref": "#/components/schemas/SiteAttendanceCreateRequest"
               }
             }
           },
@@ -58650,6 +58859,16 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "historical",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Historical",
+              "type": "boolean"
             }
           }
         ],
@@ -63427,6 +63646,72 @@
           }
         ],
         "summary": "Get File",
+        "tags": [
+          "Photos"
+        ]
+      }
+    },
+    "/api/v1/photos/{photo_id}/classification": {
+      "patch": {
+        "operationId": "classify_photo_api_v1_photos__photo_id__classification_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Photo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceClassificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Classify Photo Api V1 Photos  Photo Id  Classification Patch"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Classify Photo",
         "tags": [
           "Photos"
         ]

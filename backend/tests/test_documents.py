@@ -68,6 +68,7 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         assert document["status"] == "pending_approval"
         first_version = document["versions"][0]
 
+        documents = [document]
         for title in ("WIR Zone B", "WIR Zone C"):
             uploaded = await client.post(
                 "/api/v1/documents",
@@ -76,6 +77,14 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
                 headers=uploader_headers,
             )
             assert uploaded.status_code == 201
+            documents.append(uploaded.json())
+        for item in documents:
+            classified = await client.patch(
+                f"/api/v1/documents/{item['id']}/classification",
+                json={"classification": "operational", "reason": "Verified WIR evidence."},
+                headers=approver_headers,
+            )
+            assert classified.status_code == 200, classified.text
         for offset, expected_title in enumerate(("WIR Zone C", "WIR Zone B", "WIR Zone A")):
             page = await client.get(
                 "/api/v1/documents",
@@ -173,7 +182,7 @@ async def test_document_search_finds_uploaded_metadata() -> None:
 
     async with create_test_client() as client:
         setup = await setup_project_team(client)
-        await client.post(
+        uploaded = await client.post(
             "/api/v1/documents",
             data={
                 "title": "Delivery Note Concrete",
@@ -183,6 +192,16 @@ async def test_document_search_finds_uploaded_metadata() -> None:
             files={"file": ("delivery.pdf", pdf_bytes("delivery"), "application/pdf")},
             headers={"Authorization": f"Bearer {setup['op_token']}"},
         )
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.headers["cache-control"] == "no-store"
+        reviewer_email, reviewer_password = await create_user("managing_director")
+        reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+        classified = await client.patch(
+            f"/api/v1/documents/{uploaded.json()['id']}/classification",
+            json={"classification": "operational", "reason": "Verified delivery note."},
+            headers={"Authorization": f"Bearer {reviewer_token}"},
+        )
+        assert classified.status_code == 200, classified.text
 
         response = await client.get(
             "/api/v1/documents",
@@ -321,3 +340,85 @@ async def test_replacement_failure_discards_only_the_new_object(monkeypatch) -> 
             )
         )
         assert [item.object_name for item in stored] == [version["storage_path"]]
+
+
+async def test_unclassified_documents_are_restricted_until_independent_review() -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        team = await setup_project_team(client)
+        uploader = {"Authorization": f"Bearer {team['op_token']}"}
+        uploaded = await client.post(
+            "/api/v1/documents",
+            data={
+                "title": "Restricted Site Evidence",
+                "document_type": "wir",
+                "project_id": team["project_id"],
+            },
+            files={"file": ("restricted.pdf", pdf_bytes(), "application/pdf")},
+            headers=uploader,
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.headers["cache-control"] == "no-store"
+        document = uploaded.json()
+        assert document["classification"] == "unclassified"
+
+        manager = {"Authorization": f"Bearer {team['manager_token']}"}
+        for path in (
+            f"/api/v1/documents/{document['id']}",
+            f"/api/v1/documents/{document['id']}/download",
+            f"/api/v1/documents/{document['id']}/versions",
+        ):
+            denied = await client.get(path, headers=manager)
+            assert denied.status_code == 404, (path, denied.text)
+        hidden = await client.get("/api/v1/documents", headers=manager)
+        assert hidden.headers["cache-control"] == "no-store"
+        assert document["id"] not in {item["id"] for item in hidden.json()["items"]}
+
+        denied_review = await client.patch(
+            f"/api/v1/documents/{document['id']}/classification",
+            json={"classification": "operational", "reason": "Reviewed"},
+            headers=manager,
+        )
+        assert denied_review.status_code == 403
+
+        reviewer_email, reviewer_password = await create_user("managing_director")
+        reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+        reviewer = {"Authorization": f"Bearer {reviewer_token}"}
+        reviewed = await client.patch(
+            f"/api/v1/documents/{document['id']}/classification",
+            json={"classification": "operational", "reason": "Verified site evidence."},
+            headers=reviewer,
+        )
+        assert reviewed.status_code == 200, reviewed.text
+        assert reviewed.json()["classification"] == "operational"
+        manager_read = await client.get(
+            f"/api/v1/documents/{document['id']}", headers=manager
+        )
+        assert manager_read.status_code == 200
+        assert manager_read.headers["cache-control"] == "no-store"
+
+        duplicate = await client.patch(
+            f"/api/v1/documents/{document['id']}/classification",
+            json={"classification": "financial", "reason": "Second review."},
+            headers=reviewer,
+        )
+        assert duplicate.status_code == 409
+        assert duplicate.json()["error_code"] == "EVIDENCE_CLASSIFICATION_ALREADY_REVIEWED"
+
+        invoice = await client.post(
+            "/api/v1/documents",
+            data={
+                "title": "Restricted Invoice Evidence",
+                "document_type": "invoice",
+                "project_id": team["project_id"],
+            },
+            files={"file": ("invoice.pdf", pdf_bytes("invoice"), "application/pdf")},
+            headers=uploader,
+        )
+        assert invoice.status_code == 201
+        assert invoice.json()["classification"] == "financial"
+        manager_invoice = await client.get(
+            f"/api/v1/documents/{invoice.json()['id']}",
+            headers={"Authorization": f"Bearer {team['supervisor_token']}"},
+        )
+        assert manager_invoice.status_code == 404

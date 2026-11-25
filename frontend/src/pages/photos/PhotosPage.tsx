@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 
 import { formatApiError } from '../../api/errors';
 import {
+  classifyPhoto,
   deletePhoto,
   getPhotoDownloadUrl,
   getPhotoThumbnailUrl,
@@ -11,10 +12,12 @@ import {
   type PhotoRecord
 } from '../../api/photos';
 import { EmptyState } from '../../components/shared/EmptyState';
+import { useAuth } from '../../context/useAuth';
 
 const pageSize = 25;
 
 export function PhotosPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<'photo' | 'attachment' | ''>('photo');
   const [page, setPage] = useState(0);
@@ -22,6 +25,12 @@ export function PhotosPage() {
   const [notice, setNotice] = useState('');
   const [pendingDecision, setPendingDecision] = useState<PhotoRecord | null>(null);
   const [pendingLink, setPendingLink] = useState<string | null>(null);
+  const [classificationTarget, setClassificationTarget] = useState<PhotoRecord | null>(null);
+  const [classification, setClassification] = useState<'operational' | 'financial'>('operational');
+  const [classificationReason, setClassificationReason] = useState('');
+  const [classificationPending, setClassificationPending] = useState(false);
+  const canReviewClassification = user?.permissions?.includes('documents:manage') ?? false;
+  const canViewFinancial = user?.permissions?.includes('financial:view') ?? false;
   const photos = useQuery({
     queryKey: ['photos', kind, page],
     queryFn: ({ signal }) => listPhotos({
@@ -64,6 +73,25 @@ export function PhotosPage() {
     event.preventDefault();
     if (pendingDecision && !updateMedia.isPending) {
       updateMedia.mutate(pendingDecision);
+    }
+  }
+
+  async function reviewClassification(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!classificationTarget || classificationPending) return;
+    setClassificationPending(true);
+    setError('');
+    setNotice('');
+    try {
+      await classifyPhoto(classificationTarget.id, classification, classificationReason);
+      setClassificationTarget(null);
+      setClassificationReason('');
+      setNotice('Evidence classification reviewed.');
+      await queryClient.invalidateQueries({ queryKey: ['photos'] });
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to review evidence classification.'));
+    } finally {
+      setClassificationPending(false);
     }
   }
 
@@ -114,10 +142,26 @@ export function PhotosPage() {
                   <p className="text-theme-text-muted">
                     {owner} · {photo.kind} · {(photo.size_bytes / 1024 / 1024).toFixed(2)} MiB
                   </p>
+                  <p className="text-theme-text-muted">
+                    {photo.classification === 'unclassified' ? 'Unclassified · restricted' : `${photo.classification} evidence`}
+                  </p>
                   {photo.mime_type === 'image/heic' ? <p className="text-theme-text-muted">Original only</p> : null}
                   {photo.caption ? <p className="mt-1 text-theme-text-muted">{photo.caption}</p> : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {canReviewClassification && photo.classification === 'unclassified' && photo.uploaded_by !== user?.id ? (
+                    <button
+                      className="form-field"
+                      disabled={classificationPending}
+                      onClick={() => {
+                        setClassificationTarget(photo);
+                        setClassification('operational');
+                        setClassificationReason('');
+                        setError('');
+                      }}
+                      type="button"
+                    >Review classification</button>
+                  ) : null}
                   {photo.thumbnail_path ? (
                         <button
                           className="form-field"
@@ -178,6 +222,30 @@ export function PhotosPage() {
               <button className="form-field" disabled={updateMedia.isPending} type="submit">
                 Remove file
               </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {classificationTarget ? (
+        <div aria-labelledby="photo-classification-title" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" role="dialog">
+          <form className="w-full max-w-lg space-y-4 rounded-lg bg-theme-card p-5" onSubmit={reviewClassification}>
+            <h3 className="font-semibold" id="photo-classification-title">Review {classificationTarget.original_name}</h3>
+            <p className="text-sm text-theme-text-secondary">The original, metadata and previews remain restricted until classification is reviewed.</p>
+            <label className="block space-y-1 text-sm">
+              <span>Classification</span>
+              <select className="form-field w-full" disabled={classificationPending} onChange={(event) => setClassification(event.target.value as 'operational' | 'financial')} value={classification}>
+                <option value="operational">Operational evidence</option>
+                {canViewFinancial ? <option value="financial">Financial evidence</option> : null}
+              </select>
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span>Review reason</span>
+              <textarea className="form-field min-h-24 w-full" disabled={classificationPending} maxLength={500} minLength={3} onChange={(event) => setClassificationReason(event.target.value)} required value={classificationReason} />
+            </label>
+            {error ? <p className="alert-error p-2" role="alert">{error}</p> : null}
+            <div className="flex justify-end gap-2">
+              <button className="form-field" disabled={classificationPending} onClick={() => setClassificationTarget(null)} type="button">Cancel</button>
+              <button className="form-field" disabled={classificationPending || classificationReason.trim().length < 3} type="submit">Save review</button>
             </div>
           </form>
         </div>

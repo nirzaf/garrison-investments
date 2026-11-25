@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import {
   approveDocumentVersion,
+  classifyDocument,
   getDocument,
   getDocumentDownloadUrl,
   listDocuments,
@@ -57,6 +58,9 @@ export function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [classificationTarget, setClassificationTarget] = useState<DocumentRecord | null>(null);
+  const [classification, setClassification] = useState<'operational' | 'financial'>('operational');
+  const [classificationReason, setClassificationReason] = useState('');
   const [preview, setPreview] = useState<{
     documentId: string;
     versionId: string;
@@ -68,6 +72,7 @@ export function DocumentsPage() {
   const previewRequest = useRef(0);
   const documentRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageDocuments = user?.permissions?.includes('documents:manage') ?? false;
+  const canViewFinancial = user?.permissions?.includes('financial:view') ?? false;
   const canUseCompanyScope = ['managing_director', 'operations_director'].includes(user?.role ?? '');
   const projectsQuery = useQuery({
     queryKey: ['documents', 'project-options', projectSearch],
@@ -196,6 +201,22 @@ export function DocumentsPage() {
       queryClient.setQueryData<DocumentRecord>(detailQuery.queryKey, approved);
       setNotice('Document version approved.');
     }, 'Unable to approve document version.');
+  }
+
+  function reviewClassification(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!classificationTarget || pendingWrite.current) return;
+    void saveDocument(async () => {
+      const reviewed = await classifyDocument(
+        classificationTarget.id,
+        classification,
+        classificationReason
+      );
+      queryClient.setQueryData<DocumentRecord>(['documents', 'detail', reviewed.id], reviewed);
+      setClassificationTarget(null);
+      setClassificationReason('');
+      setNotice('Evidence classification reviewed.');
+    }, 'Unable to review evidence classification.');
   }
 
   async function download(document: DocumentRecord, versionId?: string) {
@@ -432,6 +453,11 @@ export function DocumentsPage() {
                       <StatusBadge tone={document.status === 'active' ? 'success' : 'warning'}>
                         {document.status.replace('_', ' ')}
                       </StatusBadge>
+                      <StatusBadge tone={document.classification === 'operational' ? 'success' : 'warning'}>
+                        {document.classification === 'unclassified'
+                          ? 'Unclassified · restricted'
+                          : `${document.classification} evidence`}
+                      </StatusBadge>
                     </div>
                     {outsideResults ? (
                       <p className="mt-1 text-sm text-theme-text-muted">Linked document outside the current results</p>
@@ -442,6 +468,23 @@ export function DocumentsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {canManageDocuments && document.classification === 'unclassified' ? (
+                      document.uploaded_by === user?.id ? (
+                        <span className="text-sm text-theme-text-muted">Awaiting independent classification review</span>
+                      ) : (
+                        <button
+                          className="form-field"
+                          disabled={pending}
+                          onClick={() => {
+                            setClassificationTarget(document);
+                            setClassification('operational');
+                            setClassificationReason('');
+                            setError(null);
+                          }}
+                          type="button"
+                        >Review classification</button>
+                      )
+                    ) : null}
                     {canManageDocuments && document.status !== 'archived' && replacementDocumentId !== document.id ? (
                       <button
                         className="form-field"
@@ -620,6 +663,30 @@ export function DocumentsPage() {
               <iframe className="h-[80vh] w-full" src={preview.url} title={preview.title} />
             )}
           </div>
+        </div>
+      ) : null}
+      {classificationTarget ? (
+        <div aria-labelledby="classification-title" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" role="dialog">
+          <form className="w-full max-w-lg space-y-4 rounded-lg bg-theme-card p-5" onSubmit={reviewClassification}>
+            <h3 className="font-semibold" id="classification-title">Review {classificationTarget.title}</h3>
+            <p className="text-sm text-theme-text-secondary">Unclassified files stay restricted until an independent reviewer records their classification.</p>
+            <label className="block space-y-1 text-sm">
+              <span>Classification</span>
+              <select className="form-field w-full" disabled={pending} onChange={(event) => setClassification(event.target.value as 'operational' | 'financial')} value={classification}>
+                <option value="operational">Operational evidence</option>
+                {canViewFinancial ? <option value="financial">Financial evidence</option> : null}
+              </select>
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span>Review reason</span>
+              <textarea className="form-field min-h-24 w-full" disabled={pending} maxLength={500} minLength={3} onChange={(event) => setClassificationReason(event.target.value)} required value={classificationReason} />
+            </label>
+            {error ? <Alert message={error} tone="error" /> : null}
+            <div className="flex justify-end gap-2">
+              <button className="form-field" disabled={pending} onClick={() => setClassificationTarget(null)} type="button">Cancel</button>
+              <button className="form-field" disabled={pending || classificationReason.trim().length < 3} type="submit">Save review</button>
+            </div>
+          </form>
         </div>
       ) : null}
     </div>

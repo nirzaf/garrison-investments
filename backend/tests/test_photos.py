@@ -424,3 +424,57 @@ async def test_director_cannot_use_retired_admin_media_override() -> None:
         assert retained.status_code == 200
         assert retained.json()["deleted_at"] is None
         assert (await client.get(photo_path, headers=director)).status_code == 200
+
+
+async def test_unclassified_photo_metadata_and_urls_are_restricted_until_review() -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        team = await setup_project_team(client)
+        engineer = {"Authorization": f"Bearer {team['engineer_token']}"}
+        report_response = await client.post(
+            "/api/v1/reports",
+            json=report_payload(team["project_id"], team["supervisor_update_id"]),
+            headers=engineer,
+        )
+        assert report_response.status_code == 201, report_response.text
+        report = report_response.json()
+        uploaded = await client.post(
+            "/api/v1/photos/upload",
+            data={"entity_type": "daily_report", "entity_id": report["id"], "kind": "photo"},
+            files={"files": ("restricted.jpg", jpeg_bytes(), "image/jpeg")},
+            headers=engineer,
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.headers["cache-control"] == "no-store"
+        photo = uploaded.json()[0]
+        assert photo["classification"] == "unclassified"
+
+        manager = {"Authorization": f"Bearer {team['manager_token']}"}
+        for path in (
+            f"/api/v1/photos/{photo['id']}",
+            f"/api/v1/photos/{photo['id']}/download",
+            f"/api/v1/photos/{photo['id']}/thumbnail",
+        ):
+            denied = await client.get(path, headers=manager)
+            assert denied.status_code == 404, (path, denied.text)
+
+        reviewer_email, reviewer_password = await create_user("managing_director")
+        reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+        reviewer = {"Authorization": f"Bearer {reviewer_token}"}
+        listed = await client.get("/api/v1/photos", headers=reviewer)
+        assert listed.status_code == 200, listed.text
+        assert listed.headers["cache-control"] == "no-store"
+        assert photo["id"] in {item["id"] for item in listed.json()["items"]}
+        reviewed = await client.patch(
+            f"/api/v1/photos/{photo['id']}/classification",
+            json={"classification": "operational", "reason": "Verified site photo."},
+            headers=reviewer,
+        )
+        assert reviewed.status_code == 200, reviewed.text
+        assert reviewed.json()["classification"] == "operational"
+        thumbnail = await client.get(
+            f"/api/v1/photos/{photo['id']}/thumbnail", headers=manager
+        )
+        assert thumbnail.status_code == 200
+        download = await client.get(f"/api/v1/photos/{photo['id']}/download", headers=manager)
+        assert download.headers["cache-control"] == "no-store"

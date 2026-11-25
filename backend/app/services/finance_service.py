@@ -432,6 +432,7 @@ class FinanceService:
             self.settings.minio_bucket,
             invoice.attachment_key,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
+            response_headers={"response-cache-control": "no-store"},
         )
 
     async def create_payment(

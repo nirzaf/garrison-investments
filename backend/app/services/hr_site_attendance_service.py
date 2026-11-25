@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import UTC, date, datetime, time
 from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,9 +10,11 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.models.hr import (
     HrAttendanceEntry,
     HrEmployee,
+    HrHoliday,
     HrRosterAllocation,
     HrShiftAssignment,
     HrSiteAttendanceSubmission,
+    HrWorkCalendar,
 )
 from app.models.project import Project
 from app.models.user import User
@@ -72,11 +75,18 @@ class HrSiteAttendanceService:
         search: str | None,
         limit: int,
         offset: int,
+        historical: bool = False,
     ) -> SiteAttendanceWorkerPage:
         self._ensure_submitter(actor)
-        await self._ensure_active_project(project_id, actor)
+        if historical and work_date >= business_today():
+            raise AppException(
+                "Historical attendance is limited to past work dates.",
+                status_code=422,
+                error_code="HISTORICAL_DATE_INVALID",
+            )
+        await self._ensure_attendance_project(project_id, actor, historical=historical)
         query = select(HrEmployee.id, HrEmployee.employee_code, HrEmployee.full_name).where(
-            *self._worker_eligibility(project_id, work_date)
+            *self._worker_eligibility(project_id, work_date, historical=historical)
         )
         if search and search.strip():
             term = f"%{search.strip()}%"
@@ -228,8 +238,15 @@ class HrSiteAttendanceService:
         self, payload: SiteAttendanceCreateRequest, actor: User
     ) -> SiteAttendanceResponse:
         self._ensure_submitter(actor)
-        await self._ensure_active_project(payload.project_id, actor)
-        employee = await self._require_worker(payload)
+        historical = payload.historical_reason is not None
+        if historical and payload.work_date >= business_today():
+            raise AppException(
+                "Historical attendance is limited to past work dates.",
+                status_code=422,
+                error_code="HISTORICAL_DATE_INVALID",
+            )
+        await self._ensure_attendance_project(payload.project_id, actor, historical=historical)
+        employee = await self._require_worker(payload, historical=historical)
         entry = await self.workforce.prepare_attendance(payload, actor, employee)
         entry.site_submission_revision = 1
         self.session.add(entry)
@@ -240,8 +257,15 @@ class HrSiteAttendanceService:
         self, entry_id: UUID, payload: SiteAttendanceCorrectionRequest, actor: User
     ) -> SiteAttendanceResponse:
         self._ensure_submitter(actor)
-        await self._ensure_active_project(payload.project_id, actor)
-        employee = await self._require_worker(payload)
+        historical = payload.historical_reason is not None
+        if historical and payload.work_date >= business_today():
+            raise AppException(
+                "Historical attendance is limited to past work dates.",
+                status_code=422,
+                error_code="HISTORICAL_DATE_INVALID",
+            )
+        await self._ensure_attendance_project(payload.project_id, actor, historical=historical)
+        employee = await self._require_worker(payload, historical=historical)
         entry = await self._require_entry(entry_id, lock=True)
         if (
             entry.recorded_by_id != actor.id
@@ -305,8 +329,11 @@ class HrSiteAttendanceService:
         ):
             raise PermissionDeniedException("review this site attendance")
         requirements = SiteAttendanceCreateRequest.model_validate(submission.requirements)
-        await self._ensure_active_project(requirements.project_id, actor)
-        await self._require_worker(requirements)
+        historical = requirements.historical_reason is not None
+        await self._ensure_attendance_project(
+            requirements.project_id, actor, historical=historical
+        )
+        await self._require_worker(requirements, historical=historical)
         await self.workforce._ensure_attendance_period_open(employee.id, entry.work_date)
         if payload.stage == "engineer":
             await ApprovalService(self.session).require_project_reviewer(
@@ -393,12 +420,20 @@ class HrSiteAttendanceService:
             excluded_user_ids=excluded,
         )
         await self._hr_reviewers({*excluded, engineer.id})
+        requirements = payload.model_dump(mode="json", exclude={"expected_revision"})
+        scheduled_start, arrival_variance = await self._arrival_schedule_snapshot(
+            payload, employee
+        )
+        requirements["scheduled_start_at"] = (
+            scheduled_start.isoformat().replace("+00:00", "Z") if scheduled_start else None
+        )
+        requirements["arrival_variance_seconds"] = arrival_variance
         submission = HrSiteAttendanceSubmission(
             entry_id=entry.id,
             submission_revision=entry.site_submission_revision,
             submitted_by=actor.id,
             engineer_id=engineer.id,
-            requirements=payload.model_dump(mode="json", exclude={"expected_revision"}),
+            requirements=requirements,
         )
         self.session.add(submission)
         await self.session.flush()
@@ -407,7 +442,19 @@ class HrSiteAttendanceService:
             user_id=actor.id,
             entity_type="hr_attendance_entries",
             entity_id=entry.id,
-            new_values={"submission_revision": submission.submission_revision},
+            new_values={
+                "submission_revision": submission.submission_revision,
+                **(
+                    {"correction_reason": payload.correction_reason}
+                    if isinstance(payload, SiteAttendanceCorrectionRequest)
+                    else {}
+                ),
+                **(
+                    {"historical_reason": payload.historical_reason}
+                    if payload.historical_reason is not None
+                    else {}
+                ),
+            },
         )
         await self._notify(
             engineer.id,
@@ -417,6 +464,137 @@ class HrSiteAttendanceService:
         )
         await self.session.commit()
         return self._response(entry, employee, submission)
+
+    async def _arrival_schedule_snapshot(
+        self, payload: SiteAttendanceCreateRequest, employee: HrEmployee
+    ) -> tuple[datetime | None, int | None]:
+        """Freeze a published scheduled start and factual check-in delta, when unambiguous."""
+        scheduled_start: datetime | None = None
+        roster_rows = list(
+            await self.session.scalars(
+                select(HrRosterAllocation).where(
+                    HrRosterAllocation.employee_id == employee.id,
+                    HrRosterAllocation.project_id == payload.project_id,
+                    HrRosterAllocation.work_date == payload.work_date,
+                    HrRosterAllocation.cancelled_at.is_(None),
+                )
+            )
+        )
+        if len(roster_rows) == 1:
+            scheduled_start = roster_rows[0].starts_at
+        elif len(roster_rows) > 1:
+            return None, None
+        else:
+            applicable_calendar = (
+                HrWorkCalendar.status == "published",
+                HrWorkCalendar.deleted_at.is_(None),
+                HrWorkCalendar.effective_from <= payload.work_date,
+                HrWorkCalendar.effective_to >= payload.work_date,
+            )
+            shift_rows = list(
+                (
+                    await self.session.execute(
+                        select(HrShiftAssignment, HrWorkCalendar)
+                        .join(HrWorkCalendar, HrWorkCalendar.id == HrShiftAssignment.calendar_id)
+                        .where(
+                            HrShiftAssignment.employee_id == employee.id,
+                            HrShiftAssignment.effective_from <= payload.work_date,
+                            or_(
+                                HrShiftAssignment.effective_to.is_(None),
+                                HrShiftAssignment.effective_to >= payload.work_date,
+                            ),
+                            or_(
+                                HrShiftAssignment.project_id == payload.project_id,
+                                HrShiftAssignment.project_id.is_(None),
+                            ),
+                            *applicable_calendar,
+                        )
+                    )
+                ).all()
+            )
+            project_shifts = [row for row in shift_rows if row[0].project_id == payload.project_id]
+            global_shifts = [row for row in shift_rows if row[0].project_id is None]
+            candidates = project_shifts if project_shifts else global_shifts
+            if len(candidates) == 1:
+                shift, calendar = candidates[0]
+                scheduled_start = self._local_schedule_start(
+                    payload.work_date, shift.start_time, calendar.timezone
+                )
+            elif len(candidates) > 1:
+                return None, None
+            else:
+                calendar_rows = list(
+                    await self.session.scalars(
+                        select(HrWorkCalendar).where(
+                            *applicable_calendar,
+                            or_(
+                                HrWorkCalendar.id == employee.work_calendar_id,
+                                HrWorkCalendar.project_id == payload.project_id,
+                                (
+                                    HrWorkCalendar.project_id.is_(None)
+                                    & HrWorkCalendar.is_default.is_(True)
+                                ),
+                            ),
+                        )
+                    )
+                )
+                calendar_rows = [
+                    calendar
+                    for calendar in calendar_rows
+                    if calendar.project_id in {None, payload.project_id}
+                ]
+                if not calendar_rows:
+                    return None, None
+
+                def priority(calendar: HrWorkCalendar) -> int:
+                    if calendar.id == employee.work_calendar_id:
+                        return 0
+                    if calendar.project_id == payload.project_id:
+                        return 1
+                    return 2
+
+                best_priority = min(map(priority, calendar_rows))
+                calendars = [row for row in calendar_rows if priority(row) == best_priority]
+                if len(calendars) != 1:
+                    return None, None
+                calendar = calendars[0]
+                weekday = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")[
+                    payload.work_date.weekday()
+                ]
+                holiday = await self.session.scalar(
+                    select(HrHoliday.id).where(
+                        HrHoliday.calendar_id == calendar.id,
+                        HrHoliday.holiday_date == payload.work_date,
+                    )
+                )
+                if holiday is not None or weekday not in calendar.work_days_json:
+                    return None, None
+                scheduled_start = self._local_schedule_start(
+                    payload.work_date, calendar.standard_start_time, calendar.timezone
+                )
+
+        if scheduled_start is None or scheduled_start.tzinfo is None:
+            return None, None
+        scheduled_utc = scheduled_start.astimezone(UTC)
+        check_in = payload.check_in_at
+        if payload.attendance_status != "present" or check_in is None:
+            return scheduled_utc, None
+        if check_in.tzinfo is None:
+            return scheduled_utc, None
+        arrival_utc = check_in.astimezone(UTC)
+        variance_seconds = round((arrival_utc - scheduled_utc).total_seconds())
+        return scheduled_utc, variance_seconds
+
+    @staticmethod
+    def _local_schedule_start(
+        work_date: date, start_time: time, timezone_name: str | None
+    ) -> datetime | None:
+        if not timezone_name:
+            return None
+        try:
+            return datetime.combine(work_date, start_time, tzinfo=ZoneInfo(timezone_name))
+        except (ValueError, ZoneInfoNotFoundError):
+            return None
 
     async def _hr_reviewers(self, excluded: set[UUID | None]) -> list[UUID]:
         reviewers = list(
@@ -440,9 +618,7 @@ class HrSiteAttendanceService:
         return reviewers
 
     @staticmethod
-    def _worker_eligibility(
-        project_id: UUID, work_date: date, *, historical: bool = False
-    ) -> tuple[ColumnElement[bool], ...]:
+    def _project_assignment(project_id: UUID, work_date: date) -> ColumnElement[bool]:
         daily_roster = select(HrRosterAllocation.id).where(
             HrRosterAllocation.employee_id == HrEmployee.id,
             HrRosterAllocation.work_date == work_date,
@@ -461,6 +637,13 @@ class HrSiteAttendanceService:
             daily_roster.where(HrRosterAllocation.project_id == project_id).exists(),
             ~daily_roster.exists() & project_shift.exists(),
         )
+        return assignment
+
+    @staticmethod
+    def _worker_eligibility(
+        project_id: UUID, work_date: date, *, historical: bool = False
+    ) -> tuple[ColumnElement[bool], ...]:
+        assignment = HrSiteAttendanceService._project_assignment(project_id, work_date)
         if historical:
             eligible, _ = historical_site_employment(work_date)
             return eligible, assignment
@@ -472,7 +655,9 @@ class HrSiteAttendanceService:
             assignment,
         )
 
-    async def _require_worker(self, payload: SiteAttendanceCreateRequest) -> HrEmployee:
+    async def _require_worker(
+        self, payload: SiteAttendanceCreateRequest, *, historical: bool = False
+    ) -> HrEmployee:
         if payload.work_date > business_today():
             raise AppException(
                 "Site attendance cannot be recorded for a future date.", status_code=422
@@ -481,11 +666,41 @@ class HrSiteAttendanceService:
             select(HrEmployee)
             .where(
                 HrEmployee.id == payload.employee_id,
-                *self._worker_eligibility(payload.project_id, payload.work_date),
+                *self._worker_eligibility(
+                    payload.project_id, payload.work_date, historical=historical
+                ),
             )
             .with_for_update()
         )
         if worker is None:
+            if historical:
+                _, unresolved = historical_site_employment(payload.work_date)
+                unresolved_for_worker = await self.session.scalar(
+                    select(unresolved)
+                    .select_from(HrEmployee)
+                    .where(HrEmployee.id == payload.employee_id)
+                )
+                if unresolved_for_worker:
+                    raise AppException(
+                        "Historical employment dates require HR reconciliation before "
+                        "attendance can be recorded.",
+                        status_code=409,
+                        error_code="HISTORICAL_EMPLOYMENT_UNRESOLVED",
+                    )
+            elif await self.session.scalar(
+                select(
+                    historical_site_employment(payload.work_date)[0]
+                    & self._project_assignment(payload.project_id, payload.work_date)
+                )
+                .select_from(HrEmployee)
+                .where(HrEmployee.id == payload.employee_id)
+            ):
+                raise AppException(
+                    "A historical reason is required for a former or otherwise "
+                    "ineligible employee.",
+                    status_code=422,
+                    error_code="HISTORICAL_REASON_REQUIRED",
+                )
             raise NotFoundException("Eligible assigned worker")
         return worker
 
@@ -507,19 +722,30 @@ class HrSiteAttendanceService:
             if scope is not None and entry.project_id not in scope:
                 raise NotFoundException("Site attendance")
 
-    async def _ensure_active_project(self, project_id: UUID, actor: User) -> None:
+    async def _ensure_attendance_project(
+        self, project_id: UUID, actor: User, *, historical: bool
+    ) -> None:
         if actor.role != ROLE_HR_MANAGER:
             await ensure_project_access(self.session, project_id, actor)
-        if not await self.session.scalar(
-            select(Project.id)
+        status = await self.session.scalar(
+            select(Project.status)
             .where(
                 Project.id == project_id,
-                Project.status == "active",
                 Project.deleted_at.is_(None),
             )
             .with_for_update(read=True)
-        ):
-            raise NotFoundException("Active project")
+        )
+        if status == "active":
+            return
+        if historical and status == "completed":
+            return
+        if status == "completed" and not historical:
+            raise AppException(
+                "A reasoned historical attendance submission is required for a completed project.",
+                status_code=409,
+                error_code="HISTORICAL_REASON_REQUIRED",
+            )
+        raise NotFoundException("Active project")
 
     @staticmethod
     def _ensure_submitter(actor: User) -> None:

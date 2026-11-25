@@ -173,10 +173,8 @@ class MaterialRequest(TimestampMixin, SoftDeleteMixin, Base):
         )
     )
     correction_expected_revision: Mapped[int | None] = mapped_column(Integer)
-    total_estimated_cost: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2),
-        nullable=False,
-        server_default=text("0"),
+    total_estimated_cost: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

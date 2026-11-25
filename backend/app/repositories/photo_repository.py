@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.daily_report import DailyReport
 from app.models.photo import Photo
@@ -47,6 +48,7 @@ class PhotoRepository:
         kind: str | None,
         limit: int,
         offset: int,
+        classification_filter: ColumnElement[bool] | None = None,
     ) -> tuple[list[Photo], int]:
         query = select(Photo).where(Photo.deleted_at.is_not(None))
         if entity_type:
@@ -55,6 +57,8 @@ class PhotoRepository:
             query = query.where(Photo.entity_id == entity_id)
         if kind:
             query = query.where(Photo.kind == kind)
+        if classification_filter is not None:
+            query = query.where(classification_filter)
         total = await self.session.scalar(
             select(func.count()).select_from(query.with_only_columns(Photo.id).subquery())
         )
@@ -71,6 +75,7 @@ class PhotoRepository:
         kind: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        classification_filter: ColumnElement[bool] | None = None,
     ) -> tuple[list[Photo], int]:
         query: Select = select(Photo).where(
             Photo.entity_type == entity_type,
@@ -79,6 +84,8 @@ class PhotoRepository:
         )
         if kind:
             query = query.where(Photo.kind == kind)
+        if classification_filter is not None:
+            query = query.where(classification_filter)
         total = await self.session.scalar(
             select(func.count()).select_from(query.with_only_columns(Photo.id).subquery())
         )
@@ -96,6 +103,7 @@ class PhotoRepository:
         offset: int = 0,
         project_ids: list[UUID] | None = None,
         engineer_id: UUID | None = None,
+        classification_filter: ColumnElement[bool] | None = None,
     ) -> tuple[list[Photo], int]:
         query: Select = select(Photo).where(Photo.deleted_at.is_(None))
         if entity_type:
@@ -111,6 +119,8 @@ class PhotoRepository:
             query = query.where(DailyReport.project_id.in_(project_ids))
         if engineer_id is not None:
             query = query.where(DailyReport.engineer_id == engineer_id)
+        if classification_filter is not None:
+            query = query.where(classification_filter)
         total = await self.session.scalar(
             select(func.count()).select_from(query.with_only_columns(Photo.id).subquery())
         )

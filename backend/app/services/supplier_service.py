@@ -212,6 +212,7 @@ class SupplierService:
             self.settings.minio_bucket,
             supplier.tds_document_key,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
+            response_headers={"response-cache-control": "no-store"},
         )
 
     async def get_supplier(self, supplier_id: UUID, *, for_update: bool = False) -> Supplier:

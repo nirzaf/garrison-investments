@@ -263,5 +263,5 @@ async def test_material_director_threshold_settings_reject_invalid_values(monkey
         )
     policy = Settings(material_operations_approval_threshold=Decimal("1000"))
     monkeypatch.setattr("app.services.approval_service.get_settings", lambda: policy)
-    assert required_material_stages(None) == (1, 2)
+    assert required_material_stages(None) == (1, 2, 3)
     assert required_material_stages(Decimal("0")) == (1, 2)

@@ -34,6 +34,16 @@ MATERIAL_REQUESTS = text("""
     ORDER BY r.id
 """)
 
+INCOMPLETE_MATERIAL_VALUATION = text("""
+    SELECT r.id, r.project_id, r.status, r.revision, r.submission_revision,
+           r.total_estimated_cost,
+           'manual_review' AS disposition
+    FROM material_requests r
+    WHERE r.deleted_at IS NULL AND r.status <> 'draft'
+      AND r.total_estimated_cost IS NULL
+    ORDER BY r.id
+""")
+
 CURRENT_STOCK_ACTIVITY = text("""
     SELECT r.id, r.project_id, r.status, r.revision, r.submission_revision,
            SUM(l.reserved_quantity) AS reserved_quantity,
@@ -72,6 +82,32 @@ SITE_ATTENDANCE = text("""
     ORDER BY a.id
 """)
 
+UNCLASSIFIED_EVIDENCE = text("""
+    SELECT 'document' AS evidence_type, d.id AS evidence_id, d.project_id,
+           NULL::varchar AS entity_type, NULL::uuid AS entity_id,
+           d.created_at, 'manual_classification_review' AS disposition
+    FROM documents d
+    WHERE d.deleted_at IS NULL AND d.classification = 'unclassified'
+    UNION ALL
+    SELECT 'photo' AS evidence_type, p.id AS evidence_id,
+           CASE p.entity_type
+             WHEN 'daily_report' THEN
+               (SELECT r.project_id FROM daily_reports r WHERE r.id = p.entity_id)
+             WHEN 'supervisor_update' THEN
+               (SELECT u.project_id FROM supervisor_updates u WHERE u.id = p.entity_id)
+             WHEN 'inventory_registration' THEN
+               (SELECT i.project_id FROM inventory_registrations i WHERE i.id = p.entity_id)
+             WHEN 'material_request' THEN
+               (SELECT m.project_id FROM material_requests m WHERE m.id = p.entity_id)
+             ELSE NULL
+           END AS project_id,
+           p.entity_type, p.entity_id, p.created_at,
+           'manual_classification_review' AS disposition
+    FROM photos p
+    WHERE p.deleted_at IS NULL AND p.classification = 'unclassified'
+    ORDER BY evidence_type, evidence_id
+""")
+
 
 async def report() -> None:
     try:
@@ -81,8 +117,10 @@ async def report() -> None:
             )
             for category, query in (
                 ("legacy_material_request", MATERIAL_REQUESTS),
+                ("incomplete_material_valuation", INCOMPLETE_MATERIAL_VALUATION),
                 ("current_material_stock_activity", CURRENT_STOCK_ACTIVITY),
                 ("legacy_site_attendance", SITE_ATTENDANCE),
+                ("unclassified_evidence", UNCLASSIFIED_EVIDENCE),
             ):
                 async for row in await session.stream(query):
                     print(json.dumps({"finding": category, **row._mapping}, default=str))

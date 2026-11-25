@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,6 +19,7 @@ class PhotoResponse(BaseModel):
     entity_type: str
     entity_id: UUID
     kind: str
+    classification: Literal["unclassified", "operational", "financial"]
     caption: str | None
     taken_at: datetime | None
     uploaded_by: UUID | None

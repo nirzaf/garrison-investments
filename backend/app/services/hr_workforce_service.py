@@ -2177,7 +2177,10 @@ class HrWorkforceService:
             self.settings.minio_bucket,
             ver.object_key,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
-            response_headers={"response-content-disposition": "attachment"},
+            response_headers={
+                "response-content-disposition": "attachment",
+                "response-cache-control": "no-store",
+            },
         )
         return HrDocumentDownloadResponse(
             document_id=doc.id,
@@ -2936,7 +2939,14 @@ class HrWorkforceService:
             schedule.calendar.timezone if schedule.calendar else None,
         )
         entry = HrAttendanceEntry(
-            **payload.model_dump(exclude={"overtime_hours", "expected_revision"}),
+            **payload.model_dump(
+                exclude={
+                    "overtime_hours",
+                    "expected_revision",
+                    "correction_reason",
+                    "historical_reason",
+                }
+            ),
             **self._attendance_schedule_values(schedule),
             recorded_by_id=actor.id,
         )

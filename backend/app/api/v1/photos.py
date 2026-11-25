@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, Upl
 
 from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.models.user import User
+from app.schemas.documents import EvidenceClassificationRequest
 from app.schemas.photos import (
     PhotoDecisionRequest,
     PhotoListResponse,
@@ -44,6 +45,7 @@ async def upload_files(
     ] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> list[PhotoResponse]:
+    response.headers["Cache-Control"] = "no-store"
     if not files:
         raise AppException("Select at least one file.", status_code=422)
     if (
@@ -100,6 +102,7 @@ async def upload_files(
 async def list_files(
     current_user: CurrentUser,
     session: DbSession,
+    response: Response,
     entity_type: Annotated[str | None, Query()] = None,
     entity_id: Annotated[UUID | None, Query()] = None,
     kind: Annotated[str | None, Query()] = None,
@@ -107,6 +110,7 @@ async def list_files(
     offset: Annotated[int, Query(ge=0)] = 0,
     deleted: Annotated[bool, Query()] = False,
 ) -> PhotoListResponse:
+    response.headers["Cache-Control"] = "no-store"
     service = PhotoService(session)
     if deleted:
         photos, total = await service.list_deleted(
@@ -164,7 +168,9 @@ async def get_file(
     photo_id: UUID,
     current_user: CurrentUser,
     session: DbSession,
+    response: Response,
 ) -> PhotoResponse:
+    response.headers["Cache-Control"] = "no-store"
     photo = await PhotoService(session).get(photo_id, actor=current_user)
     return PhotoResponse.model_validate(photo)
 
@@ -172,21 +178,40 @@ async def get_file(
 @router.get("/{photo_id}/download", response_model=ProtectedFileUrlResponse)
 async def get_file_download_url(
     photo_id: UUID,
+    response: Response,
     current_user: CurrentUser,
     session: DbSession,
 ) -> ProtectedFileUrlResponse:
     url = await PhotoService(session).signed_url(photo_id, variant="original", actor=current_user)
+    response.headers["Cache-Control"] = "no-store"
     return ProtectedFileUrlResponse(url=url, expires_in_seconds=SIGNED_URL_SECONDS)
 
 
 @router.get("/{photo_id}/thumbnail", response_model=ProtectedFileUrlResponse)
 async def get_thumbnail_url(
     photo_id: UUID,
+    response: Response,
     current_user: CurrentUser,
     session: DbSession,
 ) -> ProtectedFileUrlResponse:
     url = await PhotoService(session).signed_url(photo_id, variant="thumbnail", actor=current_user)
+    response.headers["Cache-Control"] = "no-store"
     return ProtectedFileUrlResponse(url=url, expires_in_seconds=SIGNED_URL_SECONDS)
+
+
+@router.patch("/{photo_id}/classification", response_model=PhotoResponse)
+async def classify_photo(
+    photo_id: UUID,
+    payload: EvidenceClassificationRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+    response: Response,
+) -> PhotoResponse:
+    response.headers["Cache-Control"] = "no-store"
+    photo = await PhotoService(session).classify(
+        photo_id, payload.classification, payload.reason, current_user
+    )
+    return PhotoResponse.model_validate(photo)
 
 
 @router.delete("/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -204,8 +229,10 @@ async def recover_file(
     photo_id: UUID,
     current_user: CurrentUser,
     session: DbSession,
+    response: Response,
     payload: PhotoDecisionRequest | None = None,
 ) -> PhotoResponse:
+    response.headers["Cache-Control"] = "no-store"
     photo = await PhotoService(session).recover(
         photo_id, current_user, payload.reason if payload else None
     )

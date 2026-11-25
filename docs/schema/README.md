@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md) · [Architecture](../ARCHITECTURE.md) · [Operations and deployment](../OPERATIONS_AND_DEPLOYMENT.md)
 
-This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference uses a historical catalogue check at revision `202605310013` and describes subsequent source migrations. The current repository Alembic head is [`202605310108`](../../backend/alembic/versions/202605310108_material_request_drafts.py). The local HR migrations begin at [revision 007](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and currently end at [revision 046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
+This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference uses a historical catalogue check at revision `202605310013` and describes subsequent source migrations. The current repository Alembic head is [`202605310110`](../../backend/alembic/versions/202605310110_evidence_classification.py). The local HR migrations begin at [revision 007](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and currently end at [revision 046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic revisions](../../backend/alembic/versions/) to trace schema changes.
 
 A dash in the default column means the database has no server default. Application-side rules live in the linked model and service code. Many tables use `deleted_at` for soft deletion. Foreign-key delete actions describe physical row deletion.
 
@@ -48,9 +48,9 @@ A dash in the default column means the database has no server default. Applicati
 
 | Table | Purpose |
 | --- | --- |
-| [`documents`](documents.md) | Document metadata, optional project association, expiry, and active version number. |
+| [`documents`](documents.md) | Document metadata, optional project association, evidence classification, expiry, and active version number. |
 | [`document_versions`](document_versions.md) | Version-specific object-storage keys, file metadata, and approval status. |
-| [`photos`](photos.md) | Original media and generated renditions for reports, updates, and other supported entities. |
+| [`photos`](photos.md) | Classified original media and generated renditions for reports, updates, and other supported entities. |
 
 ## Inventory
 
@@ -204,3 +204,13 @@ Revision 108 adds nullable editable draft data and correction-target revision
 links to `material_requests`. Existing submissions retain their immutable evidence
 and decision snapshots. The correction applies to its target only after its
 current revision has been verified.
+
+Revision 109 permits `material_requests.total_estimated_cost` to remain null when
+one or more submitted inventory items have no known unit cost. The downgrade
+refuses to erase that unknown state.
+
+Revision 110 adds the non-null `unclassified` default to documents and photos and
+marks existing `contract` and `invoice` documents as financial. Classification
+review decisions are audited; unclassified evidence requires uploader or reviewer
+access, operational evidence retains its existing owner scope, and financial
+evidence requires `financial:view`. See [documents](documents.md) and [photos](photos.md).

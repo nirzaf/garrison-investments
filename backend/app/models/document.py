@@ -18,6 +18,9 @@ class Document(TimestampMixin, SoftDeleteMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     document_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    classification: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'unclassified'")
+    )
     project_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )

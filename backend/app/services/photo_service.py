@@ -9,8 +9,9 @@ from fastapi import UploadFile
 from minio import Minio
 from minio.error import S3Error
 from PIL import Image, ImageDraw
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.models.daily_report import DailyReport
@@ -28,11 +29,21 @@ from app.services.authorization import (
     ensure_entity_access,
     ensure_project_access,
 )
+from app.services.evidence_classification import (
+    FINANCIAL,
+    OPERATIONAL,
+    UNCLASSIFIED,
+    EvidenceClassification,
+    ensure_evidence_classification_access,
+    ensure_evidence_classification_reviewer,
+)
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     OFFICIAL_REPORT_AUTHOR_ROLES,
+    PERMISSION_DOCUMENTS_MANAGE,
+    PERMISSION_FINANCIAL_VIEW,
     PERMISSION_REPORTS_SUBMIT,
     PERMISSION_REPORTS_VIEW,
     SUPERVISOR_ROLES,
@@ -161,6 +172,7 @@ class PhotoService:
             entity_type=entity_type,
             entity_id=entity_id,
             kind=normalized_kind,
+            classification=UNCLASSIFIED,
             caption=caption,
             uploaded_by=actor.id,
             processing_status="ready",
@@ -179,7 +191,11 @@ class PhotoService:
                 user_id=actor.id,
                 entity_type=entity_type,
                 entity_id=entity_id,
-                new_values={"photo_id": str(photo.id), "kind": normalized_kind},
+                new_values={
+                    "photo_id": str(photo.id),
+                    "kind": normalized_kind,
+                    "classification": photo.classification,
+                },
             )
             if idempotency_key:
                 winner_id = await bind(
@@ -233,6 +249,7 @@ class PhotoService:
             kind=kind,
             limit=limit,
             offset=offset,
+            classification_filter=self._classification_filter(actor),
         )
 
     async def list_recent(
@@ -272,6 +289,7 @@ class PhotoService:
             offset=offset,
             project_ids=await accessible_project_ids(self.session, actor),
             engineer_id=None,
+            classification_filter=self._classification_filter(actor),
         )
 
     async def get(self, photo_id: UUID, *, actor: User) -> Photo:
@@ -279,7 +297,44 @@ class PhotoService:
         if not photo:
             raise NotFoundException("Photo")
         await ensure_entity_access(self.session, photo.entity_type, photo.entity_id, actor)
+        self._ensure_evidence_classification_access(photo, actor)
         return photo
+
+    async def classify(
+        self,
+        photo_id: UUID,
+        classification: EvidenceClassification,
+        reason: str,
+        actor: User,
+    ) -> Photo:
+        photo = await self.photos.get_by_id(photo_id, for_update=True)
+        if photo is None:
+            raise NotFoundException("Photo")
+        await ensure_entity_access(self.session, photo.entity_type, photo.entity_id, actor)
+        ensure_evidence_classification_reviewer(actor, photo.uploaded_by, classification)
+        if photo.classification != UNCLASSIFIED:
+            raise AppException(
+                "Evidence classification has already been reviewed.",
+                status_code=409,
+                error_code="EVIDENCE_CLASSIFICATION_ALREADY_REVIEWED",
+            )
+        old_classification = photo.classification
+        photo.classification = classification
+        await self.audit.record(
+            action="photos.classification_reviewed",
+            user_id=actor.id,
+            entity_type=photo.entity_type,
+            entity_id=photo.entity_id,
+            comments=reason,
+            old_values={"photo_id": str(photo.id), "classification": old_classification},
+            new_values={"photo_id": str(photo.id), "classification": classification},
+        )
+        await self.session.commit()
+        self.session.expire_all()
+        reviewed_photo = await self.photos.get_by_id(photo_id)
+        if reviewed_photo is None:
+            raise NotFoundException("Photo")
+        return reviewed_photo
 
     async def signed_url(self, photo_id: UUID, *, variant: str, actor: User) -> str:
         photo = await self.get(photo_id, actor=actor)
@@ -296,7 +351,27 @@ class PhotoService:
             self.settings.minio_bucket,
             object_key,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
+            response_headers={"response-cache-control": "no-store"},
         )
+
+    @staticmethod
+    def _ensure_evidence_classification_access(photo: Photo, actor: User) -> None:
+        ensure_evidence_classification_access(
+            photo.classification, photo.uploaded_by, actor
+        )
+
+    @staticmethod
+    def _classification_filter(actor: User) -> ColumnElement[bool]:
+        visible = [Photo.classification == OPERATIONAL]
+        if has_permission(actor, PERMISSION_DOCUMENTS_MANAGE):
+            visible.append(Photo.classification == UNCLASSIFIED)
+        else:
+            visible.append(
+                and_(Photo.classification == UNCLASSIFIED, Photo.uploaded_by == actor.id)
+            )
+        if has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+            visible.append(Photo.classification == FINANCIAL)
+        return or_(*visible)
 
     async def deletable_ids(self, photos: list[Photo], actor: User) -> set[UUID]:
         if not has_permission(actor, PERMISSION_REPORTS_SUBMIT):
@@ -370,7 +445,12 @@ class PhotoService:
                 "Invalid file kind.", status_code=422, error_code="INVALID_FILE_KIND"
             )
         return await self.photos.list_deleted(
-            entity_type=entity_type, entity_id=entity_id, kind=kind, limit=limit, offset=offset
+            entity_type=entity_type,
+            entity_id=entity_id,
+            kind=kind,
+            limit=limit,
+            offset=offset,
+            classification_filter=self._classification_filter(actor),
         )
 
     async def delete(self, photo_id: UUID, actor: User, reason: str | None = None) -> None:
@@ -419,10 +499,12 @@ class PhotoService:
         photo = await self.photos.get_deleted_by_id(photo_id)
         if photo is None:
             raise NotFoundException("Photo")
+        self._ensure_evidence_classification_access(photo, actor)
         owner = await self._lock_owner(photo.entity_type, photo.entity_id, actor)
         photo = await self.photos.get_deleted_by_id(photo_id, for_update=True)
         if photo is None:
             raise NotFoundException("Photo")
+        self._ensure_evidence_classification_access(photo, actor)
         recovery_cutoff = utc_now() - timedelta(days=PHOTO_RECOVERY_DAYS)
         if photo.deleted_at and photo.deleted_at < recovery_cutoff:
             raise AppException(

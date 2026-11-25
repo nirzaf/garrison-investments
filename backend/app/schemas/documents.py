@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DocumentVersionResponse(BaseModel):
@@ -26,6 +26,7 @@ class DocumentResponse(BaseModel):
     id: UUID
     title: str
     document_type: str
+    classification: Literal["unclassified", "operational", "financial"]
     project_id: UUID | None
     status: str
     active_version: int | None
@@ -44,6 +45,19 @@ class DocumentListResponse(BaseModel):
 
 class DocumentDecisionRequest(BaseModel):
     comments: str | None = None
+
+
+class EvidenceClassificationRequest(BaseModel):
+    classification: Literal["operational", "financial"]
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_be_meaningful(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("A classification reason is required.")
+        return normalized
 
 
 class DocumentDownloadResponse(BaseModel):

@@ -3512,6 +3512,7 @@ class SiteAttendanceCreateRequest(BaseModel):
     worked_hours: Decimal = Field(ge=0, le=24, decimal_places=2)
     overtime_hours: Decimal = Field(default=Decimal("0"), ge=0, le=24, decimal_places=2)
     notes: str | None = Field(default=None, max_length=2000)
+    historical_reason: str | None = Field(default=None, min_length=2, max_length=500)
 
     @model_validator(mode="after")
     def validate_site_hours(self) -> Self:
@@ -3521,11 +3522,20 @@ class SiteAttendanceCreateRequest(BaseModel):
             self.worked_hours or self.check_in_at is not None or self.check_out_at is not None
         ):
             raise ValueError("Arrival times and worked hours are for present workers only.")
+        if self.historical_reason is not None and len(self.historical_reason.strip()) < 2:
+            raise ValueError("Enter a reason for recording historical attendance.")
         return self
 
 
 class SiteAttendanceCorrectionRequest(SiteAttendanceCreateRequest):
     expected_revision: int = Field(ge=1)
+    correction_reason: str = Field(min_length=2, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_correction_reason(self) -> Self:
+        if len(self.correction_reason.strip()) < 2:
+            raise ValueError("Enter a correction reason.")
+        return self
 
 
 class SiteAttendanceDecisionRequest(BaseModel):
@@ -3556,13 +3566,21 @@ class SiteAttendanceWorkerPage(BaseModel):
     total: int
 
 
+class SiteAttendanceRequirementsSnapshot(SiteAttendanceCreateRequest):
+    """Immutable submitted inputs plus the schedule and arrival assessment at submission time."""
+
+    scheduled_start_at: datetime | None = None
+    arrival_variance_seconds: int | None = None
+    correction_reason: str | None = None
+
+
 class SiteAttendanceSubmissionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     submission_revision: int
     submitted_by: UUID
     engineer_id: UUID
-    requirements: SiteAttendanceCreateRequest
+    requirements: SiteAttendanceRequirementsSnapshot
     engineer_decision: str | None
     engineer_comments: str | None
     engineer_decided_at: datetime | None

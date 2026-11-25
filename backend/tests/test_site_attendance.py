@@ -8,6 +8,8 @@ import pytest
 from app.database import AsyncSessionLocal, engine
 from app.models.hr import (
     HrEmployee,
+    HrEmploymentPeriod,
+    HrOffboardingCase,
     HrOvertimeRequest,
     HrPayrollPeriod,
     HrShiftAssignment,
@@ -90,6 +92,8 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
         "project_id": str(project.id),
         "work_date": day.isoformat(),
         "attendance_status": "present",
+        "check_in_at": f"{day.isoformat()}T07:12:00+03:00",
+        "check_out_at": f"{day.isoformat()}T16:00:00+03:00",
         "worked_hours": "8.00",
         "overtime_hours": "1.00",
     }
@@ -126,7 +130,7 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
             json={
                 key: value
                 for key, value in payload.items()
-                if key not in {"project_id", "overtime_hours"}
+                if key not in {"project_id", "overtime_hours", "check_in_at", "check_out_at"}
             },
             headers=hr,
         )
@@ -163,6 +167,10 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
         entry = created.json()
         entry_id = entry["id"]
         assert entry["stage"] == "pending_engineer"
+        assert entry["submission"]["requirements"]["arrival_variance_seconds"] == 720
+        assert entry["submission"]["requirements"]["scheduled_start_at"].startswith(
+            f"{day.isoformat()}T04:00:00"
+        )
         action = f"{site_path}/{entry_id}/decision"
         proposed = {"expected_revision": entry["record_revision"], "decision": "approved"}
         early = await client.post(action, json={**proposed, "stage": "hr"}, headers=hr)
@@ -214,7 +222,7 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
             headers=hr,
         )
         assert returned.status_code == 200, returned.text
-        corrected = await client.post(
+        missing_reason = await client.post(
             f"{site_path}/{entry_id}/correction",
             json={
                 **payload,
@@ -223,9 +231,23 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
             },
             headers=writer,
         )
+        assert missing_reason.status_code == 422, missing_reason.text
+        corrected = await client.post(
+            f"{site_path}/{entry_id}/correction",
+            json={
+                **payload,
+                "expected_revision": returned.json()["record_revision"],
+                "notes": "Time checked.",
+                "correction_reason": "Corrected after checking the site register.",
+            },
+            headers=writer,
+        )
         assert corrected.status_code == 200, corrected.text
         assert corrected.json()["submission"]["submission_revision"] == 2
         assert corrected.json()["stage"] == "pending_engineer"
+        assert corrected.json()["submission"]["requirements"]["correction_reason"] == (
+            "Corrected after checking the site register."
+        )
 
         reviewed_again = await client.post(
             action,
@@ -311,7 +333,11 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
 
         locked = await client.post(
             f"{site_path}/{entry_id}/correction",
-            json={**payload, "expected_revision": approved["record_revision"]},
+            json={
+                **payload,
+                "expected_revision": approved["record_revision"],
+                "correction_reason": "Correct an entry in a closed timesheet period.",
+            },
             headers=writer,
         )
         assert locked.status_code == 409
@@ -408,3 +434,209 @@ async def test_historical_payroll_obligations_match_project_and_work_date() -> N
             if issue.code == "site_employment_eligibility_unresolved"
         ]
         assert {issue.work_date for issue in unresolved} == {day, second_day}
+
+
+async def test_historical_site_attendance_uses_evidence_and_preserves_period_locks() -> None:
+    await skip_if_database_unavailable()
+    from app.models.project import Project
+
+    supervisor, supervisor_password = await create_user("site_supervisor")
+    engineer, engineer_password = await create_user("mep_project_manager")
+    manager, _ = await create_user("group_project_manager")
+    hr_manager, hr_password = await create_user("hr_manager")
+    project = await create_project(manager, engineer)
+    work_date = business_today() - timedelta(days=14)
+
+    async with AsyncSessionLocal() as session:
+        project_row = await session.get(Project, project.id)
+        assert project_row is not None
+        project_row.status = "completed"
+        calendar = HrWorkCalendar(
+            code=f"HIST-{uuid4().hex[:6]}",
+            name="Historical site schedule",
+            project_id=project.id,
+            timezone="Asia/Qatar",
+            status="published",
+            published_at=utc_now(),
+            effective_from=work_date - timedelta(days=20),
+            effective_to=work_date,
+        )
+        employee = HrEmployee(
+            employee_code=f"FORMER-{uuid4().hex[:8]}",
+            first_name="Former",
+            last_name="Worker",
+            full_name="Former Worker",
+            employment_status="terminated",
+            join_date=work_date - timedelta(days=30),
+            termination_date=work_date + timedelta(days=1),
+        )
+        session.add_all(
+            [
+                calendar,
+                employee,
+                ProjectMember(project_id=project.id, user_id=supervisor.id),
+            ]
+        )
+        await session.flush()
+        offboarding = HrOffboardingCase(
+            id=uuid4(),
+            employee_id=employee.id,
+            separation_type="resignation",
+            last_working_date=work_date + timedelta(days=1),
+            status="completed",
+            completed_at=utc_now(),
+        )
+        session.add(offboarding)
+        await session.flush()
+        session.add_all(
+            [
+                HrEmploymentPeriod(
+                    employee_id=employee.id,
+                    started_on=work_date - timedelta(days=30),
+                    ended_on=work_date + timedelta(days=1),
+                    separation_case_id=offboarding.id,
+                ),
+                HrShiftAssignment(
+                    employee_id=employee.id,
+                    calendar_id=calendar.id,
+                    project_id=project.id,
+                    shift_name="Historical site shift",
+                    effective_from=work_date - timedelta(days=1),
+                    effective_to=work_date,
+                    start_time=time(7),
+                    end_time=time(16),
+                ),
+            ]
+        )
+        await session.commit()
+
+    body = {
+        "employee_id": str(employee.id),
+        "project_id": str(project.id),
+        "work_date": work_date.isoformat(),
+        "attendance_status": "present",
+        "check_in_at": f"{work_date.isoformat()}T07:00:00+03:00",
+        "check_out_at": f"{work_date.isoformat()}T16:00:00+03:00",
+        "worked_hours": "8.00",
+        "overtime_hours": "0.00",
+    }
+
+    async with create_test_client() as client:
+        async def headers_for(user, password):
+            return {"Authorization": f"Bearer {await login_for_token(client, user, password)}"}
+
+        writer = await headers_for(supervisor, supervisor_password)
+        engineer_headers = await headers_for(engineer, engineer_password)
+        hr_headers = await headers_for(hr_manager, hr_password)
+        workers = await client.get(
+            "/api/v1/hr/site-attendance/workers",
+            params={
+                "project_id": str(project.id),
+                "work_date": work_date.isoformat(),
+                "historical": True,
+            },
+            headers=writer,
+        )
+        assert workers.status_code == 200, workers.text
+        assert [row["id"] for row in workers.json()["items"]] == [str(employee.id)]
+
+        missing_reason = await client.post("/api/v1/hr/site-attendance", json=body, headers=writer)
+        assert missing_reason.status_code == 409, missing_reason.text
+        assert missing_reason.json()["error_code"] == "HISTORICAL_REASON_REQUIRED"
+
+        submitted = await client.post(
+            "/api/v1/hr/site-attendance",
+            json={**body, "historical_reason": "Reconcile the verified site register."},
+            headers=writer,
+        )
+        assert submitted.status_code == 201, submitted.text
+        entry_id = submitted.json()["id"]
+        assert submitted.json()["submission"]["requirements"]["historical_reason"] == (
+            "Reconcile the verified site register."
+        )
+        engineer_decision = await client.post(
+            f"/api/v1/hr/site-attendance/{entry_id}/decision",
+            json={"expected_revision": 1, "stage": "engineer", "decision": "approved"},
+            headers=engineer_headers,
+        )
+        assert engineer_decision.status_code == 200, engineer_decision.text
+        hr_decision = await client.post(
+            f"/api/v1/hr/site-attendance/{entry_id}/decision",
+            json={
+                "expected_revision": engineer_decision.json()["record_revision"],
+                "stage": "hr",
+                "decision": "approved",
+            },
+            headers=hr_headers,
+        )
+        assert hr_decision.status_code == 200, hr_decision.text
+
+        corrected = await client.post(
+            f"/api/v1/hr/site-attendance/{entry_id}/correction",
+            json={
+                **body,
+                "historical_reason": "Reconcile the verified site register.",
+                "expected_revision": hr_decision.json()["record_revision"],
+                "correction_reason": "Correct the recorded arrival from the signed register.",
+            },
+            headers=writer,
+        )
+        assert corrected.status_code == 200, corrected.text
+        assert corrected.json()["submission"]["submission_revision"] == 2
+        corrected_engineer = await client.post(
+            f"/api/v1/hr/site-attendance/{entry_id}/decision",
+            json={
+                "expected_revision": corrected.json()["record_revision"],
+                "stage": "engineer",
+                "decision": "approved",
+            },
+            headers=engineer_headers,
+        )
+        assert corrected_engineer.status_code == 200, corrected_engineer.text
+        corrected_hr = await client.post(
+            f"/api/v1/hr/site-attendance/{entry_id}/decision",
+            json={
+                "expected_revision": corrected_engineer.json()["record_revision"],
+                "stage": "hr",
+                "decision": "approved",
+            },
+            headers=hr_headers,
+        )
+        assert corrected_hr.status_code == 200, corrected_hr.text
+        history = await client.get(
+            f"/api/v1/hr/site-attendance/{entry_id}/history", headers=writer
+        )
+        assert history.status_code == 200, history.text
+        assert [row["submission_revision"] for row in history.json()] == [2, 1]
+        assert history.json()[1]["requirements"]["historical_reason"] == (
+            "Reconcile the verified site register."
+        )
+        assert history.json()[0]["requirements"]["correction_reason"].startswith(
+            "Correct the recorded arrival"
+        )
+
+        async with AsyncSessionLocal.begin() as session:
+            session.add(
+                HrTimesheet(
+                    id=uuid4(),
+                    employee_id=employee.id,
+                    project_id=project.id,
+                    period_start=work_date,
+                    period_end=work_date,
+                    regular_hours=Decimal("8.00"),
+                    overtime_hours=Decimal("0.00"),
+                    status="locked",
+                )
+            )
+        locked = await client.post(
+            f"/api/v1/hr/site-attendance/{entry_id}/correction",
+            json={
+                **body,
+                "historical_reason": "Reconcile the verified site register.",
+                "expected_revision": corrected_hr.json()["record_revision"],
+                "correction_reason": "Attempt correction after payroll lock.",
+            },
+            headers=writer,
+        )
+        assert locked.status_code == 409
+        assert "locked timesheet period" in locked.json()["detail"]

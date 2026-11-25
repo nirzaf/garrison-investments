@@ -100,6 +100,7 @@ async def test_scoped_dashboard_analytics_requires_no_general_project_access() -
             headers={"Authorization": f"Bearer {manager_token}"},
         )
         assert export.status_code == 200
+        assert export.headers["cache-control"] == "no-store"
         assert export.content.startswith(b"PK")
         with ZipFile(BytesIO(export.content)) as workbook:
             metadata = ElementTree.fromstring(workbook.read("docProps/custom.xml"))

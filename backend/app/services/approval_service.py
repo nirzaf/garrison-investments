@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -86,8 +86,6 @@ DELEGATION_ELIGIBLE_ROLES: dict[str, frozenset[str]] = {
 
 
 def required_material_stages(total: Decimal | None) -> tuple[int, ...]:
-    if total is None:
-        return (1, 2)
     settings = get_settings()
     return (1, 2) + tuple(
         stage
@@ -95,7 +93,7 @@ def required_material_stages(total: Decimal | None) -> tuple[int, ...]:
             (3, settings.material_operations_approval_threshold),
             (4, settings.material_md_approval_threshold),
         )
-        if threshold is not None and total >= threshold
+        if threshold is not None and (total is None or total >= threshold)
     )
 
 
@@ -319,9 +317,15 @@ class ApprovalService:
         material_ids = [
             row.request_id for row in approvals if row.request_type == "material_request"
         ]
+        material_submission_keys = {
+            (row.request_id, row.submission_revision)
+            for row in approvals
+            if row.request_type == "material_request" and row.submission_revision is not None
+        }
         invoice_ids = [row.request_id for row in approvals if row.request_type == "invoice"]
         ready_materials: set[UUID] = set()
         ready_invoices: set[UUID] = set()
+        complete_valuations: set[tuple[UUID, int]] = set()
         if material_ids:
             ready_materials = set(
                 await self.session.scalars(
@@ -332,6 +336,25 @@ class ApprovalService:
                     )
                 )
             )
+        if material_submission_keys:
+            valuation_rows = await self.session.execute(
+                select(
+                    MaterialRequestSubmission.request_id,
+                    MaterialRequestSubmission.submission_revision,
+                    MaterialRequestSubmission.requirements,
+                ).where(
+                    tuple_(
+                        MaterialRequestSubmission.request_id,
+                        MaterialRequestSubmission.submission_revision,
+                    ).in_(material_submission_keys)
+                )
+            )
+            complete_valuations = {
+                (request_id, revision)
+                for request_id, revision, requirements in valuation_rows
+                if isinstance(requirements, dict)
+                and requirements.get("valuation_complete") is True
+            }
         if invoice_ids:
             ready_invoices = set(
                 await self.session.scalars(
@@ -349,6 +372,13 @@ class ApprovalService:
             response = ApprovalResponse.model_validate(approval)
             if not can_view_financial or (
                 project_ids is not None and approval.project_id not in project_ids
+            ):
+                response.amount = None
+                response.currency = None
+            elif (
+                approval.request_type == "material_request"
+                and approval.submission_revision is not None
+                and (approval.request_id, approval.submission_revision) not in complete_valuations
             ):
                 response.amount = None
                 response.currency = None
@@ -817,15 +847,18 @@ class ApprovalService:
             MATERIAL_FULFILLMENT_TITLE,
             "Approval completed",
             "Approval rejected",
+            "Approval returned",
         }:
             if (
                 approval.request_type == "material_request"
                 and approval.submission_revision is not None
             ):
                 return await self._can_deliver_material_decision(notification, approval)
-            expected_status = (
-                "approved" if notification.title == "Approval completed" else "rejected"
-            )
+            expected_status = {
+                "Approval completed": "approved",
+                "Approval rejected": "rejected",
+                "Approval returned": "returned",
+            }.get(notification.title)
             if (
                 notification.title in {"Material approval advanced", MATERIAL_FULFILLMENT_TITLE}
                 or approval.status != expected_status
@@ -884,8 +917,9 @@ class ApprovalService:
             not in (await accessible_project_ids(self.session, recipient) or [])
         ):
             return False
-        if notification.title == "Approval rejected":
-            return approval.status == "rejected" and request.status == "rejected"
+        if notification.title in {"Approval rejected", "Approval returned"}:
+            decision = "returned" if notification.title == "Approval returned" else "rejected"
+            return approval.status == decision and request.status == decision
         stages = frozen_material_stages(submission)
         if approval.status != "approved" or approval.step_order not in stages:
             return False
@@ -1499,7 +1533,12 @@ class ApprovalService:
                     request_id=request.id,
                     project_id=request.project_id,
                     title=f"{request.request_number} · {MATERIAL_STAGE_TITLES[next_stage]}",
-                    amount=request.total_estimated_cost,
+                    amount=(
+                        request.total_estimated_cost
+                        if isinstance(submission.requirements, dict)
+                        and submission.requirements.get("valuation_complete") is True
+                        else None
+                    ),
                 ),
                 actor,
                 commit=False,

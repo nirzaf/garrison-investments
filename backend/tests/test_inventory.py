@@ -472,6 +472,39 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         )
         assert returned.status_code == 200, returned.text
 
+        from app.models.approval import Approval
+        from app.models.inventory import MaterialRequest
+        from app.models.notification import Notification
+        from app.services.approval_service import ApprovalService
+
+        async with AsyncSessionLocal() as session:
+            returned_approval = await session.get(Approval, UUID(manager["id"]))
+            assert returned_approval is not None
+            returned_notice = await session.scalar(
+                select(Notification).where(
+                    Notification.reference_id == returned_approval.id,
+                    Notification.user_id == requester.id,
+                    Notification.title == "Approval returned",
+                )
+            )
+            assert returned_notice is not None
+            assert await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+            returned_notice_id = returned_notice.id
+            request_row = await session.get(MaterialRequest, UUID(request_id))
+            assert request_row is not None
+            request_row.status = "cancelled"
+            await session.commit()
+            assert not await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+            request_row.status = "returned"
+            recipient = await session.get(User, requester.id)
+            assert recipient is not None
+            recipient.is_active = False
+            await session.commit()
+            assert not await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+            recipient.is_active = True
+            await session.commit()
+            assert await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+
         correction = await client.post(
             "/api/v1/inventory/requests/drafts",
             json={
@@ -503,6 +536,12 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         assert corrected.status_code == 200, corrected.text
         assert corrected.json()["submission_revision"] == 2
         assert corrected.json()["status"] == "pending_engineer"
+        async with AsyncSessionLocal() as session:
+            stale_return_notice = await session.get(Notification, returned_notice_id)
+            assert stale_return_notice is not None
+            assert not await ApprovalService(session).can_deliver_scheduled_email(
+                stale_return_notice
+            )
         evidence = await client.get(
             f"/api/v1/inventory/requests/{request_id}/submissions", headers=owner_headers
         )
@@ -1136,6 +1175,10 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
         ("1000", None, "1000", (1, 2, 3), "unavailable"),
         ("1000", None, "1000", (1, 2, 3), "return"),
         ("1000", None, "1000", (1, 2, 3), "reject"),
+        (None, None, None, (1, 2), "unknown-default"),
+        ("1000", None, None, (1, 2, 3), "unknown-operations"),
+        (None, "5000", None, (1, 2, 4), "unknown-md"),
+        ("1000", "5000", None, (1, 2, 3, 4), "unknown"),
     ],
     ids=[
         "default",
@@ -1148,6 +1191,10 @@ async def test_registration_requires_evidence_and_confirms_one_receipt() -> None
         "unavailable",
         "return",
         "reject",
+        "unknown-default",
+        "unknown-operations",
+        "unknown-md",
+        "unknown-valuation",
     ],
 )
 async def test_material_director_stage_sequence(
@@ -1201,7 +1248,7 @@ async def test_material_director_stage_sequence(
                     unit="Nos",
                     item_type="consumable",
                     category="Civil",
-                    unit_cost=Decimal(cost),
+                    unit_cost=Decimal(cost) if cost is not None else None,
                 )
             )
         owner = await login_for_token(client, supervisor, supervisor_password)
@@ -1219,6 +1266,18 @@ async def test_material_director_stage_sequence(
         )
         assert created.status_code == 201, created.text
         request_id = created.json()["id"]
+        if scenario.startswith("unknown"):
+            history = await client.get(
+                f"/api/v1/inventory/requests/{request_id}/submissions", headers=headers
+            )
+            assert history.status_code == 200, history.text
+            frozen = history.json()["submissions"][0]["requirements"]
+            assert frozen["valuation_complete"] is False
+            assert frozen["approval_stages"] == list(stages)
+            current = await client.get(
+                "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
+            )
+            assert current.json()[0]["total_estimated_cost"] is None
         if scenario == "frozen":
             policy = Settings(
                 material_operations_approval_threshold=None, material_md_approval_threshold=None
@@ -1272,7 +1331,10 @@ async def test_material_director_stage_sequence(
                 masked = next(row for row in outbox.json()["items"] if row["step_order"] == stage)
                 assert masked["amount"] is None and masked["currency"] is None
                 assigned = await material_inbox_item(client, tokens[stage], request_id)
-                assert Decimal(assigned["amount"]) == Decimal(cost)
+                if scenario.startswith("unknown"):
+                    assert assigned["amount"] is None and assigned["currency"] is None
+                else:
+                    assert Decimal(assigned["amount"]) == Decimal(cost)
                 forbidden = await client.post(
                     f"/api/v1/approvals/{assigned['id']}/approve",
                     json={"expected_submission_revision": 1},
@@ -1299,6 +1361,22 @@ async def test_material_director_stage_sequence(
             "/api/v1/inventory/requests", headers=headers, params={"request_id": request_id}
         )
         assert final.json()[0]["status"] == "approved"
+        if scenario.startswith("unknown"):
+            from sqlalchemy import select
+
+            from app.models.approval import Approval
+
+            async with AsyncSessionLocal() as session:
+                decisions = await session.scalars(
+                    select(Approval).where(
+                        Approval.request_type == "material_request",
+                        Approval.request_id == UUID(request_id),
+                        Approval.submission_revision == 1,
+                    )
+                )
+                rows = list(decisions)
+                assert [row.step_order for row in rows] == list(stages)
+                assert all(row.amount is None for row in rows)
         if stages == (1, 2, 3, 4):
             from sqlalchemy import select
 

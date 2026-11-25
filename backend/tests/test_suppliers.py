@@ -70,8 +70,14 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
 
 
 class FakeMinioClient:
-    def presigned_get_object(self, bucket: str, object_key: str, expires=None) -> str:
-        del bucket, expires
+    def presigned_get_object(
+        self,
+        bucket: str,
+        object_key: str,
+        expires=None,
+        response_headers: dict[str, str] | None = None,
+    ) -> str:
+        del bucket, expires, response_headers
         return f"https://files.example.test/{object_key}"
 
 

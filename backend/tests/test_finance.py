@@ -297,6 +297,30 @@ async def test_finance_access_is_read_only_for_the_ten_role_catalogue() -> None:
         assert payment_count == 0
 
 
+async def test_invoice_attachment_signed_url_is_not_cached() -> None:
+    await skip_if_database_unavailable()
+    admin, password = await create_user("managing_director")
+    project, supplier = await create_project_and_supplier(admin)
+    invoice = await add_invoice(
+        project, Decimal("100.00"), supplier_id=supplier.id
+    )
+    async with AsyncSessionLocal() as session:
+        stored = await session.get(Invoice, invoice.id)
+        assert stored is not None
+        stored.attachment_key = f"finance/invoices/{invoice.id}/synthetic.pdf"
+        await session.commit()
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, admin, password)
+        response = await client.get(
+            f"/api/v1/finance/invoices/{invoice.id}/attachment",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json()["expires_in_seconds"] > 0
+
+
 async def test_finance_supplier_options_are_minimal_paged_and_finance_scoped() -> None:
     await skip_if_database_unavailable()
     admin, _ = await create_user("managing_director")

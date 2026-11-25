@@ -66,7 +66,16 @@ async def upload_report_photo(client, team: dict) -> tuple[str, str]:
         headers=auth(team["engineer_token"]),
     )
     assert uploaded.status_code == 201, uploaded.text
-    return report["id"], uploaded.json()[0]["id"]
+    photo_id = uploaded.json()[0]["id"]
+    reviewer_email, reviewer_password = await create_user("managing_director")
+    reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+    reviewed = await client.patch(
+        f"/api/v1/photos/{photo_id}/classification",
+        json={"classification": "operational", "reason": "Verified operational fixture."},
+        headers=auth(reviewer_token),
+    )
+    assert reviewed.status_code == 200, reviewed.text
+    return report["id"], photo_id
 
 
 async def upload_document(client, team: dict, *, project_scoped: bool = True) -> dict:
@@ -80,7 +89,16 @@ async def upload_document(client, team: dict, *, project_scoped: bool = True) ->
         headers=auth(team["op_token"]),
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    document = response.json()
+    reviewer_email, reviewer_password = await create_user("managing_director")
+    reviewer_token = await login_for_token(client, reviewer_email, reviewer_password)
+    classified = await client.patch(
+        f"/api/v1/documents/{document['id']}/classification",
+        json={"classification": "operational", "reason": "Verified operational fixture."},
+        headers=auth(reviewer_token),
+    )
+    assert classified.status_code == 200, classified.text
+    return classified.json()
 
 
 async def test_photo_idor_is_closed_for_every_read_and_delete_path() -> None:

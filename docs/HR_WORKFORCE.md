@@ -844,6 +844,21 @@ workers with the recorded and independently confirmed entries. Reviewers can
 page missing workers without changing their attendance status. Missing site
 attendance or a mismatch with approved overtime blocks time preparation. [Site attendance service](../backend/app/services/hr_site_attendance_service.py)
 
+For a present worker with a recorded check-in, the site submission freezes the
+applicable scheduled start and exact signed arrival variance when one
+unambiguous roster, shift, or published calendar schedule applies. The page
+describes an arrival before or after that start as a factual time difference;
+it does not apply a grace period, disciplinary rule, or payroll deduction.
+Corrections require a reason and create a new reviewed submission revision.
+
+For a past date, a supervisor may record an explicitly reasoned historical
+exception against a completed project or a former employee only when effective
+employment dates and a project-specific roster allocation or shift assignment
+support that date. Historical entries still require independent engineer and HR
+reviews, and a locked timesheet period remains read-only. Unresolved employment
+dates or missing assignment evidence require HR reconciliation; the workflow
+does not infer attendance or reopen a project.
+
 ## Workforce roster
 
 In **HR & Workforce → Attendance → Workforce roster**, search for an employee

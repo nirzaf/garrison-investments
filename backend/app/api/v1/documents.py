@@ -12,6 +12,7 @@ from app.schemas.documents import (
     DocumentListResponse,
     DocumentResponse,
     DocumentVersionResponse,
+    EvidenceClassificationRequest,
 )
 from app.schemas.projects import ProjectOption, ProjectOptionListResponse
 from app.services.document_service import SIGNED_URL_SECONDS, DocumentService
@@ -44,12 +45,14 @@ async def list_document_project_options(
 async def list_documents(
     current_user: CanViewDocuments,
     session: DbSession,
+    response: Response,
     project_id: Annotated[UUID | None, Query()] = None,
     document_type: Annotated[str | None, Query()] = None,
     search: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DocumentListResponse:
+    response.headers["Cache-Control"] = "no-store"
     documents, total = await DocumentService(session).list_documents(
         project_id=project_id,
         document_type=document_type,
@@ -68,12 +71,14 @@ async def list_documents(
 async def upload_document(
     current_user: CanManageDocuments,
     session: DbSession,
+    response: Response,
     title: Annotated[str, Form()],
     document_type: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     project_id: Annotated[UUID | None, Form()] = None,
     expiry_date: Annotated[date | None, Form()] = None,
 ) -> DocumentResponse:
+    response.headers["Cache-Control"] = "no-store"
     document = await DocumentService(session).upload_document(
         title=title,
         document_type=document_type,
@@ -90,7 +95,9 @@ async def get_document(
     document_id: UUID,
     current_user: CanViewDocuments,
     session: DbSession,
+    response: Response,
 ) -> DocumentResponse:
+    response.headers["Cache-Control"] = "no-store"
     document = await DocumentService(session).get(document_id, current_user)
     return DocumentResponse.model_validate(document)
 
@@ -100,9 +107,11 @@ async def upload_document_version(
     document_id: UUID,
     current_user: CanManageDocuments,
     session: DbSession,
+    response: Response,
     file: Annotated[UploadFile, File()],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> DocumentResponse:
+    response.headers["Cache-Control"] = "no-store"
     document = await DocumentService(session).upload_version(
         document_id, file, current_user, validate_key(idempotency_key)
     )
@@ -114,7 +123,9 @@ async def list_document_versions(
     document_id: UUID,
     current_user: CanViewDocuments,
     session: DbSession,
+    response: Response,
 ) -> list[DocumentVersionResponse]:
+    response.headers["Cache-Control"] = "no-store"
     versions = await DocumentService(session).list_document_versions(document_id, current_user)
     return [DocumentVersionResponse.model_validate(version) for version in versions]
 
@@ -126,7 +137,9 @@ async def approve_document_version(
     payload: DocumentDecisionRequest,
     current_user: CanManageDocuments,
     session: DbSession,
+    response: Response,
 ) -> DocumentResponse:
+    response.headers["Cache-Control"] = "no-store"
     document = await DocumentService(session).approve_version(
         document_id,
         version_id,
@@ -155,3 +168,18 @@ async def get_document_download_url(
         expires_in_seconds=SIGNED_URL_SECONDS,
         superseded_warning=superseded,
     )
+
+
+@router.patch("/{document_id}/classification", response_model=DocumentResponse)
+async def classify_document(
+    document_id: UUID,
+    payload: EvidenceClassificationRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+    response: Response,
+) -> DocumentResponse:
+    response.headers["Cache-Control"] = "no-store"
+    document = await DocumentService(session).classify_document(
+        document_id, payload.classification, payload.reason, current_user
+    )
+    return DocumentResponse.model_validate(document)

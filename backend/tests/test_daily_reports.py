@@ -669,6 +669,7 @@ async def test_approved_report_can_be_downloaded_as_pdf(monkeypatch: pytest.Monk
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/pdf"
+        assert response.headers["cache-control"] == "no-store"
         assert response.content.startswith(b"%PDF")
 
         async with AsyncSessionLocal() as session:

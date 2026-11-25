@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
@@ -84,7 +84,9 @@ async def get_tds_document_url(
     supplier_id: UUID,
     current_user: CanManageSuppliers,
     session: DbSession,
+    response: Response,
 ) -> SupplierDocumentUrlResponse:
+    response.headers["Cache-Control"] = "no-store"
     url = await SupplierService(session).signed_tds_url(supplier_id, current_user)
     return SupplierDocumentUrlResponse(url=url, expires_in_seconds=SIGNED_URL_SECONDS)
 

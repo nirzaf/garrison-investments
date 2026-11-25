@@ -269,7 +269,14 @@ into the existing encrypted snapshot. Existing policy rows need no backfill.
 `hr_attendance_entries.site_submission_revision` points to the current version
 in `hr_site_attendance_submissions`, keyed by `(entry_id, submission_revision)`.
 Each version keeps submitted hours and notes, the supervisor and assigned
-engineer, both review decisions, comments, decision times and the HR actor.
+engineer, both review decisions, comments, decision times and the HR actor. It
+also freezes the applicable published scheduled start and signed check-in
+variance in `requirements` when the schedule can be resolved unambiguously;
+correction versions retain the required reason. Reasoned historical submissions
+also freeze the historical reason and continue to require both review stages.
+Historical eligibility uses dated employment plus a project-specific roster or
+shift assignment, and remains subject to timesheet period locks. These fields
+are informational and do not change payroll calculations.
 Preexisting HR attendance has a null site submission revision. Site corrections
 advance the version and clear the current approval while older decisions remain.
 [Migration 105](../../backend/alembic/versions/202605310105_site_attendance_review.py)

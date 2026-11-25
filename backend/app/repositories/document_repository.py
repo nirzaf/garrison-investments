@@ -67,11 +67,14 @@ class DocumentRepository:
         limit: int,
         offset: int,
         scope_filter: ColumnElement[bool] | None = None,
+        classification_filter: ColumnElement[bool] | None = None,
         exclude_document_types: set[str] | None = None,
     ) -> tuple[list[Document], int]:
         query: Select = self._with_versions().where(Document.deleted_at.is_(None))
         if scope_filter is not None:
             query = query.where(scope_filter)
+        if classification_filter is not None:
+            query = query.where(classification_filter)
         if exclude_document_types:
             query = query.where(
                 func.lower(Document.document_type).notin_(

@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import type { components } from './schema';
 
 export type SiteAttendanceRecord = components['schemas']['SiteAttendanceResponse'];
-export type SiteAttendanceDraft = components['schemas']['SiteAttendanceCreateRequest-Input'];
+export type SiteAttendanceDraft = components['schemas']['SiteAttendanceCreateRequest'];
 export type SiteAttendanceWorker = components['schemas']['SiteAttendanceWorker'];
 
 export async function getSiteAttendanceCompleteness(params: {
@@ -30,6 +30,7 @@ export async function listSiteAttendance(params: {
 export async function listSiteAttendanceWorkers(params: {
   project_id: string;
   work_date: string;
+  historical?: boolean;
   search?: string;
   limit: number;
   offset: number;
@@ -41,11 +42,15 @@ export async function listSiteAttendanceWorkers(params: {
 }
 
 export async function writeSiteAttendance(
-  draft: SiteAttendanceDraft, correction?: SiteAttendanceRecord
+  draft: SiteAttendanceDraft, correction?: SiteAttendanceRecord, correctionReason?: string
 ) {
   const path = correction ? `/hr/site-attendance/${correction.id}/correction` : '/hr/site-attendance';
   const { data } = await apiClient.post<SiteAttendanceRecord>(path, {
-    ...draft, ...(correction ? { expected_revision: correction.record_revision } : {})
+    ...draft,
+    ...(correction ? {
+      expected_revision: correction.record_revision,
+      correction_reason: correctionReason
+    } : {})
   });
   return data;
 }

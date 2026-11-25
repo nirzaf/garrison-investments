@@ -397,6 +397,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/classification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Classify Document */
+        patch: operations["classify_document_api_v1_documents__document_id__classification_patch"];
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/download": {
         parameters: {
             query?: never;
@@ -5093,6 +5110,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/photos/{photo_id}/classification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Classify Photo */
+        patch: operations["classify_photo_api_v1_photos__photo_id__classification_patch"];
+        trace?: never;
+    };
     "/api/v1/photos/{photo_id}/download": {
         parameters: {
             query?: never;
@@ -9491,6 +9525,11 @@ export interface components {
         DocumentResponse: {
             /** Active Version */
             active_version: number | null;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "unclassified" | "operational" | "financial";
             /** Document Type */
             document_type: string;
             /** Expiry Date */
@@ -10403,6 +10442,16 @@ export interface components {
             field?: string | null;
             /** Message */
             message: string;
+        };
+        /** EvidenceClassificationRequest */
+        EvidenceClassificationRequest: {
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "operational" | "financial";
+            /** Reason */
+            reason: string;
         };
         /** ExpiringComplianceResponse */
         ExpiringComplianceResponse: {
@@ -13173,6 +13222,8 @@ export interface components {
         };
         /** MaterialSubmissionSnapshot */
         MaterialSubmissionSnapshot: {
+            /** Approval Stages */
+            approval_stages?: number[];
             /** Evidence File Ids */
             evidence_file_ids?: string[];
             /** Evidence Versions */
@@ -13194,6 +13245,8 @@ export interface components {
              */
             project_id: string;
             requirements: components["schemas"]["MaterialSubmissionRequirements"];
+            /** Valuation Complete */
+            valuation_complete?: boolean | null;
         };
         /** MaterialUsageRow */
         MaterialUsageRow: {
@@ -15269,6 +15322,11 @@ export interface components {
             can_delete: boolean;
             /** Caption */
             caption: string | null;
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "unclassified" | "operational" | "financial";
             /** Compressed Path */
             compressed_path: string | null;
             /** Deleted At */
@@ -17149,6 +17207,8 @@ export interface components {
             check_in_at?: string | null;
             /** Check Out At */
             check_out_at?: string | null;
+            /** Correction Reason */
+            correction_reason: string;
             /**
              * Employee Id
              * Format: uuid
@@ -17156,6 +17216,8 @@ export interface components {
             employee_id: string;
             /** Expected Revision */
             expected_revision: number;
+            /** Historical Reason */
+            historical_reason?: string | null;
             /** Notes */
             notes?: string | null;
             /**
@@ -17177,7 +17239,7 @@ export interface components {
             worked_hours: number | string;
         };
         /** SiteAttendanceCreateRequest */
-        "SiteAttendanceCreateRequest-Input": {
+        SiteAttendanceCreateRequest: {
             /**
              * Attendance Status
              * @enum {string}
@@ -17192,6 +17254,8 @@ export interface components {
              * Format: uuid
              */
             employee_id: string;
+            /** Historical Reason */
+            historical_reason?: string | null;
             /** Notes */
             notes?: string | null;
             /**
@@ -17211,42 +17275,6 @@ export interface components {
             work_date: string;
             /** Worked Hours */
             worked_hours: number | string;
-        };
-        /** SiteAttendanceCreateRequest */
-        "SiteAttendanceCreateRequest-Output": {
-            /**
-             * Attendance Status
-             * @enum {string}
-             */
-            attendance_status: "present" | "absent" | "on_leave" | "off_day";
-            /** Check In At */
-            check_in_at?: string | null;
-            /** Check Out At */
-            check_out_at?: string | null;
-            /**
-             * Employee Id
-             * Format: uuid
-             */
-            employee_id: string;
-            /** Notes */
-            notes?: string | null;
-            /**
-             * Overtime Hours
-             * @default 0
-             */
-            overtime_hours: string;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            /**
-             * Work Date
-             * Format: date
-             */
-            work_date: string;
-            /** Worked Hours */
-            worked_hours: string;
         };
         /** SiteAttendanceDecisionRequest */
         SiteAttendanceDecisionRequest: {
@@ -17275,6 +17303,53 @@ export interface components {
             submitted_present: number;
             /** Total */
             total: number;
+        };
+        /**
+         * SiteAttendanceRequirementsSnapshot
+         * @description Immutable submitted inputs plus the schedule and arrival assessment at submission time.
+         */
+        SiteAttendanceRequirementsSnapshot: {
+            /** Arrival Variance Seconds */
+            arrival_variance_seconds?: number | null;
+            /**
+             * Attendance Status
+             * @enum {string}
+             */
+            attendance_status: "present" | "absent" | "on_leave" | "off_day";
+            /** Check In At */
+            check_in_at?: string | null;
+            /** Check Out At */
+            check_out_at?: string | null;
+            /** Correction Reason */
+            correction_reason?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Historical Reason */
+            historical_reason?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Overtime Hours
+             * @default 0
+             */
+            overtime_hours: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Scheduled Start At */
+            scheduled_start_at?: string | null;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+            /** Worked Hours */
+            worked_hours: string;
         };
         /** SiteAttendanceResponse */
         SiteAttendanceResponse: {
@@ -17319,7 +17394,7 @@ export interface components {
             hr_decision: string | null;
             /** Hr Id */
             hr_id: string | null;
-            requirements: components["schemas"]["SiteAttendanceCreateRequest-Output"];
+            requirements: components["schemas"]["SiteAttendanceRequirementsSnapshot"];
             /** Submission Revision */
             submission_revision: number;
             /**
@@ -21855,6 +21930,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    classify_document_api_v1_documents__document_id__classification_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceClassificationRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -30957,7 +31067,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SiteAttendanceCreateRequest-Input"];
+                "application/json": components["schemas"]["SiteAttendanceCreateRequest"];
             };
         };
         responses: {
@@ -31023,6 +31133,7 @@ export interface operations {
                 search?: string | null;
                 limit?: number;
                 offset?: number;
+                historical?: boolean;
             };
             header?: never;
             path?: never;
@@ -33233,6 +33344,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    classify_photo_api_v1_photos__photo_id__classification_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceClassificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoResponse"];
+                };
             };
             /** @description Invalid request */
             422: {

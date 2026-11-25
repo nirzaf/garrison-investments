@@ -790,16 +790,18 @@ async def request_my_attendance_correction(
 
 @router.get("/me/documents", response_model=HrDocumentListResponse)
 async def list_my_hr_documents(
-    current_user: CurrentUser, session: DbSession
+    current_user: CurrentUser, session: DbSession, response: Response
 ) -> HrDocumentListResponse:
+    response.headers["Cache-Control"] = "no-store"
     rows, total = await HrService(session).list_self_hr_documents(current_user)
     return HrDocumentListResponse(items=rows, total=total)
 
 
 @router.get("/me/documents/{document_id}/download", response_model=HrDocumentDownloadResponse)
 async def download_my_hr_document(
-    document_id: UUID, current_user: CurrentUser, session: DbSession
+    document_id: UUID, current_user: CurrentUser, session: DbSession, response: Response
 ) -> HrDocumentDownloadResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).get_self_hr_document_download_url(document_id, current_user)
 
 
@@ -3768,9 +3770,11 @@ async def list_site_attendance_workers(
     search: Annotated[str | None, Query(max_length=120)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
+    historical: bool = False,
 ) -> SiteAttendanceWorkerPage:
     return await HrSiteAttendanceService(session).list_workers(
-        project_id, work_date, actor, search=search, limit=limit, offset=offset
+        project_id, work_date, actor, search=search, limit=limit, offset=offset,
+        historical=historical,
     )
 
 

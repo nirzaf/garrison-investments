@@ -398,6 +398,15 @@ test('site registration posts stock only after assigned engineer review and mate
       headers: directorHeaders, params: { search: director.projectCode }
     });
     expect(await unconfirmed.json()).toEqual([]);
+    await directorPage.goto('/photos');
+    const receiptPhoto = directorPage.locator('article').filter({ hasText: 'receipt.jpg' });
+    await expect(receiptPhoto).toContainText('Unclassified · restricted');
+    await receiptPhoto.getByRole('button', { name: 'Review classification' }).click();
+    await directorPage.getByLabel('Review reason').fill('Verified as site receipt evidence.');
+    await directorPage.getByRole('button', { name: 'Save review' }).click();
+    await expect(directorPage.getByRole('status')).toContainText('Evidence classification reviewed.');
+    await expect(receiptPhoto).toContainText('operational evidence');
+
     await signIn(engineerPage, engineer);
     await engineerPage.goto('/materials');
     await engineerPage.locator('summary').filter({ hasText: `Browser receipt ${director.projectCode}` }).click();

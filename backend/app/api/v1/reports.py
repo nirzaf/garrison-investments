@@ -118,7 +118,10 @@ async def download_report_pdf(
     return Response(
         content=pdf_bytes,
         media_type=PDF_CONTENT_TYPE,
-        headers={"Content-Disposition": f'attachment; filename="{export.file_name}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{export.file_name}"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

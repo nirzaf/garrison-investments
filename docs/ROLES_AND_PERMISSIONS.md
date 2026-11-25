@@ -78,6 +78,20 @@ MEP Project Managers may create Planning projects with milestones and without a 
 
 Rollback: revert the BOQ route/service and matching frontend/API contract changes together using the supported release process. Keep persisted project and BOQ records intact.
 
+## Evidence classification and confidentiality
+
+Document and photo uploads are initially `unclassified` unless an invoice or
+contract document type is already classified as financial. The uploader may
+access their own pending material, while a separate actor with `documents:manage`
+can classify it with a reason; the decision is audited. A reviewer cannot use
+this permission to bypass the owning record's existing project or entity scope.
+Operational evidence becomes visible under those same existing scope rules.
+Financial evidence requires `financial:view` for metadata, file links, originals,
+and previews. Search and list queries apply the same classification boundary.
+No role grants were changed for this workflow. Historical evidence left
+unclassified by the migration requires manual review. D04's business confirmation
+about company and private document scope remains pending.
+
 ## Permission matrix
 
 | Permission | MD | OD | Group PM | MEP PM | QS | Senior Site Supervisor | Site Supervisor | HR Manager | Administrative Executive | HR Executive |

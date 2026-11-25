@@ -143,6 +143,18 @@ export async function deletePhoto(photoId: string, reason?: string): Promise<voi
   await apiClient.delete(`/photos/${photoId}`, { data: { reason } });
 }
 
+export async function classifyPhoto(
+  photoId: string,
+  classification: 'operational' | 'financial',
+  reason: string
+): Promise<PhotoRecord> {
+  const response = await apiClient.patch<PhotoRecord>(`/photos/${photoId}/classification`, {
+    classification,
+    reason
+  });
+  return response.data;
+}
+
 export async function recoverPhoto(photoId: string, reason?: string): Promise<PhotoRecord> {
   const response = await apiClient.post<PhotoRecord>(`/photos/${photoId}/recover`, { reason });
   return response.data;

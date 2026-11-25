@@ -197,3 +197,35 @@ async def test_legacy_site_report_preserves_request_accounting(
     assert Decimal(finding["issued_quantity"]) == Decimal(2)
     async with AsyncSessionLocal() as session:
         assert (await session.execute(statement)).one() == before
+
+
+async def test_legacy_report_flags_unknown_material_valuation_without_mutating_it(
+    inventory_ids: tuple[UUID, UUID, UUID], capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_id, _, location_id = inventory_ids
+    request = MaterialRequest(
+        id=uuid4(),
+        request_number=f"UV-{uuid4().hex[:10]}",
+        project_id=project_id,
+        from_location_id=location_id,
+        status="requested",
+        total_estimated_cost=None,
+    )
+    async with AsyncSessionLocal.begin() as session:
+        session.add(request)
+
+    await report_legacy_site_workflows()
+    records = [json.loads(row) for row in capsys.readouterr().out.splitlines()]
+    finding = next(
+        row
+        for row in records
+        if row.get("finding") == "incomplete_material_valuation"
+        and row.get("id") == str(request.id)
+    )
+    assert finding["total_estimated_cost"] is None
+    assert finding["disposition"] == "manual_review"
+    async with AsyncSessionLocal() as session:
+        stored = await session.get(MaterialRequest, request.id)
+        assert stored is not None
+        assert stored.total_estimated_cost is None
+        assert stored.status == "requested"

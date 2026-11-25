@@ -56,7 +56,10 @@ async def export_project_progress(
     return Response(
         content=data,
         media_type=XLSX_MEDIA_TYPE,
-        headers={"Content-Disposition": 'attachment; filename="project-progress.xlsx"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="project-progress.xlsx"',
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -79,7 +82,10 @@ async def export_material_usage(
     return Response(
         content=data,
         media_type=XLSX_MEDIA_TYPE,
-        headers={"Content-Disposition": 'attachment; filename="material-usage.xlsx"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="material-usage.xlsx"',
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -104,5 +110,8 @@ async def export_management_summary(
     return Response(
         content=data,
         media_type=PDF_MEDIA_TYPE,
-        headers={"Content-Disposition": 'attachment; filename="management-summary.pdf"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="management-summary.pdf"',
+            "Cache-Control": "no-store",
+        },
     )

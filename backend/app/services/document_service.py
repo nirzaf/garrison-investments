@@ -7,8 +7,9 @@ from uuid import UUID, uuid4
 import structlog
 from fastapi import UploadFile
 from minio import Minio
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.models.document import Document, DocumentVersion
@@ -19,6 +20,14 @@ from app.services.authorization import (
     document_scope_filter,
     ensure_document_access,
     ensure_project_access,
+)
+from app.services.evidence_classification import (
+    FINANCIAL,
+    OPERATIONAL,
+    UNCLASSIFIED,
+    EvidenceClassification,
+    ensure_evidence_classification_access,
+    ensure_evidence_classification_reviewer,
 )
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.notification_service import NotificationService
@@ -71,6 +80,11 @@ class DocumentService:
             Document(
                 title=title,
                 document_type=document_type,
+                classification=(
+                    FINANCIAL
+                    if document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
+                    else UNCLASSIFIED
+                ),
                 project_id=project_id,
                 status="pending_approval",
                 active_version=None,
@@ -87,7 +101,11 @@ class DocumentService:
             user_id=actor.id,
             entity_type="documents",
             entity_id=document.id,
-            new_values={"version_id": str(version.id), "status": document.status},
+            new_values={
+                "version_id": str(version.id),
+                "status": document.status,
+                "classification": document.classification,
+            },
         )
         await self.notifications.create(
             user_id=actor.id,
@@ -113,6 +131,7 @@ class DocumentService:
         if document is None:
             raise NotFoundException("Document")
         await ensure_document_access(self.session, document, actor)
+        self._ensure_evidence_classification_access(document, actor)
         route = f"documents.version:{document_id}"
         if idempotency_key and await resolve_or_reserve(
             self.session, key=idempotency_key, user_id=actor.id, route=route
@@ -173,6 +192,7 @@ class DocumentService:
             raise NotFoundException("Document")
         document = await self._get_required(document_id)
         await self._ensure_approver(actor, document)
+        self._ensure_evidence_classification_access(document, actor)
         if document.status == "archived":
             raise AppException("Archived documents cannot be revised.", status_code=409)
         version = await self.documents.get_version(version_id)
@@ -228,7 +248,7 @@ class DocumentService:
     async def get(self, document_id: UUID, actor: User) -> Document:
         document = await self._get_required(document_id)
         await ensure_document_access(self.session, document, actor)
-        self._ensure_financial_document_access(document, actor)
+        self._ensure_evidence_classification_access(document, actor)
         return document
 
     async def list_document_versions(self, document_id: UUID, actor: User) -> list[DocumentVersion]:
@@ -252,12 +272,56 @@ class DocumentService:
             limit=limit,
             offset=offset,
             scope_filter=await document_scope_filter(self.session, actor),
+            classification_filter=self._classification_filter(actor),
             exclude_document_types=(
                 None
                 if has_permission(actor, PERMISSION_FINANCIAL_VIEW)
                 else FINANCIAL_DOCUMENT_TYPES
             ),
         )
+
+    async def classify_document(
+        self,
+        document_id: UUID,
+        classification: EvidenceClassification,
+        reason: str,
+        actor: User,
+    ) -> Document:
+        document = await self.documents.lock_document(document_id)
+        if document is None:
+            raise NotFoundException("Document")
+        await ensure_document_access(self.session, document, actor)
+        ensure_evidence_classification_reviewer(actor, document.uploaded_by, classification)
+        if document.classification != UNCLASSIFIED:
+            raise AppException(
+                "Evidence classification has already been reviewed.",
+                status_code=409,
+                error_code="EVIDENCE_CLASSIFICATION_ALREADY_REVIEWED",
+            )
+        if (
+            document.document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
+            and classification != FINANCIAL
+        ):
+            raise AppException(
+                "Financial document types must retain the financial classification.",
+                status_code=422,
+                error_code="EVIDENCE_CLASSIFICATION_INVALID",
+            )
+        self._ensure_evidence_classification_access(document, actor)
+        old_classification = document.classification
+        document.classification = classification
+        await self.audit.record(
+            action="documents.classification_reviewed",
+            user_id=actor.id,
+            entity_type="documents",
+            entity_id=document.id,
+            comments=reason,
+            old_values={"classification": old_classification},
+            new_values={"classification": classification},
+        )
+        await self.session.commit()
+        self.session.expire_all()
+        return await self._get_required(document_id)
 
     async def signed_download_url(
         self,
@@ -268,7 +332,7 @@ class DocumentService:
     ) -> tuple[str, bool]:
         document = await self._get_required(document_id)
         await ensure_document_access(self.session, document, actor)
-        self._ensure_financial_document_access(document, actor)
+        self._ensure_evidence_classification_access(document, actor)
         version = self._select_version(document, version_id)
         superseded = version.status == "superseded"
         await self.audit.record(
@@ -283,16 +347,32 @@ class DocumentService:
             self.settings.minio_bucket,
             version.storage_path,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
+            response_headers={"response-cache-control": "no-store"},
         )
         return url, superseded
 
     @staticmethod
-    def _ensure_financial_document_access(document: Document, actor: User) -> None:
-        if (
-            document.document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
-            and not has_permission(actor, PERMISSION_FINANCIAL_VIEW)
-        ):
-            raise NotFoundException("Document")
+    def _ensure_evidence_classification_access(document: Document, actor: User) -> None:
+        ensure_evidence_classification_access(
+            document.classification,
+            document.uploaded_by,
+            actor,
+            financial_document=document.document_type.strip().lower()
+            in FINANCIAL_DOCUMENT_TYPES,
+        )
+
+    @staticmethod
+    def _classification_filter(actor: User) -> ColumnElement[bool]:
+        visible = [Document.classification == OPERATIONAL]
+        if has_permission(actor, PERMISSION_DOCUMENTS_MANAGE):
+            visible.append(Document.classification == UNCLASSIFIED)
+        else:
+            visible.append(
+                and_(Document.classification == UNCLASSIFIED, Document.uploaded_by == actor.id)
+            )
+        if has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+            visible.append(Document.classification == FINANCIAL)
+        return or_(*visible)
 
     async def _store_version(
         self,

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Header, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, Query, Response, UploadFile, status
 
 from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.business_policy import BusinessPolicyResponse
@@ -134,7 +134,9 @@ async def get_invoice_attachment_url(
     invoice_id: UUID,
     current_user: CanViewFinance,
     session: DbSession,
+    response: Response,
 ) -> InvoiceAttachmentUrlResponse:
+    response.headers["Cache-Control"] = "no-store"
     url = await FinanceService(session).signed_invoice_attachment_url(invoice_id, current_user)
     return InvoiceAttachmentUrlResponse(url=url, expires_in_seconds=SIGNED_URL_SECONDS)
 

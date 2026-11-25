@@ -56,6 +56,18 @@ export async function approveDocumentVersion(params: {
   return response.data;
 }
 
+export async function classifyDocument(
+  documentId: string,
+  classification: 'operational' | 'financial',
+  reason: string
+): Promise<DocumentRecord> {
+  const response = await apiClient.patch<DocumentRecord>(
+    `/documents/${documentId}/classification`,
+    { classification, reason }
+  );
+  return response.data;
+}
+
 export async function uploadDocumentVersion(documentId: string, file: File, idempotencyKey: string) {
   const formData = new FormData();
   formData.append('file', file);

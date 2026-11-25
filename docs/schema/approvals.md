@@ -73,4 +73,9 @@ unique index restricts each revision to one row per stage. Stage 1 is the
 assigned engineer and stage 2 is the assigned Group Project Manager.
 `decided_by` records the actual actor. Historical approval rows retain their
 original status without acquiring a staged decision.
+
+Queued material-decision email is revalidated against the current submission
+revision and request state when dispatched. A return-for-correction email is
+eligible only while that revision remains returned and the original submitter
+is still authorized; correcting the request makes the queued message stale.
 [Migration 102](../../backend/alembic/versions/202605310102_material_submission_revisions.py)

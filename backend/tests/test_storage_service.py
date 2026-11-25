@@ -1,4 +1,4 @@
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from app.config import Settings
 from app.services.storage_service import minio_client, minio_signed_url_client
@@ -24,8 +24,10 @@ def test_presigned_url_uses_public_minio_endpoint() -> None:
     url = signed_url_client.presigned_get_object(
         settings.minio_bucket,
         "seed-photos/blockwork_day5_thumb.jpg",
+        response_headers={"response-cache-control": "no-store"},
     )
 
     parsed = urlparse(url)
     assert parsed.netloc == "localhost:9000"
     assert parsed.path == "/portal-files/seed-photos/blockwork_day5_thumb.jpg"
+    assert parse_qs(parsed.query)["response-cache-control"] == ["no-store"]

@@ -500,6 +500,7 @@ class InventoryService:
             request_number=f"MR-{sequence:05d}",
             project_id=project_id,
             requester_id=actor.id,
+            total_estimated_cost=None,
             lines=[],
         )
 
@@ -689,10 +690,11 @@ class InventoryService:
         request.status = "pending_engineer"
         request.draft_payload = None
         request.notes = payload.notes
-        request.total_estimated_cost = Decimal("0")
+        request.total_estimated_cost = None
         self.session.add(request)
         await self.session.flush()
         total = Decimal("0")
+        valuation_complete = True
         line_snapshots = []
         for line_payload in payload.lines:
             item = await self._get_item(line_payload.item_id)
@@ -700,7 +702,10 @@ class InventoryService:
                 raise AppException(
                     "Select an active inventory item.", status_code=422, error_code="ITEM_INACTIVE"
                 )
-            total += (item.unit_cost or Decimal("0")) * line_payload.quantity
+            if item.unit_cost is None:
+                valuation_complete = False
+            else:
+                total += item.unit_cost * line_payload.quantity
             self.session.add(
                 MaterialRequestLine(
                     request_id=request.id,
@@ -722,10 +727,11 @@ class InventoryService:
                 status_code=422,
                 error_code="MATERIAL_REQUEST_AMOUNT_TOO_LARGE",
             )
-        request.total_estimated_cost = total
+        request.total_estimated_cost = total if valuation_complete else None
         snapshot = payload.model_dump(mode="json", exclude={"expected_revision", "reason"})
         snapshot["lines"] = line_snapshots
         snapshot["evidence_versions"] = evidence_versions
+        snapshot["valuation_complete"] = valuation_complete
         evidence_owner_id = correction_draft.id if correction_draft else request.id
         snapshot["evidence_file_ids"] = [
             str(file_id)
@@ -767,7 +773,7 @@ class InventoryService:
                 request_id=request.id,
                 project_id=request.project_id,
                 title=f"{request.request_number} · Technical verification",
-                amount=total,
+                amount=total if valuation_complete else None,
                 comments=payload.notes,
             ),
             actor,

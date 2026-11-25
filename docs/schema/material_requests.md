@@ -16,7 +16,7 @@ Project material requests, including the source storage location and estimated c
 | `status` | `varchar(30)` | No | `'requested'` |
 | `revision` | `integer` | No | `1` |
 | `submission_revision` | `integer` | Yes | — |
-| `total_estimated_cost` | `numeric(14, 2)` | No | `0` |
+| `total_estimated_cost` | `numeric(14, 2)` | Yes | — |
 | `notes` | `text` | Yes | — |
 | `created_at` | `timestamptz` | No | `now()` |
 | `updated_at` | `timestamptz` | No | `now()` |
@@ -47,8 +47,13 @@ Project material requests, including the source storage location and estimated c
 
 `material_request_submissions` keeps immutable requirements and line quantities
 keyed by `(request_id, submission_revision)`, with submitter and optional
-administrative processor. Approval stages refer to this key. Stock mutations
-advance `material_requests.revision`; corrected submissions advance
-`submission_revision` and start both approval stages again. Legacy rows keep a
-null submission revision until they enter the staged workflow.
+administrative processor. Each new submission freezes whether its valuation is
+complete and the approval stages required at that time. An unknown line cost
+makes `total_estimated_cost` null; approval amounts remain hidden until the
+valuation is complete. Stock mutations advance `material_requests.revision`;
+corrected submissions advance `submission_revision` and restart the frozen
+approval stages. Legacy rows keep a null submission revision until they enter
+the staged workflow; absent historical valuation metadata is treated as
+unverified for approval-amount display.
 [Migration 102](../../backend/alembic/versions/202605310102_material_submission_revisions.py)
+[Migration 109](../../backend/alembic/versions/202605310109_allow_unknown_material_valuation.py)
