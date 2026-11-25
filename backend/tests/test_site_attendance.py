@@ -1,5 +1,5 @@
 import asyncio
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -9,9 +9,11 @@ from app.database import AsyncSessionLocal, engine
 from app.models.hr import (
     HrEmployee,
     HrEmploymentPeriod,
+    HrHoliday,
     HrOffboardingCase,
     HrOvertimeRequest,
     HrPayrollPeriod,
+    HrRosterAllocation,
     HrShiftAssignment,
     HrTimesheet,
     HrWorkCalendar,
@@ -61,6 +63,8 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
             published_at=utc_now(),
             effective_from=day - timedelta(days=1),
             effective_to=day + timedelta(days=1),
+            work_days_json=[("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")[day.weekday()]],
+            standard_start_time=time(8, 30),
         )
         member = ProjectMember(project_id=project.id, user_id=supervisor.id)
         employee = HrEmployee(
@@ -187,6 +191,7 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
                 (f"{day.isoformat()}T06:59:59+03:00", "on_time", None),
                 (f"{day.isoformat()}T07:00:00+03:00", "on_time", None),
                 (f"{day.isoformat()}T07:00:01+03:00", "after_scheduled_start", 1),
+                (f"{day.isoformat()}T08:00:00+04:00", "on_time", None),
                 (None, "unresolved", None),
             ):
                 arrival_payload = SiteAttendanceCreateRequest.model_validate(
@@ -201,6 +206,148 @@ async def test_site_attendance_requires_independent_engineer_and_hr_checks() -> 
                 )
                 assert saved_assessment.status == expected_status
                 assert saved_assessment.minutes_after_start == expected_minutes
+
+            roster = HrRosterAllocation(
+                id=uuid4(),
+                employee_id=employee.id,
+                project_id=project.id,
+                calendar_id=calendar.id,
+                shift_id=None,
+                employee_name=employee.full_name,
+                project_name=project.name,
+                work_date=day,
+                timezone="Asia/Qatar",
+                starts_at=datetime.combine(day, time(6, 45), tzinfo=timezone(timedelta(hours=3))),
+                ends_at=datetime.combine(day, time(15), tzinfo=timezone(timedelta(hours=3))),
+                planned_hours=Decimal("8.00"),
+                created_by_id=supervisor.id,
+            )
+            session.add(roster)
+            await session.flush()
+            _, _, roster_assessment = await service._arrival_schedule_snapshot(
+                SiteAttendanceCreateRequest.model_validate(
+                    {**payload, "check_in_at": f"{day.isoformat()}T07:12:00+03:00"}
+                ),
+                worker_row,
+            )
+            assert roster_assessment.source == "roster"
+            assert roster_assessment.source_reference_id == roster.id
+            assert roster_assessment.minutes_after_start == 27
+            await session.delete(roster)
+
+            calendar_worker = HrEmployee(
+                employee_code=f"CAL-{uuid4().hex[:8]}",
+                first_name="Calendar",
+                last_name="Worker",
+                full_name="Calendar Worker",
+                employment_status="active",
+                join_date=day - timedelta(days=2),
+                work_calendar_id=calendar.id,
+            )
+            overnight_worker = HrEmployee(
+                employee_code=f"NIGHT-{uuid4().hex[:8]}",
+                first_name="Night",
+                last_name="Worker",
+                full_name="Night Worker",
+                employment_status="active",
+                join_date=day - timedelta(days=2),
+                work_calendar_id=calendar.id,
+            )
+            session.add_all([calendar_worker, overnight_worker])
+            await session.flush()
+            calendar_payload = SiteAttendanceCreateRequest.model_validate(
+                {
+                    **payload,
+                    "employee_id": str(calendar_worker.id),
+                    "check_in_at": f"{day.isoformat()}T08:30:00+03:00",
+                }
+            )
+            _, _, calendar_assessment = await service._arrival_schedule_snapshot(
+                calendar_payload, calendar_worker
+            )
+            assert calendar_assessment.source == "calendar"
+            assert calendar_assessment.status == "on_time"
+            assert calendar_assessment.minutes_after_start is None
+
+            session.add(
+                HrHoliday(calendar_id=calendar.id, holiday_date=day, name="Synthetic holiday")
+            )
+            await session.flush()
+            _, _, holiday_assessment = await service._arrival_schedule_snapshot(
+                calendar_payload, calendar_worker
+            )
+            assert holiday_assessment.status == "not_applicable"
+
+            absent_payload = SiteAttendanceCreateRequest.model_validate(
+                {
+                    **payload,
+                    "attendance_status": "absent",
+                    "check_in_at": None,
+                    "check_out_at": None,
+                    "worked_hours": Decimal("0"),
+                    "overtime_hours": Decimal("0"),
+                }
+            )
+            _, _, absent_assessment = await service._arrival_schedule_snapshot(
+                absent_payload, worker_row
+            )
+            assert absent_assessment.status == "not_applicable"
+
+            no_calendar_worker = HrEmployee(
+                employee_code=f"NOCAL-{uuid4().hex[:8]}",
+                first_name="No",
+                last_name="Calendar",
+                full_name="No Calendar",
+                employment_status="active",
+                join_date=day - timedelta(days=2),
+            )
+            session.add(no_calendar_worker)
+            await session.flush()
+            no_calendar_date = day + timedelta(days=10)
+            no_calendar_payload = SiteAttendanceCreateRequest.model_validate(
+                {
+                    **payload,
+                    "employee_id": str(no_calendar_worker.id),
+                    "work_date": no_calendar_date.isoformat(),
+                    "check_in_at": f"{no_calendar_date.isoformat()}T08:30:00+03:00",
+                }
+            )
+            _, _, no_calendar_assessment = await service._arrival_schedule_snapshot(
+                no_calendar_payload, no_calendar_worker
+            )
+            assert no_calendar_assessment.status == "unresolved"
+
+            overnight_date = day + timedelta(days=1)
+            session.add(
+                HrShiftAssignment(
+                    employee_id=overnight_worker.id,
+                    calendar_id=calendar.id,
+                    project_id=project.id,
+                    shift_name="Overnight site shift",
+                    effective_from=overnight_date,
+                    effective_to=overnight_date,
+                    start_time=time(22),
+                    end_time=time(6),
+                )
+            )
+            await session.flush()
+            overnight_payload = SiteAttendanceCreateRequest.model_validate(
+                {
+                    **payload,
+                    "employee_id": str(overnight_worker.id),
+                    "work_date": overnight_date.isoformat(),
+                    "check_in_at": f"{overnight_date.isoformat()}T22:00:01+03:00",
+                    "check_out_at": (
+                        f"{(overnight_date + timedelta(days=1)).isoformat()}T06:00:00+03:00"
+                    ),
+                }
+            )
+            _, _, overnight_assessment = await service._arrival_schedule_snapshot(
+                overnight_payload, overnight_worker
+            )
+            assert overnight_assessment.source == "shift"
+            assert overnight_assessment.status == "after_scheduled_start"
+            assert overnight_assessment.minutes_after_start == 1
         action = f"{site_path}/{entry_id}/decision"
         proposed = {"expected_revision": entry["record_revision"], "decision": "approved"}
         early = await client.post(action, json={**proposed, "stage": "hr"}, headers=hr)

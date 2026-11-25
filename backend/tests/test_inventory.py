@@ -480,6 +480,15 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         from app.models.inventory import MaterialRequest
         from app.models.notification import Notification
         from app.services.approval_service import ApprovalService
+        from app.tasks.email import _send_email_notification
+
+        delivered: list[tuple[list[str], str, str]] = []
+
+        def capture_email(self, *, recipients: list[str], subject: str, body: str) -> int:
+            delivered.append((recipients, subject, body))
+            return len(recipients)
+
+        monkeypatch.setattr("app.tasks.email.EmailService.send", capture_email)
 
         async with AsyncSessionLocal() as session:
             returned_approval = await session.get(Approval, UUID(manager["id"]))
@@ -506,6 +515,17 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             returned_approval.decided_at = original_decided_at
             await session.commit()
             assert await ApprovalService(session).can_deliver_scheduled_email(returned_notice)
+            assert (
+                await _send_email_notification(str(returned_notice_id))
+                == "notification email sent to 1 recipient"
+            )
+            assert delivered == [
+                (
+                    [requester.email],
+                    "Approval returned",
+                    returned_notice.body,
+                )
+            ]
             request_row = await session.get(MaterialRequest, UUID(request_id))
             assert request_row is not None
             request_row.status = "cancelled"
@@ -562,6 +582,10 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             assert not await ApprovalService(session).can_deliver_scheduled_email(
                 stale_return_notice
             )
+        assert await _send_email_notification(str(returned_notice_id)) == (
+            "notification email skipped"
+        )
+        assert len(delivered) == 1
         evidence = await client.get(
             f"/api/v1/inventory/requests/{request_id}/submissions", headers=owner_headers
         )
