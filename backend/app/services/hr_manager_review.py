@@ -170,16 +170,6 @@ async def list_manager_reviews(
             ),
         ),
         (
-            "leave",
-            (
-                HrLeaveRequest,
-                HrLeaveRequest.start_date,
-                HrLeaveRequest.end_date,
-                HrLeaveRequest.days_requested,
-                HrLeaveRequest.requested_by_id,
-            ),
-        ),
-        (
             "timesheet",
             (
                 HrTimesheet,
@@ -251,6 +241,8 @@ async def recommend_request(
     payload: ManagerReviewDecisionRequest,
     actor: User,
 ) -> ManagerReviewItemResponse:
+    if kind == "leave":
+        raise NotFoundException("Line manager review")
     if not get_settings().hr_line_manager_review_enabled:
         raise NotFoundException("Line manager review")
     model = REVIEW_MODELS[kind]

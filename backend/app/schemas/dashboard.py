@@ -1,4 +1,39 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class BirthdayItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    day: int = Field(ge=1, le=31)
+    month: int = Field(ge=1, le=12)
+
+
+class BirthdayPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[BirthdayItem]
+    total: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+
+
+class AnniversaryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    day: int = Field(ge=1, le=31)
+    month: int = Field(ge=1, le=12)
+    completed_years: int = Field(ge=1)
+
+
+class AnniversaryPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AnniversaryItem]
+    total: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
 
 
 class SiteOperationsSummary(BaseModel):

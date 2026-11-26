@@ -9,12 +9,17 @@ two-role proposal is superseded by the single HR Manager decision.
 
 ## Baseline
 
-- Clean main worktree at `ec298833ccffccabf65916202894736f494a72a4`, matching
+- Historical baseline for Slices 1–101: clean main worktree at
+  `ec298833ccffccabf65916202894736f494a72a4`, matching
   the local `origin/main` reference and the supplied GitHub baseline. No staged,
   unstaged or untracked work was present before the changes below.
 - Alembic source head `202605310014`. An empty loopback PostgreSQL 18 test
   database upgraded to head with Python 3.14.7. The frontend tooling ran on
   Node 26.13.0 locally. The hosted CI definition pins its own tool versions.
+- Slice 102 resumed on `main` at `60836daac4b77fe8cf6ba7fff206bfcc6bb343a0`
+  with an existing uncommitted HR implementation and migrations 113–114.
+  The unrelated local Compose edit and Celery schedule sidecar files were
+  preserved. The Slice 102 candidate remains uncommitted and local.
 - Production activation and business acceptance are separate from the local
   engineering work below. See the [workforce guide](HR_WORKFORCE.md) for the
   last verified deployed revision and the [maintenance runbook](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance)
@@ -30,7 +35,7 @@ two-role proposal is superseded by the single HR Manager decision.
 | P04 · HR-002/011 · employment changes | **Partial.** Reviewed transfers, promotions, category amendments and version-bound contract renewals apply on or after their effective date with one history entry. The portal and CLI list due changes and flag mismatched employee revisions. Manager transfer clears the former review authority. `HRProbationReview` handles confirmation and extensions. | Reviewed rehiring now records a new period and onboarding checklist. An approved automatic activation schedule and production business acceptance remain open. |
 | P05 · HR-007/013 · workforce planning | **Implemented and locally verified for whole-shift allocations.** `HRWorkCalendar` resolves published calendars and shifts. The portal and CLI allocate the resolved shift to a project and keep cancellation history. `hr_project_assignment.py` handles project access separately. See Slices 25 and 71. | Verify representative rosters with the business before production activation. The local workflow assigns a single published workday or shift per employee and date. |
 | P06 · HR-014/015 · attendance and time | **Implemented and locally verified for time capture, review and locked time export.** The payroll preparer can preview and export reconciled time for an explicit roster. Pending overtime prevents timesheet lock. The CSV preview shows overnight clock offsets and blocks incomplete clock pairs. See Slices 26 and 100. | Confirm the company's attendance feed and approved missing-punch handling before rollout. Employee submissions and manager recommendations need approved opt-in settings and verified links. Production payroll authorization and roster coverage review remain open. |
-| P07 · HR-016/017 · leave | **Partial.** Published schedules determine units. Dated policies require independent HR review. HR can post reviewed accrual, catch up across closed months, and roll over the year from the ledger, including explicit policy-authorized expiry of excess days. The scheduled worker can post designated policies, including independently approved calendar-day proration. Payroll exports reconciled paid and unpaid units, splitting new approvals on retained work dates. HR can reconcile missing cross-month dates using independently reviewed evidence. Reversal verifies the original debit and preserves approved payroll. See Slices 42–45, 66, 69 and 73. | Specify how leave debits consume carry-in, destination-year carry expiry rules and audited corrections to closed years. Reconcile affected live records from their historical evidence. Confirm policy selection and publish missing work calendar periods before activation. |
+| P07 · HR-016/017 · leave | **Implemented in source; locally verified on Slice 102.** Managed annual/casual profiles enforce first/second/third service-year rules, the reviewed 4–14 day annual bracket contract, zero carry-forward, annual block accounting and opening-balance reconciliation. The assigned current direct supervisor is the final reviewer; HR retains visibility and uses reasoned fallback only when eligible. Portal/email events are revision-scoped. See Slices 42–45, 66, 69, 73 and 102. | No managed policy is active by default. HR must supply and independently approve the 366 second-year annual bracket values, confirm the calendar-year/service-start and rehire conventions, approve the seven-day-block basis and effective windows, set leave-type paid/evidence rules, publish work-calendar coverage, reconcile employee opening balances and configure any sick/maternity rules. Local automated verification passed; the candidate remains uncommitted, and production deployment/readback and business acceptance are unverified. |
 | P08 · HR-012/018 · documents, policies and letters | **Versioned files and policy editions implemented and locally verified.** Policies link to the exact approved files and maintain separate acknowledgement receipts after replacement. `HRLettersPanel` keeps encrypted drafts for independent issuance. Salary confirmations bind the current independently approved compensation term. See Slices 31 and 72. | Reconcile any legacy policy file links. Confirm the production templates, compensation records and authorized reviewers, retention and any delivery to former employees. |
 | P09 · HR-018 · service requests | **Implemented and locally verified for handoffs and response letters.** HR can assign active requests, the assignee can complete one with a same-employee issued letter, and overdue reminders follow the eligible assignee. My HR keeps the exact letter visible on reopening. | Confirm the live SLA threshold and routing. Verify representative sensitive responses and templates with business UAT. |
 | P10 · HR-021/022 · compensation and obligations | **Implemented for restricted operator workflows.** The directory supports capped policies, dated coverage, private receipt review, reimbursement approval and external settlement. Advances track external disbursements and repayments through the API, CLI and directory. Compensation has independent review and effective-date history. See Slices 46–55. | Verify business policy and duties, reconcile legacy claims, and confirm payout mapping and recovery policy before activation. |
@@ -50,7 +55,7 @@ owns the command reference.
 | Duty | Current boundary |
 | --- | --- |
 | Employee | Active linked account acts on its own eligible records. |
-| Manager recommendation | Authorized current direct manager, only for the assigned employee and enabled workflow. HR makes the final decision. |
+| Leave decision | The current linked direct supervisor makes the final leave decision for their direct report. HR Manager has leave visibility and uses the existing HR approval grant for an explicitly reasoned supervisor-unavailable fallback. Other time recommendations remain advisory. |
 | HR processing and independent review | HR Manager acts under the existing action-specific grants. Where independent approval applies, the second actor must be distinct. Directors fulfill approved account handoffs through the user service. |
 | Payroll preparation, approval and settlement | Separate duties require approved actor assignments and policy. Current roles have no payroll grant. |
 | Confidential case participation | No active role grant. An approved design also needs record-level participant and conflict checks. |
@@ -2043,3 +2048,75 @@ actor, changed file and duplicate attempt. It verified the committed
 entry's identity, submitted state and overnight timestamp through a
 separate API read. The local production build passed. The work remains
 in the main worktree and has not been pushed or deployed.
+
+## Slice 102 · leave entitlement profiles, final supervisor decisions and celebrations
+
+The existing leave ledger, policy review, calendar, accrual, rollover and HR
+workspace remain the source of truth. Additive revisions 113–114 add managed
+annual/casual rule metadata, route and fallback evidence, reconciliation
+baselines, notification event revisions and guarded idempotency indexes.
+Approved managed annual policy profiles support zero annual credit in the
+first calendar service year, an explicitly reviewed 4–14 day bracket in the
+second, 14 days from the third year, no carry-forward, and a reviewed basis for
+the seven-day block. Casual profiles support 0.50 days per completed first-year
+service month and 7 days from the second year. Credit planning, preview/apply,
+catch-up, baseline reconciliation, rollover and the employee balance projection
+use the existing Decimal ledger and transaction safeguards. New policy/type
+configuration remains inactive until independently approved and supplied with
+the required HR inputs.
+
+Leave submissions freeze the current direct supervisor route when eligible.
+That supervisor makes the final decision through a relationship-scoped queue;
+HR retains visibility and uses the existing approval permission only for an
+explicit, reasoned fallback. The final decision, debit or rejection, audit
+event and revision-scoped portal/email notifications share the request
+transaction. Existing advisory attendance/time reviews, permission grants,
+leave status values and generic policy behavior remain unchanged. The dashboard
+loads birthdays and anniversaries through separate minimal private responses:
+birthdays expose only name and day/month for seven days; anniversaries expose
+name, day/month and completed years for thirty days. These cards do not expand
+the HR directory or dashboard summary.
+
+### Slice 102 verification
+
+The source baseline was `60836daac4b77fe8cf6ba7fff206bfcc6bb343a0` on local
+`main`; implementation remains uncommitted. All test data used disposable
+loopback PostgreSQL databases. No production database, accounts, mail delivery
+or deployment was accessed.
+
+- Fresh schema upgrade to Alembic head `202605310114` passed. A populated
+  forward-upgrade rehearsal from `202605310112` to `202605310114` retained the
+  synthetic approved request, its one `taken` ledger entry and its pre-existing
+  notification unchanged.
+- `cd backend && .venv/bin/ruff check . && .venv/bin/mypy .` passed; mypy found
+  no issues in 464 source files. `scripts/export_openapi.py --check` passed and
+  reported `docs/openapi.json` current. Alembic reported one head,
+  `202605310114`.
+- `cd backend && .venv/bin/pytest -q -rs` passed **1,458 tests**, with **6
+  skipped**: five Docker opt-in forward-stack tests and one explicit Docker
+  ingress check. The run emitted 18 deprecation warnings.
+- `cd frontend && npm run lint && npm run api:types:check && npm test && npm run build`
+  passed. Vitest reported **14 files and 66 tests passed**. Browser TypeScript
+  compilation passed. The production build completed with the existing
+  large-chunk warning.
+- The full Chrome suite ran **90 tests: 89 passed, 1 skipped**. The skip is the
+  dedicated single-owner support-custody case, which requires a matching test
+  deployment mode. A focused leave workflow also verified employee submission,
+  final direct-supervisor decision, HR visibility, and birthday/anniversary
+  card privacy. The updated linked-employee leave lifecycle browser regression
+  passed.
+- Production Compose validation, release shell syntax, `git diff --check` and
+  `graphify update .` passed.
+
+### Slice 102 remaining policy and release dependencies
+
+Implementation and local tests do not activate an HR policy. HR still needs to
+approve the calendar-year/service-start and rehire conventions; supply all 366
+second-year annual bracket values; select the seven-day-block basis; approve
+effective dates, policy source references and sick/maternity/unpaid eligibility,
+pay, evidence and expiry rules; reconcile actual opening balances and direct
+supervisor assignments; and publish the relevant work-calendar coverage. No
+employee entitlements or manager assignments were fabricated. The exact
+worktree has no commit SHA, hosted CI result, production migration/readback or
+business acceptance; those remain unverified. No push or release was requested
+or performed.

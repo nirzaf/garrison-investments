@@ -5,12 +5,15 @@ import { formatApiError } from '../../api/errors';
 import {
   getMyHrWorkflowOptions,
   getMyTimeRecords,
+  listMyLeaveReviews,
   listMyManagerReviews,
+  decideMyLeaveReview,
   recommendMyDirectReport,
   resubmitMyTimesheet,
   submitMyOvertime,
   submitMyTimesheet,
   type ManagerReviewItem,
+  type SupervisorLeaveReviewRecord,
   type TimesheetRecord
 } from '../../api/hr';
 import { useAuth } from '../../context/useAuth';
@@ -31,9 +34,133 @@ export function HRMeWorkflowPanel() {
       {options.isError && (
         <p role="alert">{formatApiError(options.error, 'Could not load HR workflow options.')}</p>
       )}
+      {options.data && !options.data.hr_leave_approver_configured && (
+        <p role="status" className="rounded border border-amber-400 p-3 text-sm">
+          HR fallback leave approval is not currently staffed. Direct supervisor decisions remain
+          available when an eligible supervisor is assigned; contact HR to correct the fallback
+          setup before relying on HR approval.
+        </p>
+      )}
       {options.data?.can_recommend && <ManagerReviewQueue userId={userId} />}
+      {options.data?.can_decide_leave && <SupervisorLeaveQueue userId={userId} />}
       {options.data?.self_time_submission_enabled && <SelfTimeRequests userId={userId} />}
     </>
+  );
+}
+
+function SupervisorLeaveQueue({ userId }: { userId: string }) {
+  const client = useQueryClient();
+  const [offset, setOffset] = useState(0);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const queueKey = ['hr', 'me', userId, 'leave-reviews'];
+  const queue = useQuery({
+    queryKey: [...queueKey, offset],
+    queryFn: ({ signal }) => listMyLeaveReviews(offset, PAGE_SIZE, signal)
+  });
+
+  async function decide(item: SupervisorLeaveReviewRecord, decision: 'approved' | 'rejected') {
+    if (pending) return;
+    const note = (notes[item.id] ?? '').trim();
+    if (decision === 'rejected' && !note) {
+      setError('Enter a reason before rejecting a leave request.');
+      return;
+    }
+    setPending(true);
+    setError('');
+    setNotice('');
+    try {
+      await decideMyLeaveReview(item, decision, note || undefined);
+      setNotice(decision === 'approved' ? 'Leave request approved.' : 'Leave request rejected.');
+      setNotes((current) => ({ ...current, [item.id]: '' }));
+    } catch (failure) {
+      setError(formatApiError(failure, 'Could not decide the leave request.'));
+    } finally {
+      await client.invalidateQueries({ queryKey: queueKey });
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3 rounded-lg border border-theme-border bg-theme-card p-5">
+      <h3 className="font-semibold">Direct-report leave approvals</h3>
+      <p className="text-sm text-theme-text-muted">
+        Your decision is final. HR can view requests and can take over only through a recorded
+        fallback route.
+      </p>
+      {queue.isFetching && <p role="status">Loading leave approvals…</p>}
+      {queue.isError && (
+        <p role="alert">
+          {formatApiError(queue.error, 'Could not load direct-report leave approvals.')}{' '}
+          <button type="button" onClick={() => void queue.refetch()}>Retry</button>
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+      {notice && <p role="status">{notice}</p>}
+      {queue.data?.items.length === 0 && <p>No leave requests need your decision.</p>}
+      <ul className="space-y-3">
+        {queue.data?.items.map((item) => (
+          <li key={item.id} className="space-y-2 border-b border-theme-border pb-3">
+            <p>
+              {item.employee_name} · {item.start_date}
+              {item.end_date !== item.start_date ? ` to ${item.end_date}` : ''} ·{' '}
+              {item.chargeable_units} days
+            </p>
+            <label className="block text-sm">
+              Decision note (required for rejection)
+              <input
+                className={hrInputClass}
+                maxLength={500}
+                value={notes[item.id] ?? ''}
+                onChange={(event) =>
+                  setNotes((current) => ({ ...current, [item.id]: event.target.value }))
+                }
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={hrButtonClass}
+                disabled={pending || item.status !== 'submitted'}
+                onClick={() => void decide(item, 'approved')}
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                className={hrButtonClass}
+                disabled={pending || item.status !== 'submitted' || !notes[item.id]?.trim()}
+                onClick={() => void decide(item, 'rejected')}
+              >
+                Reject
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {(offset > 0 || (queue.data?.total ?? 0) > PAGE_SIZE) && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={hrButtonClass}
+            disabled={pending || offset === 0}
+            onClick={() => setOffset(offset - PAGE_SIZE)}
+          >
+            Previous requests
+          </button>
+          <button
+            type="button"
+            className={hrButtonClass}
+            disabled={pending || offset + PAGE_SIZE >= (queue.data?.total ?? 0)}
+            onClick={() => setOffset(offset + PAGE_SIZE)}
+          >
+            Next requests
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 

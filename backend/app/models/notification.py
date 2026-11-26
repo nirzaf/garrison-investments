@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,3 +30,5 @@ class Notification(TimestampMixin, SoftDeleteMixin, Base):
     muted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     email_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    event_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    event_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)

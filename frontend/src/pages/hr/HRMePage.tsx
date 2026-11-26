@@ -539,6 +539,25 @@ export function HRMePage() {
                 >
                   <span>
                     {b.leave_type_name} ({b.leave_year})
+                    <span className="block text-theme-text-muted">
+                      {b.entitlement_status === 'configured' && b.due_entitlement_days !== null
+                        ? `Year entitlement to date: ${b.due_entitlement_days} days`
+                        : b.entitlement_status === 'unverified'
+                          ? 'Entitlement needs HR verification.'
+                          : 'Entitlement policy setup is not confirmed.'}
+                    </span>
+                    {b.annual_block_status !== 'not_applicable' && (
+                      <span className="block text-theme-text-muted">
+                        Seven-day annual leave block: {b.annual_block_status}
+                        {b.annual_block_required_days !== null &&
+                          ` (${b.annual_block_required_days} days)`}
+                      </span>
+                    )}
+                    {b.annual_block_balance_warning && (
+                      <span className="block text-amber-700">
+                        Your remaining balance may be insufficient for the required block.
+                      </span>
+                    )}
                   </span>
                   <strong>{b.balance_days} days</strong>
                 </div>
@@ -674,6 +693,17 @@ export function HRMePage() {
               >
                 <span>
                   {r.start_date} to {r.end_date} ({r.days_requested}d)
+                  {r.status === 'submitted' && r.approval_route && (
+                    <span className="block">
+                      Awaiting {r.approval_route === 'supervisor' ? 'direct supervisor' : 'HR fallback'}
+                    </span>
+                  )}
+                  {r.setup_error_code === 'LEAVE_APPROVER_NOT_CONFIGURED' && (
+                    <span className="block text-amber-700" role="status">
+                      HR fallback is not staffed. The request remains submitted; contact HR to
+                      configure an eligible leave approver.
+                    </span>
+                  )}
                   {(r.status === 'rejected' || r.status === 'cancelled') && r.decision_notes && (
                     <span className="block">{r.decision_notes}</span>
                   )}

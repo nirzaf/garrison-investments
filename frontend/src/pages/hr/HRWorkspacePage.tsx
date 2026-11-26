@@ -11,6 +11,8 @@ import {
   createPosition,
   createRequisition,
   decideLeaveRequest,
+  routeLeaveRequestToHrFallback,
+  refreshLeaveRequestRoute,
   decideHrDocumentVersion,
   uploadHrDocumentVersion,
   updateEmployee,
@@ -69,6 +71,7 @@ import { HRTimePanel } from './HRTimePanel';
 import { HRLeavePolicies } from './HRLeavePolicies';
 import { HRLeaveDateEvidence } from './HRLeaveDateEvidence';
 import { HRLeaveAccrual } from './HRLeaveAccrual';
+import { HRLeaveBaseline } from './HRLeaveBaseline';
 import { HRLeaveRollover } from './HRLeaveRollover';
 import { HRHiringPanel } from './HRHiringPanel';
 import { HREmploymentChanges } from './HREmploymentChanges';
@@ -557,6 +560,24 @@ export function HRWorkspacePage() {
       await decideLeaveRequest(requestId, payload);
       await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
     }, fallback, false);
+  }
+
+  async function runLeaveFallback(
+    requestId: string,
+    payload: HrSchemas['LeaveFallbackRequest'],
+    fallback: string
+  ) {
+    await runChange(async () => {
+      await routeLeaveRequestToHrFallback(requestId, payload);
+      await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
+    }, fallback, false);
+  }
+
+  async function runLeaveRouteRefresh(requestId: string, expectedRevision: number) {
+    await runChange(async () => {
+      await refreshLeaveRequestRoute(requestId, expectedRevision);
+      await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
+    }, 'Could not refresh the leave review assignment.', false);
   }
 
   async function runServiceRequestChange(action: () => Promise<unknown>, fallback: string) {
@@ -1645,15 +1666,16 @@ export function HRWorkspacePage() {
             <h3 className="text-base font-semibold">Leave Types ({leaveTypes.length})</h3>
             {hasPerm('hr:policy:manage') && (
               <form
-                className="flex gap-2"
+                className="grid gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  const values = new FormData(e.currentTarget);
                   void createLeaveType({
                     code: ltCode,
                     name: ltName,
-                    is_paid: true,
-                    requires_attachment: false,
-                    allow_half_day: true
+                    is_paid: values.get('is_paid') === 'paid',
+                    requires_attachment: values.get('requires_attachment') === 'required',
+                    allow_half_day: values.get('allow_half_day') === 'allowed'
                   })
                     .then(() => {
                       setLtCode('');
@@ -1677,16 +1699,58 @@ export function HRWorkspacePage() {
                   required
                   value={ltName}
                 />
+                <label>
+                  Pay treatment{' '}
+                  <select className={hrInputClass} name="is_paid" required defaultValue="">
+                    <option value="" disabled>Choose approved treatment</option>
+                    <option value="paid">Paid leave</option>
+                    <option value="unpaid">Unpaid leave</option>
+                  </select>
+                </label>
+                <label>
+                  Supporting document{' '}
+                  <select
+                    className={hrInputClass}
+                    name="requires_attachment"
+                    required
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Choose requirement</option>
+                    <option value="required">Required</option>
+                    <option value="optional">Not required</option>
+                  </select>
+                </label>
+                <label>
+                  Half-day requests{' '}
+                  <select className={hrInputClass} name="allow_half_day" required defaultValue="">
+                    <option value="" disabled>Choose rule</option>
+                    <option value="allowed">Allowed</option>
+                    <option value="not_allowed">Not allowed</option>
+                  </select>
+                </label>
                 <button className="rounded bg-brand-600 px-3 py-1 text-xs text-white" type="submit">
-                  Add
+                  Add draft leave type
                 </button>
               </form>
             )}
+            <p className="text-xs text-theme-text-muted">
+              New leave types remain unavailable to employees until a separate approved policy
+              supplies their entitlement and effective dates. Unpaid leave stays unpaid in payroll.
+            </p>
+            <ul className="space-y-1 text-xs text-theme-text-muted">
+              {leaveTypes.map((type) => (
+                <li key={type.id}>
+                  {type.name} · {type.is_paid ? 'paid' : 'unpaid'} ·{' '}
+                  {type.is_active ? 'available' : 'policy setup required'}
+                </li>
+              ))}
+            </ul>
             {hasPerm('hr:policy:manage') && user && (
               <HRLeavePolicies userId={user.id} leaveTypes={leaveTypes} />
             )}
             {hasPerm('hr:leave:approve') && (
               <>
+                <HRLeaveBaseline employees={employees} leaveTypes={leaveTypes} />
                 <HRLeaveAccrual employees={employees} leaveTypes={leaveTypes} />
                 <HRLeaveRollover employees={employees} leaveTypes={leaveTypes} />
               </>
@@ -1806,6 +1870,10 @@ export function HRWorkspacePage() {
               >
                 <span>
                   {lr.start_date} → {lr.end_date} ({lr.days_requested}d) · {lr.status}
+                  {lr.status === 'submitted' && lr.approval_route &&
+                    ` · Final decision: ${lr.approval_route === 'supervisor' ? 'direct supervisor' : 'HR fallback'}`}
+                  {lr.setup_error_code === 'LEAVE_APPROVER_NOT_CONFIGURED' &&
+                    ' · HR fallback is not staffed; the request remains submitted.'}
                   {lr.manager_recommendation &&
                     ` · Manager recommendation: ${lr.manager_recommendation}`}
                   {!lr.manager_recommendation &&
@@ -1813,7 +1881,9 @@ export function HRWorkspacePage() {
                     lr.status === 'submitted' &&
                     ' · Pending manager recommendation'}
                 </span>
-                {hasPerm('hr:leave:approve') && lr.status === 'submitted' && (
+                {hasPerm('hr:leave:approve') &&
+                  lr.status === 'submitted' &&
+                  lr.approval_route === 'hr_fallback' && (
                   <div className="flex flex-wrap gap-2">
                     <label>
                       Rejection reason{' '}
@@ -1861,6 +1931,68 @@ export function HRWorkspacePage() {
                       Reject
                     </button>
                   </div>
+                )}
+                {hasPerm('hr:leave:approve') &&
+                  lr.status === 'submitted' &&
+                  lr.approval_route !== 'hr_fallback' && (
+                    <details>
+                      <summary className="cursor-pointer">Record HR fallback</summary>
+                      <form
+                        className="mt-2 flex flex-wrap items-end gap-2"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const fields = new FormData(event.currentTarget);
+                          const reasonCode = String(fields.get('reason_code')) as
+                            HrSchemas['LeaveFallbackRequest']['reason_code'];
+                          const until = String(fields.get('until') ?? '');
+                          if (reasonCode === 'manager_temporarily_unavailable' && !until) {
+                            setError('Set an end date for temporary HR fallback.');
+                            return;
+                          }
+                          void runLeaveFallback(
+                            lr.id,
+                            {
+                              reason_code: reasonCode,
+                              reason: String(fields.get('reason') ?? '').trim(),
+                              expected_revision: lr.record_revision,
+                              until: until || null
+                            },
+                            'Could not route leave to HR fallback.'
+                          );
+                        }}
+                      >
+                        <label className="block">
+                          Fallback reason
+                          <select className={hrInputClass} name="reason_code" defaultValue="manager_temporarily_unavailable">
+                            <option value="manager_missing">No direct supervisor assigned</option>
+                            <option value="manager_ineligible">Direct supervisor is ineligible</option>
+                            <option value="manager_absent">Direct supervisor is on approved leave</option>
+                            <option value="manager_temporarily_unavailable">Temporary unavailability</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          Temporary fallback through
+                          <input className={hrInputClass} name="until" type="date" />
+                        </label>
+                        <label className="block">
+                          Reason (recorded in the audit trail)
+                          <input className={hrInputClass} name="reason" maxLength={500} required />
+                        </label>
+                        <button className="rounded border border-theme-border px-2 py-1" disabled={pending} type="submit">
+                          Route to HR
+                        </button>
+                      </form>
+                    </details>
+                  )}
+                {hasPerm('hr:leave:approve') && lr.status === 'submitted' && (
+                  <button
+                    className="rounded border border-theme-border px-2 py-1"
+                    disabled={pending}
+                    onClick={() => void runLeaveRouteRefresh(lr.id, lr.record_revision)}
+                    type="button"
+                  >
+                    Refresh review assignment
+                  </button>
                 )}
                 {hasPerm('hr:leave:approve') && lr.status === 'approved' &&
                   lr.requested_by_id !== user?.id && (

@@ -9,7 +9,7 @@ from fastapi.responses import Response
 
 from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.config import get_settings
-from app.models.hr import HrEmployee
+from app.models.hr import HrEmployee, HrLeaveRequest
 from app.models.user import User
 from app.schemas.hr import (
     AccessRequestCreateRequest,
@@ -130,6 +130,10 @@ from app.schemas.hr import (
     LeaveDateEvidenceDecision,
     LeaveDateEvidencePage,
     LeaveDateEvidenceResponse,
+    LeaveEntitlementBaselineApplyRequest,
+    LeaveEntitlementBaselineRequest,
+    LeaveEntitlementBaselineResponse,
+    LeaveFallbackRequest,
     LeaveLedgerAdjustRequest,
     LeaveLedgerEntryResponse,
     LeavePolicyCreateRequest,
@@ -145,6 +149,7 @@ from app.schemas.hr import (
     LeaveRolloverApplyRequest,
     LeaveRolloverRequest,
     LeaveRolloverResponse,
+    LeaveRouteRefreshRequest,
     LeaveTypeCreateRequest,
     LeaveTypeListResponse,
     LeaveTypeResponse,
@@ -279,6 +284,9 @@ from app.schemas.hr import (
     SiteAttendanceResponse,
     SiteAttendanceSubmissionResponse,
     SiteAttendanceWorkerPage,
+    SupervisorLeaveDecisionRequest,
+    SupervisorLeaveReviewItem,
+    SupervisorLeaveReviewListResponse,
     TimesheetCreateRequest,
     TimesheetDecisionRequest,
     TimesheetListResponse,
@@ -417,6 +425,44 @@ from app.utils.permissions import (
 )
 
 router = APIRouter(prefix="/hr", tags=["HR & Workforce"])
+
+
+async def _leave_request_response(
+    session: DbSession, row: HrLeaveRequest
+) -> LeaveRequestResponse:
+    approver_configured = True
+    if row.approval_route == "hr_fallback":
+        from app.services.hr_workforce_service import HrWorkforceService
+
+        approver_configured = await HrWorkforceService(session).hr_leave_approver_configured()
+    result = LeaveRequestResponse.model_validate(row)
+    result.setup_error_code = (
+        None if approver_configured else "LEAVE_APPROVER_NOT_CONFIGURED"
+    )
+    return result
+
+
+async def _leave_request_list_response(
+    session: DbSession, rows: list[HrLeaveRequest], total: int
+) -> LeaveRequestListResponse:
+    approver_configured = True
+    if any(row.approval_route == "hr_fallback" for row in rows):
+        from app.services.hr_workforce_service import HrWorkforceService
+
+        approver_configured = await HrWorkforceService(session).hr_leave_approver_configured()
+    return LeaveRequestListResponse(
+        items=[
+            LeaveRequestResponse.model_validate(row).model_copy(
+                update={
+                    "setup_error_code": None
+                    if approver_configured or row.approval_route != "hr_fallback"
+                    else "LEAVE_APPROVER_NOT_CONFIGURED"
+                }
+            )
+            for row in rows
+        ],
+        total=total,
+    )
 
 
 def require_any_permission(*permissions: str) -> Callable[[User], User]:
@@ -560,10 +606,13 @@ async def list_my_leave_types(
 async def get_my_workflow_options(
     current_user: CurrentUser, session: DbSession
 ) -> HrWorkflowOptionsResponse:
-    employee = await HrService(session).require_self_employee(current_user)
+    service = HrService(session)
+    employee = await service.require_self_employee(current_user)
     return HrWorkflowOptionsResponse(
         can_recommend=await can_review_direct_reports(session, employee),
         self_time_submission_enabled=get_settings().hr_self_time_submission_enabled,
+        can_decide_leave=await service.can_decide_direct_report_leave(current_user),
+        hr_leave_approver_configured=await service.hr_leave_approver_configured(),
     )
 
 
@@ -576,6 +625,35 @@ async def get_my_manager_reviews(
 ) -> ManagerReviewListResponse:
     employee = await HrService(session).require_self_employee(current_user)
     return await list_manager_reviews(session, employee, current_user, offset=offset, limit=limit)
+
+
+@router.get("/me/leave-reviews", response_model=SupervisorLeaveReviewListResponse)
+async def get_my_leave_reviews(
+    current_user: CurrentUser,
+    session: DbSession,
+    response: Response,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> SupervisorLeaveReviewListResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    return await HrService(session).list_supervisor_leave_reviews(
+        current_user, offset=offset, limit=limit
+    )
+
+
+@router.post(
+    "/me/leave-reviews/{request_id}/decision",
+    response_model=SupervisorLeaveReviewItem,
+)
+async def decide_my_leave_review(
+    request_id: UUID,
+    payload: SupervisorLeaveDecisionRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> SupervisorLeaveReviewItem:
+    return await HrService(session).decide_supervisor_leave_request(
+        request_id, payload, current_user
+    )
 
 
 @router.post("/me/manager-reviews/{kind}/{request_id}", response_model=ManagerReviewItemResponse)
@@ -711,9 +789,7 @@ async def list_my_leave_requests(
     svc = HrService(session)
     emp = await svc.require_self_employee(current_user)
     rows, total = await svc.list_leave_requests(employee_id=emp.id)
-    return LeaveRequestListResponse(
-        items=[LeaveRequestResponse.model_validate(r) for r in rows], total=total
-    )
+    return await _leave_request_list_response(session, rows, total)
 
 
 @router.post("/me/leave-requests", response_model=LeaveRequestResponse, status_code=201)
@@ -726,7 +802,7 @@ async def submit_my_leave_request(
     emp = await svc.require_self_employee(current_user)
     scoped = payload.model_copy(update={"employee_id": emp.id})
     req = await svc.create_leave_request(scoped, current_user, own_request=True)
-    return LeaveRequestResponse.model_validate(req)
+    return await _leave_request_response(session, req)
 
 
 @router.put("/me/leave-requests/{request_id}/submission", response_model=LeaveRequestResponse)
@@ -737,7 +813,7 @@ async def resubmit_my_leave_request(
     session: DbSession,
 ) -> LeaveRequestResponse:
     req = await HrService(session).resubmit_own_leave_request(request_id, payload, current_user)
-    return LeaveRequestResponse.model_validate(req)
+    return await _leave_request_response(session, req)
 
 
 @router.post("/me/leave-requests/{request_id}/cancel", response_model=LeaveRequestResponse)
@@ -752,7 +828,7 @@ async def cancel_my_leave_request(
         current_user,
         own_request=True,
     )
-    return LeaveRequestResponse.model_validate(req)
+    return await _leave_request_response(session, req)
 
 
 @router.get("/me/attendance", response_model=AttendanceEntryListResponse)
@@ -2264,6 +2340,30 @@ async def preview_leave_accrual(
     return await process_leave_accrual(session, payload, actor)
 
 
+@router.post(
+    "/leave/entitlement-baseline/preview",
+    response_model=LeaveEntitlementBaselineResponse,
+)
+async def preview_leave_entitlement_baseline(
+    payload: LeaveEntitlementBaselineRequest,
+    actor: CanApproveLeave,
+    session: DbSession,
+) -> LeaveEntitlementBaselineResponse:
+    return await HrService(session).preview_leave_entitlement_baseline(payload, actor)
+
+
+@router.post(
+    "/leave/entitlement-baseline/apply",
+    response_model=LeaveEntitlementBaselineResponse,
+)
+async def apply_leave_entitlement_baseline(
+    payload: LeaveEntitlementBaselineApplyRequest,
+    actor: CanApproveLeave,
+    session: DbSession,
+) -> LeaveEntitlementBaselineResponse:
+    return await HrService(session).apply_leave_entitlement_baseline(payload, actor)
+
+
 @router.post("/leave/accrual/apply", response_model=LeaveAccrualResponse)
 async def apply_leave_accrual(
     payload: LeaveAccrualApplyRequest, actor: CanApproveLeave, session: DbSession
@@ -2328,9 +2428,7 @@ async def list_leave_requests(
     rows, total = await HrService(session).list_leave_requests(
         employee_id=employee_id, status=req_status, limit=limit, offset=offset
     )
-    return LeaveRequestListResponse(
-        items=[LeaveRequestResponse.model_validate(r) for r in rows], total=total
-    )
+    return await _leave_request_list_response(session, rows, total)
 
 
 @router.post(
@@ -2340,7 +2438,7 @@ async def create_leave_request(
     payload: LeaveRequestCreateRequest, actor: CanManageLeave, session: DbSession
 ) -> LeaveRequestResponse:
     row = await HrService(session).create_leave_request(payload, actor)
-    return LeaveRequestResponse.model_validate(row)
+    return await _leave_request_response(session, row)
 
 
 @router.get("/leave/requests/{leave_request_id}/decision", response_model=LeaveRequestDecisionState)
@@ -2358,7 +2456,35 @@ async def decide_leave_request(
     session: DbSession,
 ) -> LeaveRequestResponse:
     row = await HrService(session).decide_leave_request(leave_request_id, payload, actor)
-    return LeaveRequestResponse.model_validate(row)
+    return await _leave_request_response(session, row)
+
+
+@router.post(
+    "/leave/requests/{leave_request_id}/fallback",
+    response_model=LeaveRequestResponse,
+)
+async def route_leave_request_to_hr_fallback(
+    leave_request_id: UUID,
+    payload: LeaveFallbackRequest,
+    actor: CanApproveLeave,
+    session: DbSession,
+) -> LeaveRequestResponse:
+    row = await HrService(session).set_leave_hr_fallback(leave_request_id, payload, actor)
+    return await _leave_request_response(session, row)
+
+
+@router.post(
+    "/leave/requests/{leave_request_id}/route-refresh",
+    response_model=LeaveRequestResponse,
+)
+async def refresh_leave_request_route(
+    leave_request_id: UUID,
+    payload: LeaveRouteRefreshRequest,
+    actor: CanApproveLeave,
+    session: DbSession,
+) -> LeaveRequestResponse:
+    row = await HrService(session).refresh_leave_route(leave_request_id, payload, actor)
+    return await _leave_request_response(session, row)
 
 
 @router.get("/leave/date-evidence/candidates", response_model=LeaveDateEvidenceCandidates)

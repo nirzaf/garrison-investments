@@ -64,6 +64,8 @@ class NotificationService:
         reference_type: str | None = None,
         reference_id: UUID | None = None,
         send_email: bool = True,
+        event_code: str | None = None,
+        event_revision: int | None = None,
     ) -> Notification:
         notification = await self.notifications.add(
             Notification(
@@ -73,6 +75,8 @@ class NotificationService:
                 notification_type=notification_type,
                 reference_type=reference_type,
                 reference_id=reference_id,
+                event_code=event_code,
+                event_revision=event_revision,
                 email_status="queued" if send_email else None,
             )
         )

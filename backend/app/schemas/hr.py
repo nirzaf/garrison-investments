@@ -1,7 +1,7 @@
 import hashlib
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -1518,6 +1518,8 @@ ManagerReviewKind = Literal["attendance", "leave", "timesheet", "overtime"]
 class HrWorkflowOptionsResponse(BaseModel):
     can_recommend: bool
     self_time_submission_enabled: bool
+    can_decide_leave: bool = False
+    hr_leave_approver_configured: bool = False
 
 
 class ManagerReviewDecisionRequest(BaseModel):
@@ -1610,6 +1612,69 @@ class OvertimeRequestListResponse(BaseModel):
 # --- Leave Management ---
 
 
+class LeaveEntitlementBracket(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_month: int = Field(ge=1, le=12)
+    from_day: int = Field(ge=1, le=31)
+    through_month: int = Field(ge=1, le=12)
+    through_day: int = Field(ge=1, le=31)
+    days: Decimal = Field(ge=4, le=14, max_digits=5, decimal_places=2)
+
+    @model_validator(mode="after")
+    def validate_month_days(self) -> Self:
+        try:
+            date(2000, self.from_month, self.from_day)
+            date(2000, self.through_month, self.through_day)
+        except ValueError as exc:
+            raise ValueError("Bracket endpoints must be valid month and day values.") from exc
+        return self
+
+
+class _ManagedLeaveRules(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    source_reference: str = Field(min_length=1, max_length=200)
+    calendar_year_basis: Literal["calendar_join_year"]
+    service_start_rule: Literal["current_continuous_employment_only"]
+    rehire_rule: Literal["current_period_only"]
+    completed_month_rule: Literal["clamp_from_original_start"]
+
+
+class GarrisonsAnnualLeaveRules(_ManagedLeaveRules):
+    profile: Literal["garrisons_annual_v1"]
+    second_year_brackets: list[LeaveEntitlementBracket] = Field(min_length=1, max_length=366)
+    seven_day_block_basis: Literal["calendar_days", "chargeable_workdays"]
+
+    @model_validator(mode="after")
+    def complete_second_year_calendar(self) -> Self:
+        coverage = [0] * 366
+        for bracket in self.second_year_brackets:
+            start = date(2000, bracket.from_month, bracket.from_day)
+            end = date(2000, bracket.through_month, bracket.through_day)
+            current = start
+            while True:
+                index = (current - date(2000, 1, 1)).days
+                coverage[index] += 1
+                if current == end:
+                    break
+                current += timedelta(days=1)
+                if current.year > 2000:
+                    current = date(2000, 1, 1)
+        if any(count != 1 for count in coverage):
+            raise ValueError("Second-year brackets must cover each month/day exactly once.")
+        return self
+
+
+class GarrisonsCasualLeaveRules(_ManagedLeaveRules):
+    profile: Literal["garrisons_casual_v1"]
+
+
+LeaveEntitlementRules = Annotated[
+    GarrisonsAnnualLeaveRules | GarrisonsCasualLeaveRules, Field(discriminator="profile")
+]
+
+
 class LeaveTypeCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=40)
     name: str = Field(min_length=2, max_length=120)
@@ -1639,6 +1704,8 @@ class LeaveTypeListResponse(BaseModel):
 
 
 class LeavePolicyCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     code: str = Field(min_length=1, max_length=40)
     name: str = Field(min_length=2, max_length=160)
     leave_type_id: UUID
@@ -1654,6 +1721,7 @@ class LeavePolicyCreateRequest(BaseModel):
     effective_from: date
     effective_to: date
     approve_immediately: bool = False
+    entitlement_rules: LeaveEntitlementRules | None = None
 
     @model_validator(mode="after")
     def validate_proration(self) -> Self:
@@ -1688,6 +1756,7 @@ class LeavePolicyResponse(BaseModel):
     approved_by_id: UUID | None
     approved_at: datetime | None
     created_at: datetime
+    entitlement_rules: LeaveEntitlementRules | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1745,6 +1814,50 @@ class LeaveAccrualResponse(BaseModel):
     days: Decimal
     digest: str | None = None
     ledger_entry_id: UUID | None = None
+    due_date: date | None = None
+    service_year_band: int | None = Field(default=None, ge=1)
+    outcome: Literal[
+        "preview", "posted", "already_posted", "not_due", "reconciliation_required",
+        "baseline_recognized",
+    ] | None = None
+
+
+class LeaveEntitlementBaselineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    employee_id: UUID
+    leave_type_id: UUID
+    year: int = Field(ge=2020, le=2100)
+    as_of_date: date
+    verified_balance: Decimal = Field(ge=0, max_digits=6, decimal_places=2)
+    recognized_due_dates: list[date] = Field(default_factory=list, max_length=12)
+    supporting_reference: str = Field(min_length=1, max_length=200)
+
+    @field_validator("recognized_due_dates")
+    @classmethod
+    def validate_recognized_due_dates(cls, value: list[date]) -> list[date]:
+        if len(value) != len(set(value)):
+            raise ValueError("Each recognized credit date may be supplied once.")
+        return sorted(value)
+
+
+class LeaveEntitlementBaselineApplyRequest(LeaveEntitlementBaselineRequest):
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LeaveEntitlementBaselineResponse(BaseModel):
+    employee_id: UUID
+    leave_type_id: UUID
+    year: int
+    policy_id: UUID
+    as_of_date: date
+    current_balance: Decimal
+    verified_balance: Decimal
+    adjustment_days: Decimal
+    recognized_due_dates: list[date]
+    supporting_reference: str
+    digest: str | None = None
+    receipt_id: UUID | None = None
 
 
 class LeaveAccrualCatchUpRequest(BaseModel):
@@ -1798,6 +1911,13 @@ class LeaveBalanceItem(BaseModel):
     leave_type_name: str
     leave_year: int
     balance_days: Decimal
+    entitlement_status: Literal["configured", "setup_required", "unverified"] = "setup_required"
+    due_entitlement_days: Decimal | None = None
+    annual_block_status: Literal[
+        "not_applicable", "outstanding", "scheduled", "taken", "unverified"
+    ] = "not_applicable"
+    annual_block_balance_warning: bool = False
+    annual_block_required_days: Decimal | None = None
 
 
 class LeaveBalanceListResponse(BaseModel):
@@ -1866,6 +1986,11 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
     decided_by_id: UUID | None
     decided_at: datetime | None
     decision_notes: str | None
+    approval_route: Literal["supervisor", "hr_fallback"] | None = None
+    assigned_supervisor_user_id: UUID | None = None
+    fallback_reason_code: str | None = None
+    fallback_until: date | None = None
+    setup_error_code: Literal["LEAVE_APPROVER_NOT_CONFIGURED"] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1875,6 +2000,61 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
 class LeaveRequestListResponse(BaseModel):
     items: list[LeaveRequestResponse]
     total: int
+
+
+class SupervisorLeaveReviewItem(BaseModel):
+    id: UUID
+    employee_name: str
+    start_date: date
+    end_date: date
+    chargeable_units: Decimal
+    is_half_day: bool
+    status: Literal["submitted", "approved", "rejected"]
+    record_revision: int
+
+
+class SupervisorLeaveReviewListResponse(BaseModel):
+    items: list[SupervisorLeaveReviewItem]
+    total: int
+    offset: int
+    limit: int
+
+
+class SupervisorLeaveDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    decision: Literal["approved", "rejected"]
+    expected_revision: int = Field(ge=1)
+    notes: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def rejection_reason_required(self) -> Self:
+        if self.decision == "rejected" and not (self.notes or "").strip():
+            raise ValueError("Rejection requires a reason.")
+        return self
+
+
+class LeaveFallbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason_code: Literal[
+        "manager_missing", "manager_ineligible", "manager_absent", "manager_temporarily_unavailable"
+    ]
+    reason: str = Field(min_length=1, max_length=500)
+    expected_revision: int = Field(ge=1)
+    until: date | None = None
+
+    @model_validator(mode="after")
+    def temporary_takeover_requires_end_date(self) -> Self:
+        if self.reason_code == "manager_temporarily_unavailable" and self.until is None:
+            raise ValueError("A temporary takeover requires an end date.")
+        return self
+
+
+class LeaveRouteRefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
 
 
 class LeaveDateEvidenceDetail(BaseModel):

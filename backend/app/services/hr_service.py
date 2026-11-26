@@ -15,6 +15,7 @@ from app.models.hr import (
     HrEmploymentChange,
     HrEmploymentHistory,
     HrEmploymentPeriod,
+    HrLeaveRequest,
     HrOffboardingCase,
     HrOnboardingCase,
     HrPosition,
@@ -58,6 +59,7 @@ from app.schemas.users import UserCreateRequest, UserUpdateRequest
 from app.services.hr_crypto import decrypt_hr_value, encrypt_hr_value, mask_identifier
 from app.services.hr_manager_review import eligible_reviewer
 from app.services.hr_offboarding_custody import confirmed_access_revocation
+from app.services.hr_payroll_snapshot import lock_payroll_periods
 from app.services.hr_project_assignment import ACTIVE_ASSIGNMENT_EMPLOYMENT
 from app.services.hr_workforce_service import HrWorkforceService
 from app.services.user_service import UserService
@@ -578,11 +580,26 @@ class HrService(HrWorkforceService):
     async def update_employee(
         self, employee_id: UUID, payload: EmployeeUpdateRequest, actor: User
     ) -> EmployeeDetailResponse:
+        pending_leave: list[HrLeaveRequest] = []
         if "manager_employee_id" in payload.model_fields_set:
+            # Match leave-decision lock order: payroll guard, request rows, employee row.
+            await lock_payroll_periods(self.session)
             await self.session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_reporting_lines'))")
             )
+            pending_leave = list(
+                await self.session.scalars(
+                    select(HrLeaveRequest)
+                    .where(
+                        HrLeaveRequest.employee_id == employee_id,
+                        HrLeaveRequest.status == "submitted",
+                    )
+                    .order_by(HrLeaveRequest.id)
+                    .with_for_update()
+                )
+            )
         emp = await self._require_employee(employee_id, for_update=True)
+        previous_manager_id = emp.manager_employee_id
         if emp.employment_status in ACTIVE_ASSIGNMENT_EMPLOYMENT and any(
             name in payload.model_fields_set and getattr(payload, name) != getattr(emp, name)
             for name in ("first_name", "last_name", "full_name")
@@ -593,6 +610,9 @@ class HrService(HrWorkforceService):
                 error_code="PROFILE_CORRECTION_REQUIRED",
             )
         await self._stage_employee_update(emp, payload, actor, "updated", utc_now().date())
+        if previous_manager_id != emp.manager_employee_id:
+            for leave_request in pending_leave:
+                await self._reroute_pending_leave_request(leave_request, emp, actor)
         try:
             await self.session.commit()
             await self.session.refresh(emp)

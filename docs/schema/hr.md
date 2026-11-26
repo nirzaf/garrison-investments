@@ -14,9 +14,9 @@ employee data. See the linked models and migrations for all column definitions
 and the [HR workspace guide](../HR_WORKFORCE.md) for the permission and
 feature-policy boundaries.
 
-Pending revisions [015](../../backend/alembic/versions/202605310015_hr_leave_policy_review.py)
+Revisions [015](../../backend/alembic/versions/202605310015_hr_leave_policy_review.py)
 and [016](../../backend/alembic/versions/202605310016_validate_hr_leave_policy.py)
-add and validate leave policy review and effective-window constraints. Rows
+added and validated leave policy review and effective-window constraints. Rows
 already present receive the `legacy` status and keep their approval and
 entitlement fields. New draft, approved and rejected policies require an
 ordered inclusive effective window. The nullable creator reference uses
@@ -144,6 +144,31 @@ The migration creates an empty table and the downgrade rejects retained rows.
 | `hr_leave_policies` | `approved_by_id` and `created_by_id` → `users.id` (nullable, SET NULL)<br>`leave_type_id` → `hr_leave_types.id` (required, CASCADE) | `uq_hr_leave_policies_code` | No |
 | `hr_leave_ledger` | `actor_user_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`leave_type_id` → `hr_leave_types.id` (required, RESTRICT)<br>`reference_request_id` → `hr_leave_requests.id` (nullable, SET NULL) | `ix_hr_leave_ledger_employee_id` | No |
 | `hr_leave_requests` | `attachment_document_id` → `hr_documents.id` (nullable, SET NULL)<br>`decided_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`leave_type_id` → `hr_leave_types.id` (required, RESTRICT)<br>`manager_recommended_by_id` → `users.id` (nullable, SET NULL)<br>`requested_by_id` → `users.id` (nullable, SET NULL) | `ix_hr_leave_requests_employee_id`<br>`ix_hr_leave_requests_status` | No |
+| `hr_leave_entitlement_baselines` | `employee_id` → `hr_employees.id` (required, RESTRICT)<br>`leave_type_id` → `hr_leave_types.id` (required, RESTRICT)<br>`policy_id` → `hr_leave_policies.id` (required, RESTRICT)<br>`reviewed_by_id` → `users.id` (required, RESTRICT)<br>`adjustment_ledger_id` → `hr_leave_ledger.id` (nullable, RESTRICT) | `uq_hr_leave_entitlement_baseline`<br>`uq_hr_leave_baseline_adjustment` | No |
+
+## Managed leave rules and approval routing
+
+Revision [113](../../backend/alembic/versions/202605310113_leave_policy_routing.py)
+adds `hr_leave_policies.entitlement_rules` for typed, independently reviewed
+annual and casual entitlement profiles; `hr_leave_types.policy_required` to
+keep new managed types inactive until reviewed; and `hr_leave_accruals.due_date`
+for service-month receipts. It adds `approval_route`, the assigned supervisor,
+and reasoned HR fallback actor/time/expiry fields to `hr_leave_requests`, plus
+`notifications.event_code` and `event_revision` for revision-bound delivery
+deduplication. `hr_leave_entitlement_baselines` stores the reviewed opening
+balance, recognized due dates, supporting reference and ledger/plan digests.
+The migration does not invent policy values or adjust employee balances.
+
+Revision [114](../../backend/alembic/versions/202605310114_leave_workflow_indexes.py)
+adds partial indexes for due-date receipt uniqueness, assigned supervisor
+queues, notification-event deduplication and one request debit/reversal per
+decision. It checks for conflicting existing ledger/accrual rows before
+creating the unique indexes. No existing rows are rewritten by this revision.
+
+The deployed database revision is not established by these source notes. Use
+the authorized release receipt and production migration readback for that
+claim. Managed policies remain inactive until HR supplies and independently
+reviews the required profile and baseline records.
 
 Revision `202605310047` adds nullable `scheduled_work_dates` (`date[]`) to
 `hr_leave_requests`. New submissions retain the resolved work dates. Approval

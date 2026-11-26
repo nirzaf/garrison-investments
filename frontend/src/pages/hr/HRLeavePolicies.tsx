@@ -63,6 +63,22 @@ export function HRLeavePolicies({
           const values = new FormData(form);
           const field = (name: string) => String(values.get(name) ?? '');
           void change(async () => {
+            const rawRules = field('entitlement_rules').trim();
+            const selectedProfile = field('profile');
+            if (selectedProfile && !rawRules) {
+              throw new Error('Paste the full HR-approved rules for the selected profile.');
+            }
+            let rules: PolicyInput['entitlement_rules'] = null;
+            if (rawRules) {
+              try {
+                rules = JSON.parse(rawRules) as PolicyInput['entitlement_rules'];
+              } catch {
+                throw new Error('The managed entitlement profile must be valid JSON.');
+              }
+              if (selectedProfile && rules?.profile !== selectedProfile) {
+                throw new Error('The JSON profile does not match the selected profile.');
+              }
+            }
             await createLeavePolicy({
               code: field('code'),
               name: field('name'),
@@ -77,7 +93,8 @@ export function HRLeavePolicies({
               max_carry_forward_days: field('carry'),
               allow_negative_balance: values.has('negative'),
               expire_excess_on_rollover: values.has('expireExcess'),
-              approve_immediately: false
+              approve_immediately: false,
+              entitlement_rules: rules
             });
             form.reset();
           }, 'Leave policy proposed for independent review.');
@@ -92,15 +109,34 @@ export function HRLeavePolicies({
         <label>
           Policy leave type{' '}
           <select name="type" required>
-            {leaveTypes
-              .filter((type) => type.is_active)
-              .map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
+            {leaveTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}{type.is_active ? '' : ' (policy setup required)'}
+              </option>
+            ))}
           </select>
         </label>
+        <label>
+          Garrisons managed entitlement profile
+          <select name="profile" defaultValue="">
+            <option value="">Existing generic policy rules</option>
+            <option value="garrisons_annual_v1">Annual leave (14 days from service year 3)</option>
+            <option value="garrisons_casual_v1">Casual leave (0.5 days per completed month)</option>
+          </select>
+        </label>
+        <label>
+          Approved rule profile JSON (optional for generic policies)
+          <textarea
+            className="min-h-40 font-mono"
+            name="entitlement_rules"
+            placeholder={'Paste the complete HR-approved JSON profile. Annual profiles require all 366 month/day entries in second_year_brackets; no bracket values are prefilled.'}
+          />
+        </label>
+        <p className="text-xs text-theme-text-muted">
+          Managed profiles stay inactive until approved by a different policy reviewer. Do not
+          enter unapproved bracket values. The annual profile requires the complete HR-approved
+          second-year calendar and the approved seven-day block basis.
+        </p>
         <label>
           Employment category{' '}
           <select name="category">

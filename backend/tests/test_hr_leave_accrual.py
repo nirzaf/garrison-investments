@@ -99,7 +99,7 @@ async def test_paid_accrual_is_reviewed_idempotent_and_reconciled(
             "month": 2,
         }
         assert (await client.post(preview, headers=staff, json=payload)).status_code == 403
-        assert (await client.post(preview, headers=hr, json=payload)).status_code == 409
+        assert (await client.post(preview, headers=hr, json=payload)).status_code == 404
         approved = await client.post(
             f"{base}/leave/policies/{policy_id}/decision",
             headers=reviewer,
@@ -206,9 +206,13 @@ async def test_paid_accrual_is_reviewed_idempotent_and_reconciled(
         assert saved_range["digest"] is None
         assert len({item["ledger_entry_id"] for item in saved_range["periods"]}) == 3
         assert all(item["ledger_entry_id"] for item in saved_range["periods"])
-        assert (
+        reviewer_readback = (
             await client.post(f"{catch_up}/preview", headers=reviewer, json=catch_up_payload)
-        ).json() == saved_range
+        ).json()
+        assert [item["ledger_entry_id"] for item in reviewer_readback["periods"]] == [
+            item["ledger_entry_id"] for item in saved_range["periods"]
+        ]
+        assert all(item["outcome"] == "already_posted" for item in reviewer_readback["periods"])
 
         manual = {
             "employee_id": employee_id,
@@ -483,3 +487,241 @@ async def test_scheduled_leave_accrual_uses_only_selected_reviewed_policies(
         assert readback.status_code == 200
         assert readback.json()["ledger_entry_id"] == str(prorated.ledger_id)
         assert readback.json()["eligible_from"] == "2026-02-15"
+
+
+@pytest.mark.asyncio
+async def test_managed_leave_profiles_require_review_and_use_service_year_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import date
+    from uuid import UUID
+
+    await skip_if_database_unavailable()
+    # The fixture includes an employee who joins later in this same calendar
+    # year. Run after that effective join date so the first-year zero preview
+    # is tested for a real employee period, rather than a future hire.
+    fixed_today = date(2026, 12, 31)
+    monkeypatch.setattr(hr_leave_accrual, "business_today", lambda: fixed_today)
+    hr_user_id, hr_email, password = await _create_portal_user("hr_manager")
+    reviewer_user_id, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    base = "/api/v1/hr"
+    async with _client() as client:
+        hr = _auth(await _login(client, hr_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+
+        async def create_employee(join_date: str) -> str:
+            response = await client.post(
+                f"{base}/employees",
+                headers=hr,
+                json={
+                    "employee_code": f"MANAGED-{uuid4().hex[:8]}",
+                    "first_name": "Synthetic",
+                    "last_name": "Managed Leave",
+                    "employment_status": "active",
+                    "employment_category": "permanent",
+                    "join_date": join_date,
+                },
+            )
+            assert response.status_code == 201, response.text
+            return response.json()["id"]
+
+        def common_rules(profile: str) -> dict:
+            return {
+                "profile": profile,
+                "source_reference": "Synthetic acceptance fixture; not company policy",
+                "calendar_year_basis": "calendar_join_year",
+                "service_start_rule": "current_continuous_employment_only",
+                "rehire_rule": "current_period_only",
+                "completed_month_rule": "clamp_from_original_start",
+            }
+
+        async def create_managed_policy(
+            profile: str,
+            entitlement: str,
+            frequency: str,
+            probe_employee_id: str,
+            extra: dict | None = None,
+        ) -> tuple[str, str]:
+            leave_type = await client.post(
+                f"{base}/leave/types",
+                headers=hr,
+                json={"code": f"M-{uuid4().hex[:8]}", "name": f"Synthetic {profile}"},
+            )
+            assert leave_type.status_code == 201, leave_type.text
+            assert leave_type.json()["is_active"] is False
+            type_id = leave_type.json()["id"]
+            unavailable = await client.post(
+                f"{base}/leave/accrual/preview",
+                headers=hr,
+                json={"employee_id": probe_employee_id, "leave_type_id": type_id, "year": 2026},
+            )
+            assert unavailable.status_code == 404
+            rules = common_rules(profile)
+            if extra:
+                rules.update(extra)
+            proposal = await client.post(
+                f"{base}/leave/policies",
+                headers=hr,
+                json={
+                    "code": f"MP-{uuid4().hex[:8]}",
+                    "name": "Synthetic approved-profile fixture",
+                    "leave_type_id": type_id,
+                    "annual_entitlement_days": entitlement,
+                    "accrual_frequency": frequency,
+                    "prorate_by_calendar_day": False,
+                    "max_carry_forward_days": "0.00",
+                    "expire_excess_on_rollover": True,
+                    "allow_negative_balance": False,
+                    "effective_from": "2024-01-01",
+                    "effective_to": "2026-12-31",
+                    "entitlement_rules": rules,
+                },
+            )
+            assert proposal.status_code == 201, proposal.text
+            policy_id = proposal.json()["id"]
+            assert (
+                await client.post(
+                    f"{base}/leave/policies/{policy_id}/decision",
+                    headers=reviewer,
+                    json={"decision": "approved"},
+                )
+            ).status_code == 200
+            return type_id, policy_id
+
+        first_year = await create_employee("2026-06-30")
+        annual_type, _ = await create_managed_policy(
+            "garrisons_annual_v1",
+            "14.00",
+            "annual",
+            first_year,
+            {
+                "second_year_brackets": [
+                    {
+                        "from_month": 1,
+                        "from_day": 1,
+                        "through_month": 12,
+                        "through_day": 31,
+                        "days": "8.50",
+                    }
+                ],
+                "seven_day_block_basis": "calendar_days",
+            },
+        )
+        second_year = await create_employee("2025-06-30")
+        third_year = await create_employee("2024-02-01")
+        preview = f"{base}/leave/accrual/preview"
+        unavailable = await client.post(
+            preview,
+            headers=hr,
+            json={"employee_id": first_year, "leave_type_id": annual_type, "year": 2026},
+        )
+        # Policy review has activated this managed type, so the first-year
+        # outcome is a legitimate zero preview rather than a hidden type.
+        assert unavailable.status_code == 200, unavailable.text
+        assert unavailable.json()["days"] == "0.00"
+        assert unavailable.json()["outcome"] == "not_due"
+        second = await client.post(
+            preview,
+            headers=hr,
+            json={"employee_id": second_year, "leave_type_id": annual_type, "year": 2026},
+        )
+        assert second.status_code == 200, second.text
+        assert second.json()["days"] == "8.50"
+        assert second.json()["due_date"] == "2026-01-01"
+        assert second.json()["service_year_band"] == 2
+        third = await client.post(
+            preview,
+            headers=hr,
+            json={"employee_id": third_year, "leave_type_id": annual_type, "year": 2026},
+        )
+        assert third.status_code == 200, third.text
+        assert third.json()["days"] == "14.00"
+        assert third.json()["service_year_band"] == 3
+
+        from app.database import AsyncSessionLocal
+        from app.models.hr import HrLeaveLedger, HrLeaveRequest
+        from app.utils.security import utc_now
+
+        year_end_employee = await create_employee("2023-02-01")
+        async with AsyncSessionLocal() as session:
+            session.add(
+                HrLeaveLedger(
+                    employee_id=UUID(year_end_employee),
+                    leave_type_id=UUID(annual_type),
+                    entry_type="opening_balance",
+                    days_delta=Decimal("14.00"),
+                    leave_year=2025,
+                    reason="Synthetic opening balance fixture",
+                    actor_user_id=UUID(hr_user_id),
+                )
+            )
+            await session.commit()
+
+        rollover_url = f"{base}/leave/rollover/preview"
+        rollover_request = {
+            "employee_id": year_end_employee,
+            "leave_type_id": annual_type,
+            "source_year": 2025,
+        }
+        blocked = await client.post(rollover_url, headers=hr, json=rollover_request)
+        assert blocked.status_code == 409
+        assert blocked.json()["error_code"] == "LEAVE_ANNUAL_BLOCK_REQUIRED"
+        async with AsyncSessionLocal() as session:
+            block = HrLeaveRequest(
+                employee_id=UUID(year_end_employee),
+                leave_type_id=UUID(annual_type),
+                start_date=date(2025, 7, 1),
+                end_date=date(2025, 7, 7),
+                days_requested=Decimal("7.00"),
+                status="approved",
+                requested_by_id=UUID(hr_user_id),
+                decided_by_id=UUID(reviewer_user_id),
+                decided_at=utc_now(),
+                decision_notes="Synthetic qualifying annual block",
+            )
+            session.add(block)
+            await session.flush()
+            session.add(
+                HrLeaveLedger(
+                    employee_id=UUID(year_end_employee),
+                    leave_type_id=UUID(annual_type),
+                    entry_type="taken",
+                    days_delta=Decimal("-7.00"),
+                    leave_year=2025,
+                    reference_request_id=block.id,
+                    reason="Synthetic qualifying annual block",
+                    actor_user_id=UUID(reviewer_user_id),
+                )
+            )
+            await session.commit()
+        rollover = await client.post(rollover_url, headers=hr, json=rollover_request)
+        assert rollover.status_code == 200, rollover.text
+        assert rollover.json()["carried_days"] == "0.00"
+        assert rollover.json()["expired_days"] == "7.00"
+
+        first_year_casual = await create_employee("2026-01-31")
+        casual_type, _ = await create_managed_policy(
+            "garrisons_casual_v1", "7.00", "monthly", first_year_casual
+        )
+        second_year_casual = await create_employee("2025-01-31")
+        february = await client.post(
+            preview,
+            headers=hr,
+            json={
+                "employee_id": first_year_casual,
+                "leave_type_id": casual_type,
+                "year": 2026,
+                "month": 2,
+            },
+        )
+        assert february.status_code == 200, february.text
+        assert february.json()["days"] == "0.50"
+        assert february.json()["due_date"] == "2026-02-28"
+        second_year_casual_quote = await client.post(
+            preview,
+            headers=hr,
+            json={"employee_id": second_year_casual, "leave_type_id": casual_type, "year": 2026},
+        )
+        assert second_year_casual_quote.status_code == 200, second_year_casual_quote.text
+        assert second_year_casual_quote.json()["days"] == "7.00"
+        assert second_year_casual_quote.json()["due_date"] == "2026-01-01"

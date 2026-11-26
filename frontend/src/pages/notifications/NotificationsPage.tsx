@@ -18,7 +18,9 @@ const workflowPaths = new Set([
   '/reports/daily',
   '/documents',
   '/finance',
-  '/materials'
+  '/materials',
+  '/hr',
+  '/me/hr'
 ]);
 
 function workflowLink(body: string) {

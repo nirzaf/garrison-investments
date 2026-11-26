@@ -6,7 +6,7 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from string import Formatter
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -55,6 +55,7 @@ from app.models.hr import (
     HrInterview,
     HrIssuedLetter,
     HrLeaveAccrual,
+    HrLeaveEntitlementBaseline,
     HrLeaveLedger,
     HrLeavePolicy,
     HrLeaveRequest,
@@ -140,6 +141,10 @@ from app.schemas.hr import (
     InterviewUpdateRequest,
     LeaveBalanceItem,
     LeaveBalanceListResponse,
+    LeaveEntitlementBaselineApplyRequest,
+    LeaveEntitlementBaselineRequest,
+    LeaveEntitlementBaselineResponse,
+    LeaveFallbackRequest,
     LeaveLedgerAdjustRequest,
     LeavePolicyCreateRequest,
     LeavePolicyDecisionRequest,
@@ -148,6 +153,7 @@ from app.schemas.hr import (
     LeaveRequestDecisionState,
     LeaveRequestFields,
     LeaveRequestResubmitRequest,
+    LeaveRouteRefreshRequest,
     LeaveTypeCreateRequest,
     LeaveUnitsQuery,
     LetterDecisionRequest,
@@ -197,6 +203,9 @@ from app.schemas.hr import (
     ShiftAssignmentCreateRequest,
     ShiftAssignmentResponse,
     SiteAttendanceCreateRequest,
+    SupervisorLeaveDecisionRequest,
+    SupervisorLeaveReviewItem,
+    SupervisorLeaveReviewListResponse,
     TimesheetCreateRequest,
     TimesheetDecisionRequest,
     TimesheetSelfResubmitRequest,
@@ -219,7 +228,15 @@ from app.services.hr_crypto import (
     mask_identifier,
     validate_hr_document_file,
 )
-from app.services.hr_leave_accrual import ensure_leave_year_open
+from app.services.hr_leave_accrual import (
+    _add_service_month,
+    _bracket_days,
+    _eligible_category,
+    _managed_category_at,
+    _managed_service_start,
+    _policy_for_period,
+    ensure_leave_year_open,
+)
 from app.services.hr_leave_date_evidence import (
     require_approved_leave_debit,
     require_unlocked_leave_payroll,
@@ -243,10 +260,13 @@ from app.services.idempotency import bind, resolve_or_reserve, validate_key
 from app.services.notification_service import NotificationService
 from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
+from app.utils.links import append_link, build_frontend_url
 from app.utils.permissions import (
+    BUSINESS_ROLES,
     PERMISSION_HR_CASES_RESTRICTED,
     PERMISSION_HR_DOCUMENTS_MANAGE,
     PERMISSION_HR_EMPLOYEES_SENSITIVE,
+    PERMISSION_HR_LEAVE_APPROVE,
     PERMISSION_HR_ONBOARDING_MANAGE,
     PERMISSION_HR_PAYROLL_APPROVE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
@@ -3567,7 +3587,9 @@ class HrWorkforceService:
     # --- Leave Management (HR-015) ---
 
     async def create_leave_type(self, payload: LeaveTypeCreateRequest, actor: User) -> HrLeaveType:
-        lt = HrLeaveType(**payload.model_dump())
+        # Newly configured leave stays out of self-service until an independent
+        # policy decision makes its rules effective.
+        lt = HrLeaveType(**payload.model_dump(), is_active=False, policy_required=True)
         self.session.add(lt)
         try:
             await self.session.flush()
@@ -3600,8 +3622,34 @@ class HrWorkforceService:
             )
         if payload.effective_from > payload.effective_to:
             raise AppException("Enter effective dates in order.", status_code=422)
-        await self._active_leave_type(payload.leave_type_id)
+        leave_type = await self.session.get(HrLeaveType, payload.leave_type_id)
+        if leave_type is None:
+            raise NotFoundException("Leave type")
+        rules = payload.entitlement_rules
+        if rules is not None:
+            expected = (
+                ("garrisons_annual_v1", Decimal("14.00"), "annual")
+                if rules.profile == "garrisons_annual_v1"
+                else ("garrisons_casual_v1", Decimal("7.00"), "monthly")
+            )
+            if (
+                payload.annual_entitlement_days != expected[1]
+                or payload.accrual_frequency != expected[2]
+                or payload.prorate_by_calendar_day
+                or payload.max_carry_forward_days != 0
+                or not payload.expire_excess_on_rollover
+                or payload.allow_negative_balance
+                or not leave_type.is_paid
+            ):
+                raise AppException(
+                    "Managed leave policies require the approved profile's fixed entitlement, "
+                    "paid leave type, no proration, no carry-forward and nonnegative balance.",
+                    status_code=422,
+                    error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+                )
         data = payload.model_dump(exclude={"approve_immediately"})
+        if rules is not None:
+            data["entitlement_rules"] = rules.model_dump(mode="json")
         pol = HrLeavePolicy(
             **data,
             created_by_id=actor.id,
@@ -3653,8 +3701,31 @@ class HrWorkforceService:
         if policy.created_by_id is None or policy.created_by_id == actor.id:
             raise PermissionDeniedException("review a leave policy without an independent preparer")
         if payload.decision == "approved":
-            if not leave_type.is_active:
-                raise AppException("This leave type is inactive.", status_code=409)
+            rules = policy.entitlement_rules
+            if rules is not None:
+                profile = rules.get("profile") if isinstance(rules, dict) else None
+                expected = (
+                    (Decimal("14.00"), "annual")
+                    if profile == "garrisons_annual_v1"
+                    else (Decimal("7.00"), "monthly")
+                    if profile == "garrisons_casual_v1"
+                    else None
+                )
+                if (
+                    expected is None
+                    or policy.annual_entitlement_days != expected[0]
+                    or policy.accrual_frequency != expected[1]
+                    or policy.prorate_by_calendar_day
+                    or policy.max_carry_forward_days != 0
+                    or not policy.expire_excess_on_rollover
+                    or policy.allow_negative_balance
+                    or not leave_type.is_paid
+                ):
+                    raise AppException(
+                        "The managed leave policy configuration is incomplete.",
+                        status_code=409,
+                        error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+                    )
             start, end = policy.effective_from, policy.effective_to
             if start is None or end is None:
                 raise AppException("The draft has no effective window.", status_code=409)
@@ -3680,6 +3751,8 @@ class HrWorkforceService:
             policy.approved_by_id = actor.id
             policy.approved_at = utc_now()
             policy.is_active = True
+            if leave_type.policy_required:
+                leave_type.is_active = True
         else:
             reason = (payload.reason or "").strip()
             if not reason:
@@ -3759,16 +3832,402 @@ class HrWorkforceService:
             or 0
         )
 
+    async def _plan_leave_entitlement_baseline(
+        self,
+        payload: LeaveEntitlementBaselineRequest,
+        actor: User,
+        *,
+        lock: bool,
+    ) -> tuple[
+        LeaveEntitlementBaselineResponse,
+        str | None,
+        HrLeaveEntitlementBaseline | None,
+    ]:
+        employee_query = select(HrEmployee).where(
+            HrEmployee.id == payload.employee_id,
+            HrEmployee.deleted_at.is_(None),
+        )
+        if lock:
+            employee_query = employee_query.with_for_update()
+        employee = await self.session.scalar(employee_query)
+        if employee is None:
+            raise NotFoundException("Employee")
+        if payload.as_of_date.year != payload.year or payload.as_of_date > business_today():
+            raise AppException(
+                "The reconciliation date must be within the leave year and not in the future.",
+                status_code=422,
+                error_code="LEAVE_BASELINE_DATE_INVALID",
+            )
+        start, end = date(payload.year, 1, 1), date(payload.year, 12, 31)
+        await ensure_leave_year_open(
+            self.session, employee.id, payload.leave_type_id, payload.year
+        )
+
+        type_query = select(HrLeaveType).where(
+            HrLeaveType.id == payload.leave_type_id,
+            HrLeaveType.is_active.is_(True),
+            HrLeaveType.is_paid.is_(True),
+        )
+        if lock:
+            type_query = type_query.with_for_update()
+        leave_type = await self.session.scalar(type_query)
+        if leave_type is None:
+            raise NotFoundException("Active paid leave type")
+
+        service_start = await _managed_service_start(self.session, employee)
+        service_year = payload.year - service_start.year + 1
+        if service_year < 1:
+            raise AppException(
+                "A managed baseline cannot precede the verified service start.",
+                status_code=409,
+                error_code="LEAVE_ACCRUAL_EMPLOYMENT_PERIOD",
+            )
+        category = await _managed_category_at(self.session, employee, start)
+        policy = await _policy_for_period(
+            self.session, payload.leave_type_id, category, start, end
+        )
+        rules = policy.entitlement_rules or {}
+        profile = rules.get("profile")
+        if profile not in {"garrisons_annual_v1", "garrisons_casual_v1"}:
+            raise AppException(
+                "An approved managed leave policy is required for baseline reconciliation.",
+                status_code=409,
+                error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+            )
+        if lock:
+            locked_policy = await self.session.scalar(
+                select(HrLeavePolicy).where(HrLeavePolicy.id == policy.id).with_for_update()
+            )
+            if locked_policy is None:
+                raise NotFoundException("Leave policy")
+            policy = locked_policy
+
+        possible_due_dates: set[date] = set()
+        if profile == "garrisons_annual_v1":
+            if service_year >= 2:
+                possible_due_dates.add(start)
+        elif service_year >= 2:
+            possible_due_dates.add(start)
+        elif service_year == 1:
+            for offset in range(1, 12):
+                due_date = _add_service_month(service_start, offset)
+                if due_date.year == payload.year:
+                    possible_due_dates.add(due_date)
+        recognized = payload.recognized_due_dates
+        if any(
+            due_date.year != payload.year
+            or due_date > payload.as_of_date
+            or due_date not in possible_due_dates
+            for due_date in recognized
+        ):
+            raise AppException(
+                "Recognized credit dates must match due periods in the approved entitlement "
+                "profile.",
+                status_code=422,
+                error_code="LEAVE_BASELINE_DUE_PERIOD_INVALID",
+            )
+
+        approved_payroll_periods = (
+            select(HrPayrollRun.payroll_period_id)
+            .join(HrPayrollLine, HrPayrollLine.payroll_run_id == HrPayrollRun.id)
+            .where(
+                HrPayrollRun.status == "approved",
+                HrPayrollLine.employee_id == employee.id,
+            )
+        )
+        payroll_lock = await self.session.scalar(
+            select(HrPayrollPeriod.id)
+            .where(
+                HrPayrollPeriod.period_start <= end,
+                HrPayrollPeriod.period_end >= start,
+                or_(
+                    HrPayrollPeriod.status.in_(("closed", "locked")),
+                    HrPayrollPeriod.id.in_(approved_payroll_periods),
+                ),
+            )
+            .limit(1)
+        )
+        if payroll_lock is not None:
+            raise AppException(
+                "Use the approved payroll correction procedure for a locked leave year.",
+                status_code=409,
+                error_code="LEAVE_PAYROLL_LOCKED",
+            )
+
+        ledger_rows = list(
+            await self.session.scalars(
+                select(HrLeaveLedger)
+                .where(
+                    HrLeaveLedger.employee_id == employee.id,
+                    HrLeaveLedger.leave_type_id == payload.leave_type_id,
+                    HrLeaveLedger.leave_year == payload.year,
+                )
+                .order_by(HrLeaveLedger.created_at, HrLeaveLedger.id)
+            )
+        )
+        balance = sum((row.days_delta for row in ledger_rows), Decimal("0.00"))
+        baseline = await self.session.scalar(
+            select(HrLeaveEntitlementBaseline).where(
+                HrLeaveEntitlementBaseline.employee_id == employee.id,
+                HrLeaveEntitlementBaseline.leave_type_id == payload.leave_type_id,
+                HrLeaveEntitlementBaseline.leave_year == payload.year,
+            )
+        )
+        adjustment_days = (payload.verified_balance - balance).quantize(Decimal("0.01"))
+        ledger_digest = hashlib.sha256(
+            json.dumps(
+                [
+                    {
+                        "id": str(row.id),
+                        "entry_type": row.entry_type,
+                        "days_delta": str(row.days_delta),
+                        "year": row.leave_year,
+                        "reference_request_id": (
+                            str(row.reference_request_id) if row.reference_request_id else None
+                        ),
+                        "actor_user_id": str(row.actor_user_id) if row.actor_user_id else None,
+                        "created_at": row.created_at.isoformat(),
+                    }
+                    for row in ledger_rows
+                ],
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        if baseline is not None:
+            if (
+                baseline.as_of_date != payload.as_of_date
+                or baseline.verified_balance != payload.verified_balance
+                or baseline.recognized_due_dates != [item.isoformat() for item in recognized]
+                or baseline.supporting_reference != payload.supporting_reference
+            ):
+                raise AppException(
+                    "A reviewed baseline already exists for this employee, leave type and year.",
+                    status_code=409,
+                    error_code="LEAVE_ENTITLEMENT_BASELINE_EXISTS",
+                )
+            adjustment = (
+                await self.session.get(HrLeaveLedger, baseline.adjustment_ledger_id)
+                if baseline.adjustment_ledger_id
+                else None
+            )
+            return (
+                LeaveEntitlementBaselineResponse(
+                    employee_id=employee.id,
+                    leave_type_id=payload.leave_type_id,
+                    year=payload.year,
+                    policy_id=baseline.policy_id,
+                    as_of_date=baseline.as_of_date,
+                    current_balance=balance,
+                    verified_balance=baseline.verified_balance,
+                    adjustment_days=adjustment.days_delta if adjustment else Decimal("0.00"),
+                    recognized_due_dates=[
+                        date.fromisoformat(day) for day in baseline.recognized_due_dates
+                    ],
+                    supporting_reference=baseline.supporting_reference,
+                    receipt_id=baseline.id,
+                ),
+                baseline.plan_digest,
+                baseline,
+            )
+
+        manual_credit = await self.session.scalar(
+            select(HrLeaveLedger.id)
+            .outerjoin(HrLeaveAccrual, HrLeaveAccrual.ledger_id == HrLeaveLedger.id)
+            .where(
+                HrLeaveLedger.employee_id == employee.id,
+                HrLeaveLedger.leave_type_id == payload.leave_type_id,
+                HrLeaveLedger.leave_year == payload.year,
+                HrLeaveLedger.days_delta > 0,
+                HrLeaveLedger.entry_type.in_(
+                    (
+                        "opening_balance",
+                        "accrual",
+                        "adjustment",
+                        "carry_forward",
+                        "carry_forward_in",
+                    )
+                ),
+                or_(
+                    HrLeaveAccrual.id.is_(None),
+                    HrLeaveAccrual.due_date.is_(None),
+                    HrLeaveAccrual.policy_id != policy.id,
+                ),
+            )
+            .limit(1)
+        )
+        if manual_credit is None:
+            raise AppException(
+                "A baseline is only needed when this managed leave year has a prior manual credit.",
+                status_code=409,
+                error_code="LEAVE_ENTITLEMENT_BASELINE_NOT_REQUIRED",
+            )
+        if payload.verified_balance < 0:
+            raise AppException("A managed paid leave balance cannot be negative.", status_code=422)
+
+        plan = LeaveEntitlementBaselineResponse(
+            employee_id=employee.id,
+            leave_type_id=payload.leave_type_id,
+            year=payload.year,
+            policy_id=policy.id,
+            as_of_date=payload.as_of_date,
+            current_balance=balance,
+            verified_balance=payload.verified_balance,
+            adjustment_days=adjustment_days,
+            recognized_due_dates=recognized,
+            supporting_reference=payload.supporting_reference,
+        )
+        digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "plan": plan.model_dump(mode="json", exclude_none=True),
+                    "actor_id": str(actor.id),
+                    "employee_revision": employee.record_revision,
+                    "policy_id": str(policy.id),
+                    "policy_rules": rules,
+                    "policy_approved_at": policy.approved_at.isoformat()
+                    if policy.approved_at
+                    else None,
+                    "ledger_digest": ledger_digest,
+                    "possible_due_dates": sorted(day.isoformat() for day in possible_due_dates),
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        plan = plan.model_copy(update={"digest": digest})
+        return plan, digest, None
+
+    async def preview_leave_entitlement_baseline(
+        self, payload: LeaveEntitlementBaselineRequest, actor: User
+    ) -> LeaveEntitlementBaselineResponse:
+        plan, _, saved = await self._plan_leave_entitlement_baseline(
+            payload, actor, lock=False
+        )
+        return plan if saved is not None else plan
+
+    async def apply_leave_entitlement_baseline(
+        self, payload: LeaveEntitlementBaselineApplyRequest, actor: User
+    ) -> LeaveEntitlementBaselineResponse:
+        await lock_payroll_periods(self.session)
+        plan, digest, saved = await self._plan_leave_entitlement_baseline(
+            payload, actor, lock=True
+        )
+        if saved is not None:
+            if saved.plan_digest != payload.expected_digest:
+                raise AppException(
+                    "The baseline was already applied from a different review. Refresh the record.",
+                    status_code=409,
+                    error_code="LEAVE_ENTITLEMENT_BASELINE_EXISTS",
+                )
+            return plan
+        if digest != payload.expected_digest:
+            raise AppException(
+                "The leave baseline changed after preview. Review it again.",
+                status_code=409,
+                error_code="LEAVE_BASELINE_PREVIEW_CHANGED",
+            )
+        adjustment = None
+        if plan.adjustment_days != 0:
+            adjustment = HrLeaveLedger(
+                employee_id=plan.employee_id,
+                leave_type_id=plan.leave_type_id,
+                entry_type="adjustment",
+                days_delta=plan.adjustment_days,
+                leave_year=plan.year,
+                reason=(
+                    f"Reviewed leave entitlement baseline {plan.supporting_reference}"
+                ),
+                actor_user_id=actor.id,
+            )
+            self.session.add(adjustment)
+            await self.session.flush()
+        receipt = HrLeaveEntitlementBaseline(
+            employee_id=plan.employee_id,
+            leave_type_id=plan.leave_type_id,
+            leave_year=plan.year,
+            policy_id=plan.policy_id,
+            as_of_date=plan.as_of_date,
+            verified_balance=plan.verified_balance,
+            recognized_due_dates=[day.isoformat() for day in plan.recognized_due_dates],
+            supporting_reference=plan.supporting_reference,
+            reviewed_by_id=actor.id,
+            reviewed_at=utc_now(),
+            ledger_digest=digest,
+            plan_digest=digest,
+            adjustment_ledger_id=adjustment.id if adjustment else None,
+        )
+        self.session.add(receipt)
+        try:
+            await self.session.flush()
+            if adjustment is not None:
+                await self.audit.record(
+                    action="hr.leave_ledger.baseline_adjusted",
+                    user_id=actor.id,
+                    entity_type="hr_leave_ledger",
+                    entity_id=adjustment.id,
+                    new_values={
+                        "year": plan.year,
+                        "days_delta": str(plan.adjustment_days),
+                        "baseline_id": str(receipt.id),
+                    },
+                )
+            await self.audit.record(
+                action="hr.leave_entitlement_baseline.reconciled",
+                user_id=actor.id,
+                entity_type="hr_leave_entitlement_baselines",
+                entity_id=receipt.id,
+                new_values={
+                    "year": plan.year,
+                    "policy_id": str(plan.policy_id),
+                    "adjustment_days": str(plan.adjustment_days),
+                    "recognized_due_period_count": len(plan.recognized_due_dates),
+                },
+            )
+            await self.session.commit()
+            await self.session.refresh(receipt)
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise AppException(
+                "A leave baseline or linked adjustment already exists for this period.",
+                status_code=409,
+                error_code="LEAVE_ENTITLEMENT_BASELINE_EXISTS",
+            ) from exc
+        return plan.model_copy(update={"digest": None, "receipt_id": receipt.id})
+
     async def adjust_leave_ledger(
         self, payload: LeaveLedgerAdjustRequest, actor: User
     ) -> HrLeaveLedger:
-        await self._require_employee(payload.employee_id, for_update=True)
+        employee = await self._require_employee(payload.employee_id, for_update=True)
         await ensure_leave_year_open(
             self.session, payload.employee_id, payload.leave_type_id, payload.leave_year
         )
         leave_type = await self.session.get(HrLeaveType, payload.leave_type_id)
         if not leave_type or not leave_type.is_active:
             raise NotFoundException("Leave type")
+        year_start, year_end = date(payload.leave_year, 1, 1), date(payload.leave_year, 12, 31)
+        try:
+            category = await _managed_category_at(self.session, employee, year_start)
+            applicable_policy = await _policy_for_period(
+                self.session,
+                payload.leave_type_id,
+                category,
+                year_start,
+                year_end,
+            )
+        except AppException:
+            applicable_policy = None
+        if applicable_policy is not None and applicable_policy.entitlement_rules is not None:
+            if payload.entry_type == "carry_forward":
+                raise AppException(
+                    "Managed leave policies do not permit manual carry-forward.",
+                    status_code=409,
+                    error_code="LEAVE_CARRY_FORWARD_FORBIDDEN",
+                )
+            if payload.entry_type in {"opening_balance", "accrual", "adjustment"}:
+                raise AppException(
+                    "Use the reviewed baseline workflow for managed leave balance corrections.",
+                    status_code=409,
+                    error_code="LEAVE_ENTITLEMENT_BASELINE_REQUIRED",
+                )
         if payload.days_delta == 0 or (
             payload.entry_type in {"opening_balance", "accrual", "carry_forward"}
             and payload.days_delta < 0
@@ -3842,8 +4301,8 @@ class HrWorkforceService:
     async def get_leave_balances(
         self, employee_id: UUID, *, leave_year: int | None = None
     ) -> LeaveBalanceListResponse:
-        await self._require_employee(employee_id)
-        yr = leave_year or utc_now().year
+        employee = await self._require_employee(employee_id)
+        yr = leave_year if leave_year is not None else business_today().year
         leave_types = {
             lt.id: lt
             for lt in await self.session.scalars(
@@ -3859,17 +4318,212 @@ class HrWorkforceService:
             .group_by(HrLeaveLedger.leave_type_id)
         )
         balances = {row[0]: Decimal(row[1]) for row in rows}
-        items = [
-            LeaveBalanceItem(
-                leave_type_id=lt.id,
-                leave_type_code=lt.code,
-                leave_type_name=lt.name,
-                leave_year=yr,
-                balance_days=balances.get(lt.id, Decimal("0.00")),
+        items = []
+        for leave_type in leave_types.values():
+            balance = balances.get(leave_type.id, Decimal("0.00"))
+            entitlement_status, due_entitlement = await self._managed_leave_entitlement(
+                employee, leave_type.id, yr
             )
-            for lt in leave_types.values()
-        ]
+            block_status = await self._annual_block_status(employee, leave_type.id, yr, balance)
+            block_required = (
+                Decimal("7.00")
+                if block_status in {"outstanding", "scheduled", "taken", "unverified"}
+                else None
+            )
+            items.append(
+                LeaveBalanceItem(
+                    leave_type_id=leave_type.id,
+                    leave_type_code=leave_type.code,
+                    leave_type_name=leave_type.name,
+                    leave_year=yr,
+                    balance_days=balance,
+                    entitlement_status=entitlement_status,
+                    due_entitlement_days=due_entitlement,
+                    annual_block_status=block_status,
+                    annual_block_balance_warning=(
+                        block_status == "outstanding" and balance < Decimal("7.00")
+                    ),
+                    annual_block_required_days=block_required,
+                )
+            )
         return LeaveBalanceListResponse(employee_id=employee_id, items=items)
+
+    async def _managed_leave_entitlement(
+        self, employee: HrEmployee, leave_type_id: UUID, year: int
+    ) -> tuple[Literal["configured", "setup_required", "unverified"], Decimal | None]:
+        start, end = date(year, 1, 1), date(year, 12, 31)
+        try:
+            service_start = await _managed_service_start(self.session, employee)
+            category = await _managed_category_at(self.session, employee, start)
+        except AppException:
+            return "unverified", None
+        try:
+            policy = await _policy_for_period(
+                self.session, leave_type_id, category, start, end
+            )
+        except AppException:
+            return "setup_required", None
+        rules = policy.entitlement_rules or {}
+        profile = rules.get("profile")
+        service_year = year - service_start.year + 1
+        if service_year < 1:
+            return "unverified", None
+        if profile == "garrisons_annual_v1":
+            days = (
+                Decimal("0.00")
+                if service_year == 1
+                else _bracket_days(rules, service_start)
+                if service_year == 2
+                else Decimal("14.00")
+            )
+            return "configured", days.quantize(Decimal("0.01"))
+        if profile == "garrisons_casual_v1":
+            if service_year >= 2:
+                return "configured", Decimal("7.00")
+            months = sum(
+                1
+                for offset in range(1, 12)
+                if (due := _add_service_month(service_start, offset)).year == year
+                and due <= business_today()
+            )
+            return "configured", Decimal("0.50") * months
+        return "setup_required", None
+
+    async def _annual_block_status(
+        self, employee: HrEmployee, leave_type_id: UUID, year: int, balance: Decimal
+    ) -> Literal["not_applicable", "outstanding", "scheduled", "taken", "unverified"]:
+        start, end = date(year, 1, 1), date(year, 12, 31)
+        policies = list(
+            await self.session.scalars(
+                select(HrLeavePolicy).where(
+                    HrLeavePolicy.leave_type_id == leave_type_id,
+                    HrLeavePolicy.status == "approved",
+                    HrLeavePolicy.approved_at.is_not(None),
+                    HrLeavePolicy.is_active.is_(True),
+                    HrLeavePolicy.effective_from <= end,
+                    HrLeavePolicy.effective_to >= start,
+                    HrLeavePolicy.entitlement_rules.is_not(None),
+                )
+            )
+        )
+        annual_policy = next(
+            (
+                policy
+                for policy in policies
+                if (policy.entitlement_rules or {}).get("profile") == "garrisons_annual_v1"
+            ),
+            None,
+        )
+        if annual_policy is None:
+            return "not_applicable"
+        try:
+            service_start = await _managed_service_start(self.session, employee)
+            category = await _managed_category_at(self.session, employee, start)
+            policy = await _policy_for_period(
+                self.session, leave_type_id, category, start, end
+            )
+        except AppException:
+            return "unverified"
+        if (policy.entitlement_rules or {}).get("profile") != "garrisons_annual_v1":
+            return "unverified"
+        if year - service_start.year + 1 < 3:
+            return "not_applicable"
+        requests = list(
+            await self.session.scalars(
+                select(HrLeaveRequest)
+                .where(
+                    HrLeaveRequest.employee_id == employee.id,
+                    HrLeaveRequest.leave_type_id == leave_type_id,
+                    HrLeaveRequest.status == "approved",
+                    HrLeaveRequest.start_date >= start,
+                    HrLeaveRequest.end_date <= end,
+                )
+                .order_by(HrLeaveRequest.start_date, HrLeaveRequest.end_date)
+            )
+        )
+        basis = (policy.entitlement_rules or {}).get("seven_day_block_basis")
+        taken_request_ids = set(
+            await self.session.scalars(
+                select(HrLeaveLedger.reference_request_id).where(
+                    HrLeaveLedger.reference_request_id.in_([row.id for row in requests]),
+                    HrLeaveLedger.entry_type == "taken",
+                )
+            )
+        ) if requests else set()
+        unverified = False
+        if basis == "calendar_days":
+            merged: list[tuple[date, date, set[UUID]]] = []
+            for request in requests:
+                if request.is_half_day:
+                    continue
+                if merged and request.start_date <= merged[-1][1] + timedelta(days=1):
+                    group_start, group_end, group_requests = merged[-1]
+                    merged[-1] = (
+                        group_start,
+                        max(group_end, request.end_date),
+                        group_requests | {request.id},
+                    )
+                else:
+                    merged.append((request.start_date, request.end_date, {request.id}))
+            qualifying = next(
+                (item for item in merged if (item[1] - item[0]).days + 1 >= 7), None
+            )
+            if qualifying is not None:
+                if qualifying[1] >= business_today():
+                    return "scheduled"
+                return (
+                    "taken"
+                    if qualifying[2].issubset(taken_request_ids)
+                    else "unverified"
+                )
+        elif basis == "chargeable_workdays":
+            grouped: list[tuple[date, date, set[date], set[UUID]]] = []
+            for request in requests:
+                if request.is_half_day:
+                    continue
+                if request.scheduled_work_dates is None:
+                    unverified = True
+                    continue
+                request_days = set(request.scheduled_work_dates)
+                merge_gap = False
+                if grouped and request.start_date > grouped[-1][1] + timedelta(days=1):
+                    gap_start = grouped[-1][1] + timedelta(days=1)
+                    gap_end = request.start_date - timedelta(days=1)
+                    try:
+                        gap_workdays = await self._leave_work_dates(
+                            employee, gap_start, (gap_end - gap_start).days + 1
+                        )
+                        merge_gap = not gap_workdays
+                    except AppException:
+                        unverified = True
+                if grouped and (
+                    request.start_date <= grouped[-1][1] + timedelta(days=1) or merge_gap
+                ):
+                    group_start, group_end, group_days, group_requests = grouped[-1]
+                    grouped[-1] = (
+                        group_start,
+                        max(group_end, request.end_date),
+                        group_days | request_days,
+                        group_requests | {request.id},
+                    )
+                else:
+                    grouped.append(
+                        (request.start_date, request.end_date, request_days, {request.id})
+                    )
+            qualifying_workdays = next(
+                (item for item in grouped if len(item[2]) >= 7), None
+            )
+            if qualifying_workdays is not None:
+                if qualifying_workdays[1] >= business_today():
+                    return "scheduled"
+                return (
+                    "taken"
+                    if qualifying_workdays[3].issubset(taken_request_ids)
+                    else "unverified"
+                )
+        if unverified:
+            return "unverified"
+        return "outstanding"
 
     @staticmethod
     def _verify_self_request(employee: HrEmployee, actor: User) -> None:
@@ -3995,6 +4649,9 @@ class HrWorkforceService:
             self.session, target_emp.id, payload.leave_type_id, payload.start_date.year
         )
         lt = await self._active_leave_type(payload.leave_type_id)
+        await self._require_configured_leave_type_policy(
+            lt, target_emp, payload.start_date, payload.end_date
+        )
         units, workdays = await self._calculate_leave_schedule(target_emp, payload, lt)
         if payload.days_requested is not None and payload.days_requested != units:
             raise AppException(
@@ -4018,6 +4675,205 @@ class HrWorkforceService:
             else:
                 self._ensure_hr_doc_access(doc, actor)
         return units, workdays
+
+    async def _require_configured_leave_type_policy(
+        self,
+        leave_type: HrLeaveType,
+        employee: HrEmployee,
+        start: date,
+        end: date,
+    ) -> None:
+        if not leave_type.policy_required:
+            return
+        category = await _eligible_category(self.session, employee, start, end)
+        policies = list(
+            await self.session.scalars(
+                select(HrLeavePolicy)
+                .where(
+                    HrLeavePolicy.leave_type_id == leave_type.id,
+                    HrLeavePolicy.status == "approved",
+                    HrLeavePolicy.is_active.is_(True),
+                    HrLeavePolicy.approved_at.is_not(None),
+                    HrLeavePolicy.effective_from <= end,
+                    HrLeavePolicy.effective_to >= start,
+                    or_(
+                        HrLeavePolicy.employment_category == category,
+                        HrLeavePolicy.employment_category.is_(None),
+                    ),
+                )
+                .order_by(HrLeavePolicy.employment_category.is_(None), HrLeavePolicy.id)
+            )
+        )
+        # A leave request may cross adjacent reviewed policy windows. Require
+        # approved coverage for every date, while preserving category-specific
+        # policy precedence and allowing the request to be checked at decision.
+        for day_offset in range((end - start).days + 1):
+            leave_date = start + timedelta(days=day_offset)
+            if not any(
+                policy.effective_from is not None
+                and policy.effective_to is not None
+                and policy.effective_from <= leave_date <= policy.effective_to
+                for policy in policies
+            ):
+                raise AppException(
+                    "One dated, approved policy must cover each requested leave date.",
+                    status_code=409,
+                    error_code="LEAVE_ACCRUAL_POLICY_PERIOD",
+                )
+
+    async def _resolve_leave_route(
+        self, employee: HrEmployee, submitter_id: UUID | None
+    ) -> tuple[str, UUID | None, str | None, str | None]:
+        if employee.employment_status not in REVIEW_EMPLOYMENT_STATES:
+            raise AppException(
+                "Leave can only be routed for a currently employed employee.", status_code=409
+            )
+        today = business_today()
+        reason_code: str | None = None
+        reason: str | None = None
+        if employee.manager_employee_id is None or employee.manager_employee_id == employee.id:
+            reason_code, reason = "manager_missing", "No valid direct supervisor is assigned."
+        else:
+            manager = await self.session.scalar(
+                select(HrEmployee)
+                .where(
+                    HrEmployee.id == employee.manager_employee_id,
+                    HrEmployee.deleted_at.is_(None),
+                    HrEmployee.employment_status.in_(REVIEW_EMPLOYMENT_STATES),
+                )
+            )
+            manager_user = None
+            if manager is not None:
+                manager_user = await self.session.scalar(
+                    select(User).where(
+                        User.id == manager.user_id,
+                        User.deleted_at.is_(None),
+                        User.is_active.is_(True),
+                        User.role.in_(BUSINESS_ROLES),
+                    )
+                )
+            if manager is None or manager_user is None or manager_user.id in {
+                employee.user_id,
+                submitter_id,
+            }:
+                reason_code = "manager_ineligible"
+                reason = "The assigned direct supervisor is unavailable."
+            else:
+                absent = await self.session.scalar(
+                    select(HrLeaveRequest.id)
+                    .where(
+                        HrLeaveRequest.employee_id == manager.id,
+                        HrLeaveRequest.status == "approved",
+                        HrLeaveRequest.start_date <= today,
+                        HrLeaveRequest.end_date >= today,
+                    )
+                    .limit(1)
+                )
+                if absent is not None:
+                    reason_code = "manager_absent"
+                    reason = "The assigned direct supervisor is on approved leave."
+                else:
+                    return "supervisor", manager_user.id, None, None
+        return "hr_fallback", None, reason_code, reason
+
+    async def hr_leave_approver_configured(self) -> bool:
+        return (
+            await self.session.scalar(
+                select(User.id)
+                .where(
+                    User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    async def _leave_notification_users(self, request: HrLeaveRequest, event: str) -> list[UUID]:
+        recipients: set[UUID] = set()
+        if event in {"submitted", "resubmitted", "rerouted"}:
+            if request.approval_route == "supervisor" and request.assigned_supervisor_user_id:
+                recipients.add(request.assigned_supervisor_user_id)
+            elif request.approval_route == "hr_fallback":
+                recipients.update(
+                    await self.session.scalars(
+                        select(User.id).where(
+                            User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)),
+                            User.is_active.is_(True),
+                            User.deleted_at.is_(None),
+                        )
+                    )
+                )
+        else:
+            employee_user_id = await self.session.scalar(
+                select(HrEmployee.user_id).where(
+                    HrEmployee.id == request.employee_id,
+                    HrEmployee.deleted_at.is_(None),
+                )
+            )
+            if employee_user_id:
+                recipients.add(employee_user_id)
+            if request.requested_by_id:
+                recipients.add(request.requested_by_id)
+            recipients.update(
+                await self.session.scalars(
+                    select(User.id).where(
+                        User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)),
+                        User.is_active.is_(True),
+                        User.deleted_at.is_(None),
+                    )
+                )
+            )
+            if request.assigned_supervisor_user_id:
+                recipients.add(request.assigned_supervisor_user_id)
+        return list(
+            await self.session.scalars(
+                select(User.id).where(
+                    User.id.in_(recipients),
+                    User.role.in_(BUSINESS_ROLES),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+            )
+        ) if recipients else []
+
+    async def _notify_leave_event(
+        self, request: HrLeaveRequest, event: str, actor_id: UUID | None = None
+    ) -> None:
+        title = {
+            "submitted": "Leave request submitted",
+            "resubmitted": "Leave request resubmitted",
+            "rerouted": "Leave request reassigned",
+            "approved": "Leave request approved",
+            "rejected": "Leave request decision",
+            "cancelled": "Leave request cancelled",
+        }[event]
+        for user_id in await self._leave_notification_users(request, event):
+            if user_id == actor_id:
+                continue
+            recipient_role = await self.session.scalar(select(User.role).where(User.id == user_id))
+            route = (
+                "/hr"
+                if recipient_role in roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)
+                else "/me/hr"
+            )
+            body = append_link(
+                "A leave request has a new status. Sign in to review it.",
+                label="Open leave workspace",
+                url=build_frontend_url(route),
+            )
+            await NotificationService(self.session).create(
+                user_id=user_id,
+                title=title,
+                body=body,
+                notification_type="hr",
+                reference_type="hr_leave_request",
+                reference_id=request.id,
+                event_code=event,
+                event_revision=request.record_revision,
+                send_email=True,
+            )
 
     async def create_leave_request(
         self, payload: LeaveRequestCreateRequest, actor: User, *, own_request: bool = False
@@ -4044,7 +4900,14 @@ class HrWorkforceService:
             requested_by_id=actor.id,
         )
         if payload.submit_immediately:
-            await start_manager_review(self.session, req, target_emp)
+            (
+                req.approval_route,
+                req.assigned_supervisor_user_id,
+                req.fallback_reason_code,
+                req.fallback_reason,
+            ) = await self._resolve_leave_route(target_emp, actor.id)
+            if req.approval_route == "hr_fallback":
+                req.fallback_recorded_at = utc_now()
         self.session.add(req)
         await self.session.flush()
         await self.audit.record(
@@ -4054,6 +4917,8 @@ class HrWorkforceService:
             entity_id=req.id,
             new_values={"status": req.status, "days": str(req.days_requested)},
         )
+        if payload.submit_immediately:
+            await self._notify_leave_event(req, "submitted", actor.id)
         await self._commit_and_refresh(req)
         return req
 
@@ -4100,7 +4965,15 @@ class HrWorkforceService:
         req.decided_at = None
         req.decision_notes = None
         req.record_revision += 1
-        await start_manager_review(self.session, req, employee)
+        (
+            req.approval_route,
+            req.assigned_supervisor_user_id,
+            req.fallback_reason_code,
+            req.fallback_reason,
+        ) = await self._resolve_leave_route(employee, actor.id)
+        req.fallback_recorded_by_id = None
+        req.fallback_recorded_at = utc_now() if req.approval_route == "hr_fallback" else None
+        req.fallback_until = None
         await self.audit.record(
             action="hr.leave_request.resubmitted",
             user_id=actor.id,
@@ -4109,6 +4982,7 @@ class HrWorkforceService:
             old_values={"status": previous_status},
             new_values={"status": req.status, "revision": req.record_revision},
         )
+        await self._notify_leave_event(req, "resubmitted", actor.id)
         await self._commit_and_refresh(req)
         return req
 
@@ -4141,6 +5015,7 @@ class HrWorkforceService:
         actor: User,
         *,
         own_request: bool = False,
+        supervisor_decision: bool = False,
     ) -> HrLeaveRequest:
         if not own_request and payload.decision in {"approved", "cancelled"}:
             # Payroll approval and leave evidence take the same lock before employee rows.
@@ -4182,7 +5057,15 @@ class HrWorkforceService:
             await self._ensure_no_leave_overlap(
                 emp.id, req.start_date, req.end_date, exclude=req.id
             )
-            await start_manager_review(self.session, req, emp)
+            (
+                req.approval_route,
+                req.assigned_supervisor_user_id,
+                req.fallback_reason_code,
+                req.fallback_reason,
+            ) = await self._resolve_leave_route(emp, actor.id)
+            req.fallback_recorded_by_id = None
+            req.fallback_recorded_at = utc_now() if req.approval_route == "hr_fallback" else None
+            req.fallback_until = None
         if payload.decision == "rejected" and not (payload.notes or "").strip():
             raise AppException("Rejection requires a reason.", status_code=422)
         if (payload.decision in {"approved", "rejected"} or reversal) and (
@@ -4194,13 +5077,49 @@ class HrWorkforceService:
                 error_code="SELF_APPROVAL_BLOCKED",
             )
         if payload.decision in {"approved", "rejected"}:
-            await require_manager_recommendation(
-                self.session, req, emp, actor, payload.expected_revision
-            )
+            if emp.user_id == actor.id or req.requested_by_id == actor.id:
+                raise AppException(
+                    "Employees cannot decide their own leave or requests they submitted.",
+                    status_code=403,
+                    error_code="SELF_APPROVAL_BLOCKED",
+                )
+            if supervisor_decision:
+                manager = await self._employee_for_user(actor)
+                current_route = await self._resolve_leave_route(emp, req.requested_by_id)
+                if (
+                    req.approval_route != "supervisor"
+                    or req.assigned_supervisor_user_id != actor.id
+                    or emp.manager_employee_id != manager.id
+                    or current_route[0] != "supervisor"
+                    or current_route[1] != actor.id
+                ):
+                    raise AppException(
+                        "The supervisor assignment changed. Reload the request or ask HR "
+                        "to reroute it.",
+                        status_code=409,
+                        error_code="LEAVE_ROUTE_CHANGED",
+                    )
+            else:
+                ensure_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
+                if req.approval_route != "hr_fallback":
+                    raise AppException(
+                        "The assigned direct supervisor must make the final leave decision.",
+                        status_code=403,
+                        error_code="LEAVE_SUPERVISOR_DECISION_REQUIRED",
+                    )
+                if req.fallback_until is not None and req.fallback_until < business_today():
+                    raise AppException(
+                        "The HR fallback assignment expired. Refresh the route before deciding.",
+                        status_code=409,
+                        error_code="LEAVE_ROUTE_CHANGED",
+                    )
         reversed_debit_id = None
         decision_notes = payload.notes
         if payload.decision == "approved":
             lt = await self._active_leave_type(req.leave_type_id)
+            await self._require_configured_leave_type_policy(
+                lt, emp, req.start_date, req.end_date
+            )
             units, workdays = await self._calculate_leave_schedule(
                 emp, _stored_leave_fields(req), lt
             )
@@ -4272,8 +5191,272 @@ class HrWorkforceService:
             entity_id=req.id,
             new_values={"reversed_debit_id": str(reversed_debit_id)} if reversed_debit_id else None,
         )
+        if payload.decision in {"approved", "rejected", "cancelled"}:
+            await self._notify_leave_event(req, payload.decision, actor.id)
         await self._commit_and_refresh(req)
         return req
+
+    async def list_supervisor_leave_reviews(
+        self, actor: User, *, offset: int, limit: int
+    ) -> SupervisorLeaveReviewListResponse:
+        manager = await self._employee_for_user(actor)
+        base = (
+            select(
+                HrLeaveRequest.id,
+                HrEmployee.full_name.label("employee_name"),
+                HrLeaveRequest.start_date,
+                HrLeaveRequest.end_date,
+                HrLeaveRequest.days_requested.label("chargeable_units"),
+                HrLeaveRequest.is_half_day,
+                HrLeaveRequest.status,
+                HrLeaveRequest.record_revision,
+            )
+            .join(HrEmployee, HrEmployee.id == HrLeaveRequest.employee_id)
+            .where(
+                HrEmployee.manager_employee_id == manager.id,
+                HrEmployee.id != manager.id,
+                HrEmployee.deleted_at.is_(None),
+                HrEmployee.employment_status.in_(REVIEW_EMPLOYMENT_STATES),
+                HrEmployee.user_id.is_distinct_from(actor.id),
+                HrLeaveRequest.status == "submitted",
+                HrLeaveRequest.approval_route == "supervisor",
+                HrLeaveRequest.assigned_supervisor_user_id == actor.id,
+                HrLeaveRequest.requested_by_id.is_distinct_from(actor.id),
+            )
+        )
+        total = int(
+            await self.session.scalar(select(func.count()).select_from(base.subquery())) or 0
+        )
+        rows = (
+            await self.session.execute(
+                base.order_by(HrLeaveRequest.start_date, HrLeaveRequest.id)
+                .offset(offset)
+                .limit(limit)
+            )
+        ).mappings().all()
+        return SupervisorLeaveReviewListResponse(
+            items=[SupervisorLeaveReviewItem.model_validate(row) for row in rows],
+            total=total,
+            offset=offset,
+            limit=limit,
+        )
+
+    async def can_decide_direct_report_leave(self, actor: User) -> bool:
+        manager = await self._employee_for_user(actor)
+        return (
+            await self.session.scalar(
+                select(HrEmployee.id)
+                .where(
+                    HrEmployee.manager_employee_id == manager.id,
+                    HrEmployee.id != manager.id,
+                    HrEmployee.deleted_at.is_(None),
+                    HrEmployee.employment_status.in_(REVIEW_EMPLOYMENT_STATES),
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    async def decide_supervisor_leave_request(
+        self,
+        request_id: UUID,
+        payload: SupervisorLeaveDecisionRequest,
+        actor: User,
+    ) -> SupervisorLeaveReviewItem:
+        decision = LeaveRequestDecisionRequest(
+            decision=payload.decision,
+            notes=payload.notes,
+            expected_revision=payload.expected_revision,
+        )
+        request = await self.decide_leave_request(
+            request_id, decision, actor, supervisor_decision=True
+        )
+        employee = await self.session.get(HrEmployee, request.employee_id)
+        if employee is None:
+            raise NotFoundException("Leave request")
+        return SupervisorLeaveReviewItem(
+            id=request.id,
+            employee_name=employee.full_name,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            chargeable_units=request.days_requested,
+            is_half_day=request.is_half_day,
+            status=cast(Literal["submitted", "approved", "rejected"], request.status),
+            record_revision=request.record_revision,
+        )
+
+    async def set_leave_hr_fallback(
+        self,
+        request_id: UUID,
+        payload: LeaveFallbackRequest,
+        actor: User,
+    ) -> HrLeaveRequest:
+        ensure_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
+        request = await self.session.scalar(
+            select(HrLeaveRequest)
+            .where(HrLeaveRequest.id == request_id)
+            .with_for_update()
+        )
+        if request is None:
+            raise NotFoundException("Leave request")
+        employee = await self._require_employee(request.employee_id, for_update=True)
+        verify_request_revision(request, payload.expected_revision)
+        if request.status != "submitted":
+            raise AppException(
+                "Only a submitted leave request can be rerouted.",
+                status_code=409,
+                error_code="INVALID_STATE",
+            )
+        if actor.id in {employee.user_id, request.requested_by_id}:
+            raise AppException(
+                "A leave request cannot be routed by its subject or submitter.",
+                status_code=403,
+                error_code="SELF_APPROVAL_BLOCKED",
+            )
+        current = await self._resolve_leave_route(employee, request.requested_by_id)
+        if payload.reason_code == "manager_temporarily_unavailable":
+            if (
+                current[0] != "supervisor"
+                or payload.until is None
+                or payload.until < business_today()
+            ):
+                raise AppException(
+                    "The temporary takeover is not valid for the current supervisor.",
+                    status_code=409,
+                    error_code="LEAVE_ROUTE_CHANGED",
+                )
+        elif current[2] != payload.reason_code:
+            raise AppException(
+                "The requested fallback reason does not match the current supervisor state.",
+                status_code=409,
+                error_code="LEAVE_ROUTE_CHANGED",
+            )
+        if (
+            request.approval_route == "hr_fallback"
+            and request.fallback_reason_code == payload.reason_code
+        ):
+            raise AppException(
+                "This request is already routed to HR.",
+                status_code=409,
+                error_code="INVALID_STATE",
+            )
+        request.approval_route = "hr_fallback"
+        request.fallback_reason_code = payload.reason_code
+        request.fallback_reason = payload.reason
+        request.fallback_recorded_by_id = actor.id
+        request.fallback_recorded_at = utc_now()
+        request.fallback_until = payload.until
+        request.record_revision += 1
+        await self.audit.record(
+            action="hr.leave_request.rerouted",
+            user_id=actor.id,
+            entity_type="hr_leave_requests",
+            entity_id=request.id,
+            new_values={
+                "route": "hr_fallback",
+                "reason_code": payload.reason_code,
+                "revision": request.record_revision,
+            },
+        )
+        await self._notify_leave_event(request, "rerouted", actor.id)
+        await self._commit_and_refresh(request)
+        return request
+
+    async def refresh_leave_route(
+        self, request_id: UUID, payload: LeaveRouteRefreshRequest, actor: User
+    ) -> HrLeaveRequest:
+        ensure_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
+        await lock_payroll_periods(self.session)
+        request = await self.session.scalar(
+            select(HrLeaveRequest)
+            .where(HrLeaveRequest.id == request_id)
+            .with_for_update()
+        )
+        if request is None:
+            raise NotFoundException("Leave request")
+        employee = await self._require_employee(request.employee_id, for_update=True)
+        verify_request_revision(request, payload.expected_revision)
+        if request.status != "submitted":
+            raise AppException(
+                "Only a submitted leave request can have its route refreshed.",
+                status_code=409,
+                error_code="INVALID_STATE",
+            )
+        if actor.id in {employee.user_id, request.requested_by_id}:
+            raise AppException(
+                "A leave request cannot be rerouted by its subject or submitter.",
+                status_code=403,
+                error_code="SELF_APPROVAL_BLOCKED",
+            )
+        route, supervisor_id, reason_code, reason = await self._resolve_leave_route(
+            employee, request.requested_by_id
+        )
+        if (
+            request.approval_route == route
+            and request.assigned_supervisor_user_id == supervisor_id
+            and request.fallback_reason_code == reason_code
+        ):
+            return request
+        previous_route = request.approval_route
+        request.approval_route = route
+        request.assigned_supervisor_user_id = supervisor_id
+        request.fallback_reason_code = reason_code
+        request.fallback_reason = reason
+        request.fallback_recorded_by_id = actor.id if route == "hr_fallback" else None
+        request.fallback_recorded_at = utc_now() if route == "hr_fallback" else None
+        request.fallback_until = None
+        request.record_revision += 1
+        await self.audit.record(
+            action="hr.leave_request.rerouted",
+            user_id=actor.id,
+            entity_type="hr_leave_requests",
+            entity_id=request.id,
+            old_values={"route": previous_route},
+            new_values={"route": route, "revision": request.record_revision},
+        )
+        await self._notify_leave_event(request, "rerouted", actor.id)
+        await self._commit_and_refresh(request)
+        return request
+
+    async def _reroute_pending_leave_request(
+        self, request: HrLeaveRequest, employee: HrEmployee, actor: User
+    ) -> None:
+        if request.status != "submitted":
+            return
+        route, supervisor_id, reason_code, reason = await self._resolve_leave_route(
+            employee, request.requested_by_id
+        )
+        if (
+            request.approval_route == route
+            and request.assigned_supervisor_user_id == supervisor_id
+            and request.fallback_reason_code == reason_code
+            and request.fallback_reason == reason
+        ):
+            return
+        old_route = request.approval_route
+        old_supervisor_id = request.assigned_supervisor_user_id
+        request.approval_route = route
+        request.assigned_supervisor_user_id = supervisor_id
+        request.fallback_reason_code = reason_code
+        request.fallback_reason = reason
+        request.fallback_recorded_by_id = actor.id if route == "hr_fallback" else None
+        request.fallback_recorded_at = utc_now() if route == "hr_fallback" else None
+        request.fallback_until = None
+        request.record_revision += 1
+        await self.audit.record(
+            action="hr.leave_request.rerouted",
+            user_id=actor.id,
+            entity_type="hr_leave_requests",
+            entity_id=request.id,
+            old_values={"route": old_route, "supervisor_user_id": old_supervisor_id},
+            new_values={
+                "route": route,
+                "supervisor_user_id": supervisor_id,
+                "revision": request.record_revision,
+                "source": "employee_manager_update",
+            },
+        )
+        await self._notify_leave_event(request, "rerouted", actor.id)
 
     async def list_leave_requests(
         self,

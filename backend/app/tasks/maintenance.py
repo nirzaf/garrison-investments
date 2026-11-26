@@ -3,7 +3,7 @@ from time import monotonic
 from uuid import UUID
 
 import structlog
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import JSON, and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
@@ -13,6 +13,7 @@ from app.database import AsyncSessionLocal
 from app.models.daily_report import DailyReport
 from app.models.hr import (
     HrEmployee,
+    HrEmploymentPeriod,
     HrLeaveAccrual,
     HrLeavePolicy,
     HrLeaveType,
@@ -61,7 +62,13 @@ def post_hr_leave_accruals() -> dict[str, int]:
 
 
 async def _post_hr_leave_accruals() -> dict[str, int]:
-    counts = {"posted": 0, "already_posted": 0, "outside_schedule": 0, "blocked": 0}
+    counts = {
+        "posted": 0,
+        "already_posted": 0,
+        "outside_schedule": 0,
+        "not_due": 0,
+        "blocked": 0,
+    }
     policy_ids = set(get_settings().hr_scheduled_leave_policy_ids)
     if not policy_ids:
         return counts
@@ -86,6 +93,10 @@ async def _post_hr_leave_accruals() -> dict[str, int]:
                         HrLeavePolicy.approved_at.is_not(None),
                         HrLeavePolicy.is_active.is_(True),
                         HrLeavePolicy.accrual_frequency == frequency,
+                        or_(
+                            HrLeavePolicy.entitlement_rules.is_(None),
+                            HrLeavePolicy.entitlement_rules == JSON.NULL,
+                        ),
                         HrLeavePolicy.effective_from <= start,
                         HrLeavePolicy.effective_to >= end,
                         HrLeaveType.is_active.is_(True),
@@ -128,6 +139,82 @@ async def _post_hr_leave_accruals() -> dict[str, int]:
                         year=start.year,
                         month=start.month if frequency == "monthly" else None,
                     )
+                    async with AsyncSessionLocal() as session:
+                        try:
+                            result = await post_scheduled_leave_accrual(
+                                session, payload, policy_ids
+                            )
+                        except AppException as error:
+                            if error.status_code not in {404, 409, 422}:
+                                raise
+                            counts["blocked"] += 1
+                        else:
+                            counts[result] += 1
+    async with AsyncSessionLocal() as session:
+        managed = list(
+            await session.scalars(
+                select(HrLeavePolicy)
+                .join(HrLeaveType, HrLeaveType.id == HrLeavePolicy.leave_type_id)
+                .where(
+                    HrLeavePolicy.id.in_(policy_ids),
+                    HrLeavePolicy.status == "approved",
+                    HrLeavePolicy.approved_at.is_not(None),
+                    HrLeavePolicy.is_active.is_(True),
+                    HrLeavePolicy.entitlement_rules.is_not(None),
+                    HrLeavePolicy.entitlement_rules["profile"].as_string().in_(
+                        ("garrisons_annual_v1", "garrisons_casual_v1")
+                    ),
+                    HrLeaveType.is_active.is_(True),
+                    HrLeaveType.is_paid.is_(True),
+                )
+                .order_by(HrLeavePolicy.leave_type_id, HrLeavePolicy.id)
+            )
+        )
+    managed_types = {
+        (row.leave_type_id, (row.entitlement_rules or {}).get("profile")) for row in managed
+    }
+    for leave_type_id, profile in managed_types:
+        managed_cursor: UUID | None = None
+        while True:
+            employment_period_exists = (
+                select(HrEmploymentPeriod.id)
+                .where(
+                    HrEmploymentPeriod.employee_id == HrEmployee.id,
+                    HrEmploymentPeriod.ended_on.is_(None),
+                )
+                .exists()
+            )
+            stmt = select(HrEmployee.id).where(
+                HrEmployee.deleted_at.is_(None),
+                HrEmployee.employment_status.in_(("active", "on_probation", "on_leave")),
+                or_(HrEmployee.termination_date.is_(None), HrEmployee.termination_date > today),
+                or_(HrEmployee.join_date <= today, employment_period_exists),
+            )
+            if managed_cursor is not None:
+                stmt = stmt.where(HrEmployee.id > managed_cursor)
+            async with AsyncSessionLocal() as session:
+                employees = list(await session.scalars(stmt.order_by(HrEmployee.id).limit(200)))
+            if not employees:
+                break
+            managed_cursor = employees[-1]
+            for employee_id in employees:
+                selections = [LeaveAccrualRequest(
+                    employee_id=employee_id,
+                    leave_type_id=leave_type_id,
+                    year=today.year,
+                    month=None,
+                )]
+                if profile == "garrisons_casual_v1":
+                    selections.extend(
+                        LeaveAccrualRequest(
+                            employee_id=employee_id,
+                            leave_type_id=leave_type_id,
+                            year=today.year,
+                            month=month,
+                        )
+                        for month in range(1, today.month + 1)
+                    )
+                for payload in selections:
                     async with AsyncSessionLocal() as session:
                         try:
                             result = await post_scheduled_leave_accrual(

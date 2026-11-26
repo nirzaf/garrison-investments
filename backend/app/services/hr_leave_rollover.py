@@ -77,6 +77,42 @@ async def process_leave_rollover(
         raise NotFoundException("Active paid leave type")
     category = await _eligible_category(session, employee, end, date(target, 1, 1))
     policy = await _policy_for_period(session, payload.leave_type_id, category, end, end)
+    managed_rules = policy.entitlement_rules
+    if managed_rules is not None and (
+        not isinstance(managed_rules, dict)
+        or managed_rules.get("profile")
+        not in {"garrisons_annual_v1", "garrisons_casual_v1"}
+        or policy.max_carry_forward_days != Decimal("0.00")
+        or not policy.expire_excess_on_rollover
+    ):
+        raise AppException(
+            "The managed leave policy is not configured for zero-carry expiry.",
+            status_code=409,
+            error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+        )
+    if (managed_rules or {}).get("profile") == "garrisons_annual_v1":
+        # Use the same evidence interpretation as the employee balance view.
+        # Missing historical schedule evidence must not be treated as proof
+        # that the required consecutive block was taken.
+        from app.services.hr_workforce_service import HrWorkforceService
+
+        block_status = await HrWorkforceService(session)._annual_block_status(
+            employee, payload.leave_type_id, year, Decimal("0.00")
+        )
+        if block_status in {"outstanding", "scheduled"}:
+            raise AppException(
+                "Record and verify the required seven-day annual leave block "
+                "before closing this year.",
+                status_code=409,
+                error_code="LEAVE_ANNUAL_BLOCK_REQUIRED",
+            )
+        if block_status == "unverified":
+            raise AppException(
+                "The annual leave block cannot be verified from the available "
+                "schedule and ledger evidence.",
+                status_code=409,
+                error_code="LEAVE_ANNUAL_BLOCK_UNVERIFIED",
+            )
     if await session.scalar(
         select(HrLeaveRequest.id)
         .where(
@@ -120,7 +156,11 @@ async def process_leave_rollover(
     ).quantize(Decimal("0.01"))
     if not Decimal(0) <= balance <= Decimal("9999.99"):
         raise AppException("Reconcile the source balance before rolling over.", status_code=409)
-    carry = min(balance, policy.max_carry_forward_days)
+    carry = (
+        Decimal("0.00")
+        if managed_rules is not None
+        else min(balance, policy.max_carry_forward_days)
+    )
     expiry = balance - carry
     if expiry > 0 and not policy.expire_excess_on_rollover:
         raise AppException(

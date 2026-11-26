@@ -295,8 +295,12 @@ roster and evidence.
   For a draft or rejected request they submitted, they can choose **Edit leave
   request** in My HR, correct the fields and resubmit the same record.
   Rejected requests show HR's reason before editing. Resubmission rechecks
-  attachment eligibility and date overlap, uses the current manager-review
-  assignment and leaves the balance unchanged until HR approves.
+  attachment eligibility, date overlap and the current reporting assignment.
+  The assigned current direct supervisor makes the final decision. HR can see
+  leave requests and acts as the final approver only after the request has been
+  explicitly routed to HR for a recorded supervisor-unavailable reason. If no
+  active HR approver is configured, the request remains pending and the portal
+  reports that routing issue instead of approving it automatically.
   My HR previews the leave days from the published work schedule. A shift's
   calendar takes precedence for its dates, followed by the employee calendar,
   site calendar and company default. Only workdays that are free of holidays
@@ -305,6 +309,49 @@ roster and evidence.
   calendar year. HR should publish missing calendar periods before rollout.
   The server recalculates on submit or resubmit and stores the resulting units.
   Existing submitted requests and ledger entries retain their recorded units.
+  Leave request updates are delivered through the portal and email where the
+  recipient has an eligible active account and email delivery is configured.
+  Notification delivery does not change the request decision.
+
+  **Company leave rules and activation.** The managed annual profile implements
+  zero annual entitlement in the first calendar year of service, a second-year
+  entitlement selected from an HR-approved joining-date bracket, and 14 days
+  from the third service year. The approved profile must cover all 366
+  month/day values exactly once; the portal intentionally supplies no
+  second-year bracket values. HR must enter and independently approve the
+  company's exact 4–14 day bracket before posting. Annual entitlement is due
+  at the beginning of the calendar year. The profile records whether the
+  required seven-day block is measured in calendar days or chargeable workdays;
+  that basis also needs an approved value. Managed casual leave posts 0.50 day
+  per completed service month in the first year and seven days at the beginning
+  of each later year. The managed rules do not carry unused leave forward.
+  The accrual preview and year-end workflow use the approved policy and ledger;
+  they do not fill missing historical balances automatically.
+
+  Newly configured managed leave types stay inactive and marked
+  `policy_required` until an approved policy is available. HR must reconcile
+  each employee's opening balance and due accrual history with a reviewed
+  baseline before applying a managed policy to live balances. The service uses
+  current continuous employment periods and recorded category history; a
+  rehire is treated as a new service period. Sick and maternity leave types
+  can be created, but their entitlement, paid status, evidence and eligibility
+  rules must be supplied and reviewed before activation. The supplied company
+  answers do not define those values.
+
+  Direct supervisors can review only their currently linked direct reports in
+  **My HR → Leave reviews**. HR retains company-wide leave visibility under its
+  existing HR permissions and can record an explicit, reasoned fallback when a
+  supervisor is missing, ineligible, on approved leave, or temporarily
+  unavailable. Routing changes are revision-checked and audited. No business
+  role or permission grant is added by this workflow.
+
+  **Celebrations.** The dashboard lists birthdays occurring from today through
+  the next six days, showing employee name and month/day only. It lists work
+  anniversaries from today through the next 29 days with completed service
+  years. February 29 birthdays and anniversaries are displayed on February 28
+  in non-leap years. Results are paginated, require an authenticated active
+  business role, and are returned with private no-store caching. Existing
+  employee data is not backfilled by these read-only views.
   In **Leave → Leave policy proposals**, an HR Manager enters an inclusive
   effective window and entitlement terms. A different HR Manager approves or
   rejects the proposal. Approved windows for the same leave type and
@@ -949,7 +996,7 @@ distinct receipts and exact PDF bytes for current and superseded policy editions
 and decrypted independently approved candidate correspondence. A wrong HR key
 and a tampered backup artifact were rejected. Release acceptance still requires the approved off-host
 destination, production key custody and an operator-led exercise described in
-the [recovery runbook](OPERATIONS_AND_DEPLOYMENT.md#3-operations-backup--restore).
+the [recovery runbook](OPERATIONS_AND_DEPLOYMENT.md#3-operations-backup-restore).
 
 The retention default preserves HR rows and versions. The local candidate
 includes compensation, benefits and reviewed payroll workflows. Live

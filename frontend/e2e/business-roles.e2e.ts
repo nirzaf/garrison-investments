@@ -2409,7 +2409,7 @@ test('a linked employee manages their own leave and reopens a completed HR reque
       .getByRole('combobox', { name: 'Policy leave type' })
       .selectOption(leaveTypeId);
     await managerPage.getByLabel('Effective from', { exact: true }).fill('2025-01-01');
-    await managerPage.getByLabel('Effective through', { exact: true }).fill('2025-12-31');
+    await managerPage.getByLabel('Effective through', { exact: true }).fill('2026-12-31');
     await managerPage.getByLabel('Annual entitlement', { exact: true }).fill('12');
     await managerPage.getByRole('combobox', { name: 'Accrual frequency' }).selectOption('monthly');
     await managerPage.getByRole('checkbox', { name: /Prorate eligible calendar days/ }).check();
@@ -2433,6 +2433,11 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     await reviewerPage.getByText('Leave policy proposals', { exact: true }).click();
     await expect(reviewPolicy).toContainText('approved');
 
+    // The manager's page was open while the independent reviewer approved the
+    // policy in another session. Refresh its policy-backed selectors before
+    // posting accruals so it sees the newly active entitlement.
+    await managerPage.reload();
+    await managerPage.getByRole('button', { name: 'Leave', exact: true }).click();
     await managerPage.getByText('Post approved leave accrual', { exact: true }).click();
     const accrualEmployee = managerPage.getByRole('combobox', { name: 'Accrual employee' });
     const accrualMonth = managerPage.getByRole('spinbutton', {

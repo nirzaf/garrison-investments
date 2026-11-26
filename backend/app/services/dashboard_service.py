@@ -1,19 +1,33 @@
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, case, cast, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
+from sqlalchemy.types import Date, Integer
 
 from app.models.daily_report import DailyReport
 from app.models.document import Document
-from app.models.hr import HrAttendanceEntry, HrSiteAttendanceSubmission
+from app.models.hr import (
+    HrAttendanceEntry,
+    HrEmployee,
+    HrEmployeePrivate,
+    HrEmploymentPeriod,
+    HrSiteAttendanceSubmission,
+)
 from app.models.inventory import InventoryRegistration, MaterialRequest
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.user import User
-from app.schemas.dashboard import DashboardSummaryResponse, SiteOperationsSummary
+from app.schemas.dashboard import (
+    AnniversaryItem,
+    AnniversaryPageResponse,
+    BirthdayItem,
+    BirthdayPageResponse,
+    DashboardSummaryResponse,
+    SiteOperationsSummary,
+)
 from app.services.approval_service import MATERIAL_STAGE_STATES
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
@@ -23,6 +37,8 @@ from app.utils.permissions import (
     has_permission,
 )
 from app.utils.time import business_today
+
+ACTIVE_EMPLOYMENT_STATUSES = ("active", "on_probation", "on_leave", "notice_period")
 
 
 class DashboardService:
@@ -56,6 +72,173 @@ class DashboardService:
                 if actor.role in PROJECT_OPERATIONAL_MANAGER_ROLES
                 else None
             ),
+        )
+
+    async def upcoming_birthdays(self, *, offset: int, limit: int) -> BirthdayPageResponse:
+        today = business_today()
+        offsets = func.generate_series(0, 6).table_valued("day_offset").render_derived()
+        occurrence = cast(literal(today) + offsets.c.day_offset, Date)
+        source_month = cast(func.extract("month", HrEmployeePrivate.date_of_birth), Integer)
+        source_day = cast(func.extract("day", HrEmployeePrivate.date_of_birth), Integer)
+        occurrence_month = cast(func.extract("month", occurrence), Integer)
+        occurrence_day = cast(func.extract("day", occurrence), Integer)
+        occurrence_year = cast(func.extract("year", occurrence), Integer)
+        leap_year = (occurrence_year % 4 == 0) & (
+            (occurrence_year % 100 != 0) | (occurrence_year % 400 == 0)
+        )
+        birthday_match = or_(
+            and_(source_month == occurrence_month, source_day == occurrence_day),
+            and_(
+                source_month == 2,
+                source_day == 29,
+                occurrence_month == 2,
+                occurrence_day == 28,
+                ~leap_year,
+            ),
+        )
+        employees = (
+            select(
+                HrEmployee.full_name.label("name"),
+                occurrence_day.label("day"),
+                occurrence_month.label("month"),
+                occurrence.label("occurrence"),
+                func.lower(HrEmployee.full_name).label("name_sort"),
+                HrEmployee.id.label("tie_breaker"),
+            )
+            .select_from(HrEmployee)
+            .join(HrEmployeePrivate, HrEmployeePrivate.employee_id == HrEmployee.id)
+            .join(offsets, literal(True))
+            .where(
+                HrEmployee.deleted_at.is_(None),
+                HrEmployee.employment_status.in_(ACTIVE_EMPLOYMENT_STATUSES),
+                or_(HrEmployee.termination_date.is_(None), HrEmployee.termination_date >= today),
+                HrEmployeePrivate.date_of_birth.is_not(None),
+                birthday_match,
+            )
+            .subquery()
+        )
+        total = int(await self.session.scalar(select(func.count()).select_from(employees)) or 0)
+        rows = (
+            await self.session.execute(
+                select(employees.c.name, employees.c.day, employees.c.month)
+                .order_by(employees.c.occurrence, employees.c.name_sort, employees.c.tie_breaker)
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+        return BirthdayPageResponse(
+            items=[BirthdayItem(name=name, day=day, month=month) for name, day, month in rows],
+            total=total,
+            offset=offset,
+            limit=limit,
+        )
+
+    async def upcoming_anniversaries(
+        self, *, offset: int, limit: int
+    ) -> AnniversaryPageResponse:
+        today = business_today()
+        offsets = func.generate_series(0, 29).table_valued("day_offset").render_derived()
+        occurrence = cast(literal(today) + offsets.c.day_offset, Date)
+        active_period_count = (
+            select(func.count(HrEmploymentPeriod.id))
+            .where(
+                HrEmploymentPeriod.employee_id == HrEmployee.id,
+                HrEmploymentPeriod.ended_on.is_(None),
+            )
+            .correlate(HrEmployee)
+            .scalar_subquery()
+        )
+        any_period_count = (
+            select(func.count(HrEmploymentPeriod.id))
+            .where(HrEmploymentPeriod.employee_id == HrEmployee.id)
+            .correlate(HrEmployee)
+            .scalar_subquery()
+        )
+        active_service_start = (
+            select(HrEmploymentPeriod.started_on)
+            .where(
+                HrEmploymentPeriod.employee_id == HrEmployee.id,
+                HrEmploymentPeriod.ended_on.is_(None),
+            )
+            .limit(1)
+            .correlate(HrEmployee)
+            .scalar_subquery()
+        )
+        service_start = cast(
+            case(
+                (any_period_count == 0, HrEmployee.join_date),
+                (active_period_count == 1, active_service_start),
+                else_=None,
+            ),
+            Date,
+        )
+        source_month = cast(func.extract("month", service_start), Integer)
+        source_day = cast(func.extract("day", service_start), Integer)
+        occurrence_month = cast(func.extract("month", occurrence), Integer)
+        occurrence_day = cast(func.extract("day", occurrence), Integer)
+        occurrence_year = cast(func.extract("year", occurrence), Integer)
+        leap_year = (occurrence_year % 4 == 0) & (
+            (occurrence_year % 100 != 0) | (occurrence_year % 400 == 0)
+        )
+        anniversary_match = or_(
+            and_(source_month == occurrence_month, source_day == occurrence_day),
+            and_(
+                source_month == 2,
+                source_day == 29,
+                occurrence_month == 2,
+                occurrence_day == 28,
+                ~leap_year,
+            ),
+        )
+        years = occurrence_year - cast(func.extract("year", service_start), Integer)
+        employees = (
+            select(
+                HrEmployee.full_name.label("name"),
+                occurrence_day.label("day"),
+                occurrence_month.label("month"),
+                years.label("completed_years"),
+                occurrence.label("occurrence"),
+                func.lower(HrEmployee.full_name).label("name_sort"),
+                HrEmployee.id.label("tie_breaker"),
+            )
+            .select_from(HrEmployee)
+            .join(offsets, literal(True))
+            .where(
+                HrEmployee.deleted_at.is_(None),
+                HrEmployee.employment_status.in_(ACTIVE_EMPLOYMENT_STATUSES),
+                or_(HrEmployee.termination_date.is_(None), HrEmployee.termination_date >= today),
+                service_start.is_not(None),
+                service_start <= today,
+                service_start <= occurrence,
+                years >= 1,
+                anniversary_match,
+            )
+            .subquery()
+        )
+        total = int(await self.session.scalar(select(func.count()).select_from(employees)) or 0)
+        rows = (
+            await self.session.execute(
+                select(
+                    employees.c.name,
+                    employees.c.day,
+                    employees.c.month,
+                    employees.c.completed_years,
+                )
+                .order_by(employees.c.occurrence, employees.c.name_sort, employees.c.tie_breaker)
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+        return AnniversaryPageResponse(
+            items=[
+                AnniversaryItem(
+                    name=name, day=day, month=month, completed_years=completed_years
+                )
+                for name, day, month, completed_years in rows
+            ],
+            total=total,
+            offset=offset,
+            limit=limit,
         )
 
     async def _site_operations(self, project_ids: list[UUID] | None) -> SiteOperationsSummary:

@@ -109,6 +109,7 @@ export type LeaveTypeRecord = HrSchemas['LeaveTypeResponse'];
 export type LeavePolicyRecord = HrSchemas['LeavePolicyResponse'];
 export type LeaveBalanceItem = HrSchemas['LeaveBalanceItem'];
 export type LeaveRequestRecord = HrSchemas['LeaveRequestResponse'];
+export type SupervisorLeaveReviewRecord = HrSchemas['SupervisorLeaveReviewItem'];
 export type PolicyDocumentRecord = HrSchemas['PolicyDocumentResponse'];
 export type LetterTemplateRecord = HrSchemas['LetterTemplateResponse'];
 export type LetterRenderRecord = HrSchemas['LetterRenderResponse'];
@@ -874,6 +875,26 @@ export async function applyLeaveAccrual(payload: HrSchemas['LeaveAccrualApplyReq
   return data;
 }
 
+export async function previewLeaveEntitlementBaseline(
+  payload: HrSchemas['LeaveEntitlementBaselineRequest']
+) {
+  const { data } = await apiClient.post<HrSchemas['LeaveEntitlementBaselineResponse']>(
+    '/hr/leave/entitlement-baseline/preview',
+    payload
+  );
+  return data;
+}
+
+export async function applyLeaveEntitlementBaseline(
+  payload: HrSchemas['LeaveEntitlementBaselineApplyRequest']
+) {
+  const { data } = await apiClient.post<HrSchemas['LeaveEntitlementBaselineResponse']>(
+    '/hr/leave/entitlement-baseline/apply',
+    payload
+  );
+  return data;
+}
+
 export async function decideLeavePolicy(
   id: string,
   payload: HrSchemas['LeavePolicyDecisionRequest']
@@ -945,6 +966,25 @@ export async function decideLeaveRequest(
   const { data } = await apiClient.post<LeaveRequestRecord>(
     `/hr/leave/requests/${leaveRequestId}/decision`,
     payload
+  );
+  return data;
+}
+
+export async function routeLeaveRequestToHrFallback(
+  leaveRequestId: string,
+  payload: HrSchemas['LeaveFallbackRequest']
+) {
+  const { data } = await apiClient.post<LeaveRequestRecord>(
+    `/hr/leave/requests/${leaveRequestId}/fallback`,
+    payload
+  );
+  return data;
+}
+
+export async function refreshLeaveRequestRoute(leaveRequestId: string, expectedRevision: number) {
+  const { data } = await apiClient.post<LeaveRequestRecord>(
+    `/hr/leave/requests/${leaveRequestId}/route-refresh`,
+    { expected_revision: expectedRevision }
   );
   return data;
 }
@@ -1435,6 +1475,26 @@ export async function recommendMyDirectReport(
       recommendation,
       expected_revision: item.record_revision
     }
+  );
+  return data;
+}
+
+export async function listMyLeaveReviews(offset: number, limit = 25, signal?: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['SupervisorLeaveReviewListResponse']>(
+    '/hr/me/leave-reviews',
+    { params: { offset, limit }, signal }
+  );
+  return data;
+}
+
+export async function decideMyLeaveReview(
+  item: SupervisorLeaveReviewRecord,
+  decision: 'approved' | 'rejected',
+  notes?: string
+) {
+  const { data } = await apiClient.post<SupervisorLeaveReviewRecord>(
+    `/hr/me/leave-reviews/${item.id}/decision`,
+    { decision, notes: notes || null, expected_revision: item.record_revision }
   );
   return data;
 }

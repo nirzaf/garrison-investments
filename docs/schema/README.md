@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md) · [Architecture](../ARCHITECTURE.md) · [Operations and deployment](../OPERATIONS_AND_DEPLOYMENT.md)
 
-This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference uses a historical catalogue check at revision `202605310013` and describes subsequent source migrations. The current repository Alembic head is [`202605310112`](../../backend/alembic/versions/202605310112_evidence_classification_constraints.py). The local HR migrations begin at [revision 007](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and currently end at [revision 046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic revisions](../../backend/alembic/versions/) to trace schema changes.
+This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference uses a historical production catalogue check at revision `202605310013` and describes subsequent source migrations. The current repository Alembic head is [`202605310114`](../../backend/alembic/versions/202605310114_leave_workflow_indexes.py); this is source state, not a production readback. The HR leave workflow additions are revisions [113](../../backend/alembic/versions/202605310113_leave_policy_routing.py) and [114](../../backend/alembic/versions/202605310114_leave_workflow_indexes.py). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints and indexes from its described schema snapshot. Follow [Alembic revisions](../../backend/alembic/versions/) to trace schema changes.
 
 A dash in the default column means the database has no server default. Application-side rules live in the linked model and service code. Many tables use `deleted_at` for soft deletion. Foreign-key delete actions describe physical row deletion.
 
@@ -187,6 +187,15 @@ validates the reference. Existing offers retain their terms without a file link.
 adds opt-in calendar-day proration and receipt bounds.
 [202605310046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py)
 validates those bounds.
+
+[202605310113](../../backend/alembic/versions/202605310113_leave_policy_routing.py)
+adds reviewed managed leave-rule metadata, activation requirements for new leave
+types, due-date and policy-baseline receipts, and revision-scoped supervisor/HR
+fallback routing for leave requests. It also adds leave notification event
+identity fields. Existing leave decisions and employee balances are not
+backfilled. [202605310114](../../backend/alembic/versions/202605310114_leave_workflow_indexes.py)
+adds concurrent unique and pending-route indexes after checking existing
+ledger and accrual rows for conflicts; it does not alter historical decisions.
 
 
 ### Approved site workflow corrections

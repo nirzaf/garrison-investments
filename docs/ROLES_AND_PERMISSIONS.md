@@ -129,10 +129,12 @@ recruitment, onboarding, attendance recording, leave processing, ordinary HR
 documents and compliance, service requests, and HR summaries. Only HR Manager
 receives sensitive employee, attendance approval, leave approval, HR policy and
 offboarding grants. Directory reads and private documents are separate from
-account administration. An HR Manager can authorize a linked direct manager to
-recommend specific time and leave requests when the company policy is enabled.
-The authorization applies to that reporting relationship and does not grant
-HR directory, document or final-decision permissions. See [HR and workforce](HR_WORKFORCE.md).
+account administration. For leave, the currently linked direct supervisor
+makes the final decision through the narrowly scoped self-service review; HR
+retains leave visibility and uses the existing leave-approval grant only for
+an explicitly recorded fallback or its existing HR workflow. This adds no
+role or permission grant. Other manager time recommendations remain advisory
+and do not become final decisions. See [HR and workforce](HR_WORKFORCE.md).
 
 HR Executive currently receives `users:read`, `dashboard:scoped`, and
 `documents:view`. The source matrix's `reports:view` selection is withheld under

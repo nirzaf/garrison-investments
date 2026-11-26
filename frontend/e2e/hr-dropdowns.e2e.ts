@@ -82,6 +82,155 @@ async function createEmployee(
   return (await response.json()) as { id: string };
 }
 
+function seedLegacyLeaveType(name: string): { id: string; code: string } {
+  const seeded = execFileSync(
+    PYTHON_BIN,
+    [
+      '-c',
+      `
+from tests.browser_fixtures import configure
+configure()
+import asyncio
+import json
+from uuid import uuid4
+from app.database import AsyncSessionLocal, engine
+from app.models.hr import HrLeaveType
+
+async def seed():
+    row = HrLeaveType(
+        code=f"LEGACY-{uuid4().hex[:12]}",
+        name=${JSON.stringify(name)},
+        is_paid=True,
+        is_active=True,
+        policy_required=False,
+    )
+    async with AsyncSessionLocal() as session:
+        session.add(row)
+        await session.flush()
+        result = {"id": str(row.id), "code": row.code}
+        await session.commit()
+    await engine.dispose()
+    print(json.dumps(result))
+
+asyncio.run(seed())
+`
+    ],
+    { cwd: BACKEND_DIR, encoding: 'utf8' }
+  );
+  return JSON.parse(seeded) as { id: string; code: string };
+}
+
+function seedDirectReportLeave(
+  supervisorEmail: string,
+  workerEmail: string
+): { id: string; employeeName: string; leaveDate: string; supervisorUserId: string } {
+  const seeded = execFileSync(
+    PYTHON_BIN,
+    [
+      '-c',
+      `
+from tests.browser_fixtures import configure
+configure()
+import asyncio
+import json
+from datetime import timedelta
+from decimal import Decimal
+from sqlalchemy import select
+from app.database import AsyncSessionLocal, engine
+from app.models.hr import HrEmployee, HrEmployeePrivate, HrLeaveRequest, HrLeaveType
+from app.models.user import User
+from app.utils.time import business_today
+from uuid import uuid4
+
+async def seed():
+    async with AsyncSessionLocal() as session:
+        supervisor = await session.scalar(select(User).where(User.email == ${JSON.stringify(supervisorEmail)}))
+        worker = await session.scalar(select(User).where(User.email == ${JSON.stringify(workerEmail)}))
+        if supervisor is None or worker is None:
+            raise RuntimeError("Browser leave accounts were not seeded.")
+        supervisor_employee = HrEmployee(
+            user_id=supervisor.id,
+            employee_code=f"LEAVE-MGR-{uuid4().hex[:10]}",
+            first_name="Synthetic",
+            last_name="Supervisor",
+            full_name="Synthetic Leave Supervisor",
+            work_email=supervisor.email,
+            employment_status="active",
+            join_date=business_today() - timedelta(days=400),
+        )
+        session.add(supervisor_employee)
+        await session.flush()
+        today = business_today()
+        birthday = today + timedelta(days=3)
+        anniversary = today + timedelta(days=6)
+        try:
+            date_of_birth = birthday.replace(year=1988)
+        except ValueError:
+            date_of_birth = birthday.replace(year=1988, day=28)
+        worker_employee = HrEmployee(
+            user_id=worker.id,
+            employee_code=f"LEAVE-WRK-{uuid4().hex[:10]}",
+            first_name="Browser",
+            last_name=f"Leave Worker {uuid4().hex[:6]}",
+            full_name=f"Browser Leave Worker {uuid4().hex[:6]}",
+            work_email=worker.email,
+            employment_status="active",
+            join_date=anniversary.replace(year=anniversary.year - 3),
+            manager_employee_id=supervisor_employee.id,
+        )
+        session.add(worker_employee)
+        await session.flush()
+        session.add(
+            HrEmployeePrivate(employee_id=worker_employee.id, date_of_birth=date_of_birth)
+        )
+        leave_type = HrLeaveType(
+            code=f"LEGACY-{uuid4().hex[:12]}",
+            name="Synthetic configured leave",
+            is_paid=True,
+            is_active=True,
+            policy_required=False,
+        )
+        session.add(leave_type)
+        await session.flush()
+        leave_date = business_today() + timedelta(days=3)
+        request = HrLeaveRequest(
+            employee_id=worker_employee.id,
+            leave_type_id=leave_type.id,
+            start_date=leave_date,
+            end_date=leave_date,
+            days_requested=Decimal("1.00"),
+            scheduled_work_dates=[leave_date],
+            reason="Synthetic browser routing fixture",
+            status="submitted",
+            requested_by_id=worker.id,
+            approval_route="supervisor",
+            assigned_supervisor_user_id=supervisor.id,
+        )
+        session.add(request)
+        await session.flush()
+        result = {
+            "id": str(request.id),
+            "employeeName": worker_employee.full_name,
+            "leaveDate": leave_date.isoformat(),
+            "supervisorUserId": str(supervisor.id),
+        }
+        await session.commit()
+    await engine.dispose()
+    print(json.dumps(result))
+
+asyncio.run(seed())
+`
+    ],
+    { cwd: BACKEND_DIR, encoding: 'utf8' }
+  );
+  return JSON.parse(seeded) as {
+    id: string;
+    employeeName: string;
+    leaveDate: string;
+    supervisorUserId: string;
+  };
+}
+
 async function linkEmployee(
   browser: import('@playwright/test').Browser,
   request: APIRequestContext,
@@ -330,14 +479,15 @@ test('My HR leave options load when the separate attendance request fails', asyn
     headers: { Authorization: `Bearer ${hrLogin.accessToken}` },
     data: {
       code: `LT-${suffix}`,
-      name: `Dropdown Leave ${suffix}`,
+      name: `Unconfigured Leave ${suffix}`,
       is_paid: true,
       requires_attachment: false,
       allow_half_day: true
     }
   });
   expect(leaveTypeResponse.status()).toBe(201);
-  const leaveType = (await leaveTypeResponse.json()) as { id: string; code: string };
+  expect((await leaveTypeResponse.json()).is_active).toBe(false);
+  const leaveType = seedLegacyLeaveType(`Dropdown Leave ${suffix}`);
 
   const employeePage = await browser.newPage();
   try {
@@ -384,6 +534,72 @@ test('My HR leave options load when the separate attendance request fails', asyn
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(391);
   } finally {
     await employeePage.close();
+  }
+});
+
+test('a direct supervisor makes the final leave decision in My HR while HR retains visibility', async ({
+  page,
+  browser,
+  request
+}) => {
+  const hrAccount = seedAccount('hr_manager');
+  const supervisorAccount = seedAccount('group_project_manager');
+  const workerAccount = seedAccount('quantity_surveyor');
+  const seeded = seedDirectReportLeave(supervisorAccount.email, workerAccount.email);
+  const hrLogin = await signIn(page, hrAccount);
+  const supervisorPage = await browser.newPage();
+  try {
+    await signIn(supervisorPage, supervisorAccount);
+    await supervisorPage.goto('/dashboard');
+    const birthdays = supervisorPage.getByRole('region', { name: 'Upcoming birthdays — 7 days' });
+    const anniversaries = supervisorPage.getByRole('region', {
+      name: 'Work anniversaries — 30 days'
+    });
+    await expect(birthdays.getByText(seeded.employeeName, { exact: true })).toBeVisible();
+    expect(await birthdays.innerText()).not.toContain('1988');
+    await expect(anniversaries.getByText(seeded.employeeName, { exact: true })).toBeVisible();
+    await expect(anniversaries).toContainText('3 years');
+
+    const hrHeaders = { Authorization: `Bearer ${hrLogin.accessToken}` };
+    const visibleToHr = await request.get('/api/v1/hr/leave/requests', {
+      headers: hrHeaders,
+      params: { req_status: 'submitted' }
+    });
+    expect(visibleToHr.status()).toBe(200);
+    const visibleItems = (await visibleToHr.json()).items as Array<{
+      id: string;
+      approval_route: string | null;
+      assigned_supervisor_user_id: string | null;
+    }>;
+    expect(visibleItems).toContainEqual(expect.objectContaining({
+      id: seeded.id,
+      approval_route: 'supervisor',
+      assigned_supervisor_user_id: seeded.supervisorUserId
+    }));
+
+    await supervisorPage.goto('/me/hr');
+    await expect(
+      supervisorPage.getByRole('heading', { name: 'Direct-report leave approvals', exact: true })
+    ).toBeVisible();
+    const review = supervisorPage.getByRole('listitem').filter({ hasText: seeded.employeeName });
+    await expect(review).toContainText(seeded.leaveDate);
+    await review
+      .getByRole('textbox', { name: 'Decision note (required for rejection)' })
+      .fill('Synthetic browser rejection reason');
+    await review.getByRole('button', { name: 'Reject', exact: true }).click();
+    await expect(supervisorPage.getByRole('status')).toContainText('Leave request rejected.');
+    await expect(review).toHaveCount(0);
+
+    const rejectedForHr = await request.get('/api/v1/hr/leave/requests', {
+      headers: hrHeaders,
+      params: { req_status: 'rejected' }
+    });
+    expect(rejectedForHr.status()).toBe(200);
+    expect((await rejectedForHr.json()).items).toContainEqual(
+      expect.objectContaining({ id: seeded.id, status: 'rejected' })
+    );
+  } finally {
+    await supervisorPage.close();
   }
 });
 

@@ -37,6 +37,7 @@ from app.models.hr import (
     HrEmploymentPeriod,
     HrIssuedLetter,
     HrLeaveLedger,
+    HrLeaveType,
     HrOffer,
     HrOnboardingCase,
     HrRequisition,
@@ -160,6 +161,23 @@ async def _create_portal_user(
         await session.commit()
         user_id = str(user.id)
     return user_id, user_email, password
+
+
+async def _create_legacy_leave_type(name: str, *, is_paid: bool = True) -> str:
+    """Seed an already-configured type for tests of legacy generic leave flows."""
+    async with AsyncSessionLocal() as session:
+        row = HrLeaveType(
+            code=f"LEGACY-{uuid4().hex[:12]}",
+            name=name,
+            is_paid=is_paid,
+            is_active=True,
+            policy_required=False,
+        )
+        session.add(row)
+        await session.flush()
+        leave_type_id = str(row.id)
+        await session.commit()
+    return leave_type_id
 
 
 def _client() -> httpx.AsyncClient:
@@ -2542,9 +2560,11 @@ async def test_work_calendar_requires_independent_review_and_preserves_published
             json={"code": f"L-{uuid4().hex[:8]}", "name": "Synthetic shift leave"},
         )
         assert leave_type.status_code == 201
+        assert leave_type.json()["is_active"] is False
+        legacy_leave_type_id = await _create_legacy_leave_type("Synthetic calendar leave")
         quote_path = f"/api/v1/hr/leave/employees/{employee_id}/units"
         quote_dates = {
-            "leave_type_id": leave_type.json()["id"],
+            "leave_type_id": legacy_leave_type_id,
             "start_date": "2027-01-04",
             "end_date": "2027-01-05",
         }
@@ -2702,6 +2722,8 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
         assert (await client.get(f"{base}/me/workflow-options", headers=worker)).json() == {
             "can_recommend": False,
             "self_time_submission_enabled": False,
+            "can_decide_leave": False,
+            "hr_leave_approver_configured": True,
         }
         monkeypatch.setenv("HR_LINE_MANAGER_REVIEW_ENABLED", "true")
         monkeypatch.setenv("HR_SELF_TIME_SUBMISSION_ENABLED", "true")
@@ -2725,7 +2747,8 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
             json={"code": f"L-{uuid4().hex[:8]}", "name": "Synthetic paid leave", "is_paid": True},
         )
         assert leave_type.status_code == 201, leave_type.text
-        leave_type_id = leave_type.json()["id"]
+        assert leave_type.json()["is_active"] is False
+        leave_type_id = await _create_legacy_leave_type("Synthetic configured paid leave")
         await _publish_leave_calendar(client, hr, executive, "2027-01-05", "2027-01-06")
         assert (
             await client.post(
@@ -2754,48 +2777,25 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
         )
         assert leave.status_code == 201, leave.text
         leave_id = leave.json()["id"]
-        assert leave.json()["requires_manager_recommendation"]
-        advice = f"{queue}/leave/{leave_id}"
+        assert leave.json()["approval_route"] == "supervisor"
         final_leave = f"{base}/leave/requests/{leave_id}/decision"
         decision = {"decision": "approved", "expected_revision": 1}
         assert (await client.post(final_leave, headers=manager, json=decision)).status_code == 403
         too_early = await client.post(final_leave, headers=hr, json=decision)
-        assert (
-            too_early.status_code == 409
-            and too_early.json()["error_code"] == "MANAGER_RECOMMENDATION_REQUIRED"
-        )
+        assert too_early.status_code == 403
+        assert too_early.json()["error_code"] == "LEAVE_SUPERVISOR_DECISION_REQUIRED"
+        supervisor_queue = f"{base}/me/leave-reviews"
+        assert len((await client.get(supervisor_queue, headers=manager)).json()["items"]) == 1
+        assert (await client.get(supervisor_queue, headers=worker)).json()["items"] == []
+        assert (await client.get(queue, headers=manager)).json()["items"] == []
         assert (await client.get(queue, headers=executive)).json()["items"] == []
         assert (
             await client.post(
-                advice, headers=worker, json={"recommendation": "support", "expected_revision": 1}
+                f"{queue}/leave/{leave_id}",
+                headers=worker,
+                json={"recommendation": "support", "expected_revision": 1},
             )
         ).status_code == 404
-
-        row = (await client.get(queue, headers=manager)).json()["items"][0]
-        assert set(row) == {
-            "kind",
-            "id",
-            "employee_name",
-            "start_date",
-            "end_date",
-            "requested_amount",
-            "record_revision",
-        }
-        assert row["kind"] == "leave" and row["id"] == leave_id
-        attempts = await asyncio.gather(
-            *(
-                client.post(
-                    advice,
-                    headers=manager,
-                    json={
-                        "recommendation": "flag",
-                        "expected_revision": 1,
-                    },
-                )
-                for _ in range(2)
-            )
-        )
-        assert sorted(response.status_code for response in attempts) == [200, 409]
         async with AsyncSessionLocal() as session:
             assert not (
                 await session.scalars(
@@ -2804,18 +2804,10 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
                     )
                 )
             ).all()
-        assert (await client.post(final_leave, headers=hr, json=decision)).status_code == 409
-        missing_revision = await client.post(
-            final_leave, headers=hr, json={"decision": "approved"}
-        )
-        assert (
-            missing_revision.status_code == 409
-            and missing_revision.json()["error_code"] == "REVISION_REQUIRED"
-        )
         rejected = await client.post(
-            final_leave,
-            headers=hr,
-            json={"decision": "rejected", "expected_revision": 2, "notes": "Correct date"},
+            f"{supervisor_queue}/{leave_id}/decision",
+            headers=manager,
+            json={"decision": "rejected", "expected_revision": 1, "notes": "Correct date"},
         )
         assert rejected.status_code == 200, rejected.text
         submission = f"{base}/me/leave-requests/{leave_id}/submission"
@@ -2824,7 +2816,7 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
             "start_date": "2027-01-06",
             "end_date": "2027-01-06",
             "days_requested": "1.00",
-            "expected_revision": 3,
+            "expected_revision": 2,
             "reason": "Updated synthetic detail",
         }
         assert (await client.put(submission, headers=manager, json=correction)).status_code == 404
@@ -2840,28 +2832,14 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
         )
         assert sorted(response.status_code for response in resubmissions) == [200, 409]
         saved = next(response.json() for response in resubmissions if response.status_code == 200)
-        assert saved["id"] == leave_id and saved["record_revision"] == 4
+        assert saved["id"] == leave_id and saved["record_revision"] == 3
         assert saved["start_date"] == correction["start_date"] and saved["status"] == "submitted"
-        assert saved["requires_manager_recommendation"]
-        assert saved["manager_recommendation"] is None and saved["decision_notes"] is None
-        early_after_edit = await client.post(
-            final_leave, headers=hr, json={**decision, "expected_revision": 4}
-        )
-        assert early_after_edit.json()["error_code"] == "MANAGER_RECOMMENDATION_REQUIRED"
-        assert (
-            await client.post(
-                advice, headers=manager, json={"recommendation": "support", "expected_revision": 4}
-            )
-        ).status_code == 200
         finals = await asyncio.gather(
             *(
                 client.post(
-                    final_leave,
-                    headers=hr,
-                    json={
-                        **decision,
-                        "expected_revision": 5,
-                    },
+                    f"{supervisor_queue}/{leave_id}/decision",
+                    headers=manager,
+                    json={"decision": "approved", "expected_revision": 3},
                 )
                 for _ in range(2)
             )
@@ -2873,7 +2851,7 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
                 headers=hr,
                 json={
                     "decision": "cancelled",
-                    "expected_revision": 6,
+                    "expected_revision": 4,
                     "notes": "Synthetic entitlement restored on cancellation",
                 },
             )
@@ -2887,6 +2865,49 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
                 )
             ).all()
             assert sorted(balances) == [-1, 1]
+
+        fallback_leave = await client.post(
+            f"{base}/me/leave-requests",
+            headers=worker,
+            json={
+                "leave_type_id": leave_type_id,
+                "start_date": "2027-01-05",
+                "end_date": "2027-01-05",
+                "days_requested": "1.00",
+                "reason": "Synthetic fallback request",
+            },
+        )
+        assert fallback_leave.status_code == 201, fallback_leave.text
+        fallback_id = fallback_leave.json()["id"]
+        from app.services.hr_workforce_service import HrWorkforceService
+
+        async def no_leave_approver(self: HrWorkforceService) -> bool:
+            return False
+
+        with monkeypatch.context() as unavailable:
+            unavailable.setattr(
+                HrWorkforceService, "hr_leave_approver_configured", no_leave_approver
+            )
+            routed = await client.post(
+                f"{base}/leave/requests/{fallback_id}/fallback",
+                headers=hr,
+                json={
+                    "reason_code": "manager_temporarily_unavailable",
+                    "reason": "Supervisor unavailable during review window",
+                    "expected_revision": 1,
+                    "until": "2027-01-04",
+                },
+            )
+        assert routed.status_code == 200, routed.text
+        assert routed.json()["approval_route"] == "hr_fallback"
+        assert routed.json()["status"] == "submitted"
+        assert routed.json()["setup_error_code"] == "LEAVE_APPROVER_NOT_CONFIGURED"
+        hr_approved = await client.post(
+            f"{base}/leave/requests/{fallback_id}/decision",
+            headers=hr,
+            json={"decision": "approved", "expected_revision": 2},
+        )
+        assert hr_approved.status_code == 200, hr_approved.text
 
         sheet_body = {
             "period_start": "2027-01-11",
@@ -3045,6 +3066,7 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
                 "last_name": "Tester",
                 "work_email": staff_email,
                 "employment_status": "active",
+                "join_date": "2020-01-01",
             },
             headers=_auth(hrm_tok),
         )
@@ -3063,7 +3085,8 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
             headers=_auth(hrm_tok),
         )
         assert lt.status_code == 201
-        lt_id = lt.json()["id"]
+        assert lt.json()["is_active"] is False
+        lt_id = await _create_legacy_leave_type("Synthetic legacy annual leave")
         staff = _auth(staff_tok)
         quote_path = "/api/v1/hr/me/leave-units"
         period = {"leave_type_id": lt_id, "start_date": "2026-07-01", "end_date": "2026-07-05"}
@@ -5662,14 +5685,12 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
         }
 
         await _publish_leave_calendar(client, preparer, reviewer, "2025-01-01", "2025-01-31")
-        leave_type = await client.post(
-            f"{base}/leave/types", headers=preparer,
-            json={"code": f"INPUT-{uuid4().hex[:8]}", "name": "Synthetic unpaid", "is_paid": False},
-        )
-        assert leave_type.status_code == 201
+        # This payroll-input case exercises a preconfigured legacy unpaid type;
+        # newly created leave types now remain inactive until HR reviews policy.
+        leave_type_id = await _create_legacy_leave_type("Synthetic unpaid", is_paid=False)
         leave_request = await client.post(
             f"{base}/leave/requests", headers=preparer, json={
-                "employee_id": employee_id, "leave_type_id": leave_type.json()["id"],
+                "employee_id": employee_id, "leave_type_id": leave_type_id,
                 "start_date": "2025-01-07", "end_date": "2025-01-07", "submit_immediately": True,
             },
         )
@@ -8035,13 +8056,10 @@ async def test_payroll_leave_inputs_reconcile_ledger_and_deny_stale_download(mon
         await _publish_leave_calendar(
             client, hr, reviewer, "2039-01-01", "2039-02-28", "2039-01-31"
         )
-        paid, unpaid = [
-            await create(
-                "leave/types",
-                {"code": f"TEST-{uuid4().hex[:8]}", "name": "Private type", "is_paid": is_paid},
-            )
-            for is_paid in (True, False)
-        ]
+        paid = await _create_legacy_leave_type("Synthetic payroll paid leave")
+        unpaid = await _create_legacy_leave_type(
+            "Synthetic payroll unpaid leave", is_paid=False
+        )
         await create(
             "leave/ledger",
             {

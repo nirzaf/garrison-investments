@@ -1236,6 +1236,9 @@ class HrLeaveType(TimestampMixin, Base):
         Boolean, nullable=False, server_default=text("true")
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    policy_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -1293,10 +1296,29 @@ class HrLeavePolicy(TimestampMixin, Base):
         ForeignKey("users.id", name="fk_hr_leave_policy_creator", ondelete="SET NULL"),
     )
     rejection_reason: Mapped[str | None] = mapped_column(String(500))
+    entitlement_rules: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
 
 class HrLeaveRequest(HrManagerRecommendationMixin, TimestampMixin, Base):
     __tablename__ = "hr_leave_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "approval_route IS NULL OR "
+            "(approval_route = 'supervisor' AND assigned_supervisor_user_id IS NOT NULL "
+            "AND fallback_reason_code IS NULL AND fallback_reason IS NULL "
+            "AND fallback_recorded_by_id IS NULL AND fallback_recorded_at IS NULL "
+            "AND fallback_until IS NULL) OR "
+            "(approval_route = 'hr_fallback' AND fallback_reason_code IS NOT NULL "
+            "AND fallback_reason IS NOT NULL AND fallback_recorded_at IS NOT NULL)",
+            name="hr_leave_request_route_coherence",
+        ),
+        CheckConstraint(
+            "fallback_reason_code IS NULL OR fallback_reason_code IN "
+            "('manager_missing', 'manager_ineligible', 'manager_absent', "
+            "'manager_temporarily_unavailable')",
+            name="hr_leave_request_fallback_reason",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
@@ -1335,6 +1357,17 @@ class HrLeaveRequest(HrManagerRecommendationMixin, TimestampMixin, Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approval_route: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    assigned_supervisor_user_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    fallback_reason_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fallback_recorded_by_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    fallback_recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fallback_until: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class HrLeaveDateEvidence(Base):
@@ -1423,9 +1456,53 @@ class HrLeaveAccrual(TimestampMixin, Base):
     )
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     eligible_from: Mapped[date | None] = mapped_column(Date)
     eligible_through: Mapped[date | None] = mapped_column(Date)
     plan_digest: Mapped[str] = mapped_column(String(64))
+
+
+class HrLeaveEntitlementBaseline(TimestampMixin, Base):
+    __tablename__ = "hr_leave_entitlement_baselines"
+    __table_args__ = (
+        UniqueConstraint(
+            "employee_id", "leave_type_id", "leave_year",
+            name="uq_hr_leave_entitlement_baseline",
+        ),
+        UniqueConstraint("adjustment_ledger_id", name="uq_hr_leave_baseline_adjustment"),
+        CheckConstraint("leave_year BETWEEN 2020 AND 2100", name="hr_leave_baseline_year"),
+        CheckConstraint("verified_balance >= 0", name="hr_leave_baseline_balance"),
+        CheckConstraint(
+            "length(btrim(supporting_reference)) > 0", name="hr_leave_baseline_reference"
+        ),
+        CheckConstraint(
+            "jsonb_typeof(recognized_due_dates) = 'array'",
+            name="hr_leave_baseline_due_dates",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
+    )
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    leave_type_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_leave_types.id", ondelete="RESTRICT")
+    )
+    leave_year: Mapped[int] = mapped_column(Integer)
+    policy_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_leave_policies.id", ondelete="RESTRICT")
+    )
+    as_of_date: Mapped[date] = mapped_column(Date)
+    verified_balance: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    recognized_due_dates: Mapped[list[str]] = mapped_column(JSONB)
+    supporting_reference: Mapped[str] = mapped_column(String(200))
+    reviewed_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ledger_digest: Mapped[str] = mapped_column(String(64))
+    plan_digest: Mapped[str] = mapped_column(String(64))
+    adjustment_ledger_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_leave_ledger.id", ondelete="RESTRICT"), nullable=True
+    )
 
 
 class HrLeaveRollover(TimestampMixin, Base):

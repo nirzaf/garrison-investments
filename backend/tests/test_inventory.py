@@ -586,7 +586,7 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
                 stale_return_notice
             )
         assert await _send_email_notification(str(returned_notice_id)) == (
-            "notification email skipped"
+            "notification email already sent"
         )
         assert len(delivered) == 1
         evidence = await client.get(

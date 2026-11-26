@@ -1855,6 +1855,10 @@ def test_scheduled_expiry_requires_separate_bound_authorization(
     verifier = bundle.validator("predeploy")
     verifier.target = "production"
     verifier.configuration = CONFIG
+    # The module may be collected long before this case runs in the full suite.
+    # Evaluate this deliberately short authorization window against its fixture time.
+    verifier.now = NOW
+    verifier.approvals.now = NOW
     verifier.decisions = {
         "D-28-POLICY": {"policy_ref": {"sha256": policy_hash}, "mode": "scheduled_expiry"},
         "D-33-BUSINESS": {"release_authorizer": "Fixture Release Authorizer"},
