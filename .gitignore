@@ -27,6 +27,8 @@ pnpm-debug.log*
 # Local runtime data
 storage/
 celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
 backend/.pytest_cache/
 frontend/.vite/
 /frontend/test-results/
