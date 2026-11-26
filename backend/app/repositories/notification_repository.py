@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import Notification
@@ -35,7 +35,9 @@ class NotificationRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_for_user(self, user_id: UUID) -> tuple[list[Notification], int]:
+    async def list_for_user(
+        self, user_id: UUID, *, limit: int = 100, offset: int = 0
+    ) -> tuple[list[Notification], int]:
         query = select(Notification).where(
             Notification.user_id == user_id,
             Notification.deleted_at.is_(None),
@@ -44,7 +46,9 @@ class NotificationRepository:
             select(func.count()).select_from(query.with_only_columns(Notification.id).subquery())
         )
         result = await self.session.execute(
-            query.order_by(Notification.created_at.desc()).limit(100)
+            query.order_by(Notification.created_at.desc(), Notification.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
         return list(result.scalars().all()), int(total or 0)
 
@@ -57,21 +61,30 @@ class NotificationRepository:
                 Notification.is_read.is_(False),
                 Notification.muted.is_(False),
                 Notification.deleted_at.is_(None),
-                ~(
-                    (Notification.reference_type == "hr_leave_request")
-                    & Notification.event_code.in_(("submitted", "resubmitted", "rerouted"))
-                    & Notification.superseded_at.is_not(None)
+                or_(
+                    Notification.reference_type.is_(None),
+                    Notification.reference_type != "hr_leave_request",
+                    Notification.event_code.is_(None),
+                    Notification.event_code.not_in(("submitted", "resubmitted", "rerouted")),
+                    Notification.superseded_at.is_(None),
                 ),
             )
         )
         return int(total or 0)
 
     async def mark_all_read(self, user_id: UUID, read_at: datetime) -> int:
-        notifications, _ = await self.list_for_user(user_id)
-        changed = 0
-        for notification in notifications:
-            if not notification.is_read:
-                notification.is_read = True
-                notification.read_at = read_at
-                changed += 1
-        return changed
+        result = await self.session.execute(
+            update(Notification)
+            .where(
+                Notification.user_id == user_id,
+                Notification.is_read.is_(False),
+                Notification.deleted_at.is_(None),
+            )
+            .values(
+                is_read=True,
+                read_at=func.coalesce(Notification.read_at, read_at),
+            )
+            .returning(Notification.id)
+            .execution_options(synchronize_session=False)
+        )
+        return len(result.scalars().all())

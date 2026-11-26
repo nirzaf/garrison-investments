@@ -1,4 +1,5 @@
 import asyncio
+from datetime import timedelta
 from uuid import UUID
 
 import structlog
@@ -8,7 +9,7 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.hr import HrEmployee, HrLeaveRequest
 from app.models.notification import Notification
-from app.repositories.notification_repository import NotificationRepository
+from app.models.task_outbox import TaskOutbox, notification_email_outbox_dedupe_key
 from app.repositories.report_export_repository import ReportExportRepository
 from app.repositories.user_repository import UserRepository
 from app.services.email_service import EmailDeliveryError, EmailService
@@ -23,10 +24,6 @@ logger = structlog.get_logger("celery.task")
 @celery_app.task(
     name="send_email_notification",
     queue="email",
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_jitter=True,
-    max_retries=3,
 )
 def send_email_notification(notification_id: str | None = None) -> str:
     if notification_id is None:
@@ -37,68 +34,155 @@ def send_email_notification(notification_id: str | None = None) -> str:
 
 
 async def _send_email_notification(notification_id: str) -> str:
-    # ApprovalService creates notifications through the service that queues this task.
     from app.services.approval_service import ApprovalService
 
+    parsed_id = UUID(notification_id)
+    title: str | None = None
+    body: str | None = None
+    recipient: str | None = None
     async with AsyncSessionLocal() as session:
-        notifications = NotificationRepository(session)
         users = UserRepository(session)
-
-        notification = await notifications.get_by_id(UUID(notification_id))
+        outbox = await session.scalar(
+            select(TaskOutbox)
+            .where(TaskOutbox.dedupe_key == notification_email_outbox_dedupe_key(parsed_id))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        notification = await session.scalar(
+            select(Notification)
+            .where(Notification.id == parsed_id, Notification.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if not notification:
             logger.warning("email_notification_not_found", notification_id=notification_id)
+            if outbox is not None:
+                outbox.status = "failed"
+                outbox.lease_until = None
+                await session.commit()
             return "notification not found"
-        if notification.reference_type == "hr_leave_request":
-            notification = await session.scalar(
-                select(Notification)
-                .where(Notification.id == notification.id, Notification.deleted_at.is_(None))
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
-            if notification is None:
-                return "notification not found"
-        if notification.email_status == "sent":
-            return "notification email already sent"
-        if notification.muted:
-            notification.email_status = "skipped"
+        if outbox is not None and outbox.status in {"completed", "failed", "manual_review"}:
+            return "notification email is not eligible for delivery"
+        if outbox is not None and outbox.status == "processing" and outbox.lease_until is not None:
+            if outbox.lease_until > utc_now():
+                return "notification email is already claimed"
+            outbox.status = "manual_review"
+            outbox.lease_until = None
+            notification.email_status = "unknown"
             await session.commit()
-            logger.info("email_muted", notification_id=notification_id)
+            return "notification email delivery outcome requires review"
+        if outbox is not None and outbox.status not in {"dispatching", "dispatched"}:
+            return "notification email is not ready for delivery"
+        if notification.email_status == "sent":
+            if outbox is not None:
+                outbox.status = "completed"
+                outbox.lease_until = None
+                await session.commit()
+            return "notification email already sent"
+        if notification.email_status in {"skipped", "unknown", "sending"}:
+            return "notification email is not eligible for delivery"
+        if notification.muted or notification.superseded_at is not None:
+            notification.email_status = "skipped"
+            if outbox is not None:
+                outbox.status = "completed"
+                outbox.lease_until = None
+            await session.commit()
+            logger.info("email_not_actionable", notification_id=notification_id)
             return "notification email skipped"
         user = await users.get_by_id(notification.user_id)
-        if user is None:
+        if user is None or not user.is_active or user.deleted_at is not None:
             notification.email_status = "failed"
+            if outbox is not None:
+                outbox.status = "failed"
+                outbox.lease_until = None
             await session.commit()
-            logger.error("email_recipient_not_found", user_id=str(notification.user_id))
+            logger.error("email_recipient_not_eligible", notification_id=notification_id)
             return "notification recipient not found"
         if notification.reference_type == "hr_leave_request":
             if not await _can_deliver_leave_notification(session, notification, user):
                 notification.email_status = "skipped"
+                if outbox is not None:
+                    outbox.status = "completed"
+                    outbox.lease_until = None
                 await session.commit()
                 logger.info("leave_email_no_longer_actionable", notification_id=notification_id)
                 return "notification email skipped"
         elif not await ApprovalService(session).can_deliver_scheduled_email(notification):
             if notification.email_status != "sent":
                 notification.email_status = "skipped"
+            if outbox is not None:
+                outbox.status = "completed"
+                outbox.lease_until = None
             await session.commit()
             logger.info("approval_email_no_longer_actionable", notification_id=notification_id)
             return "notification email skipped"
-
-        try:
-            delivered = await asyncio.to_thread(
-                EmailService().send,
-                recipients=[user.email],
-                subject=notification.title,
-                body=notification.body,
-            )
-            if delivered <= 0:
-                raise EmailDeliveryError("No notification recipient accepted the email.")
-        except Exception:
-            notification.email_status = "failed"
-            await session.commit()
-            raise
-        notification.email_status = "sent"
+        notification.email_status = "sending"
+        title = notification.title
+        body = notification.body
+        recipient = user.email
+        if outbox is not None:
+            outbox.status = "processing"
+            outbox.lease_until = utc_now() + timedelta(minutes=5)
         await session.commit()
-    logger.info("email_sent", notification_id=notification_id, recipient=user.email)
+
+    if title is None or body is None or recipient is None:
+        return "notification email not eligible for delivery"
+    try:
+        delivered = await asyncio.to_thread(
+            EmailService().send,
+            recipients=[recipient],
+            subject=title,
+            body=body,
+        )
+        if delivered <= 0:
+            raise EmailDeliveryError("No notification recipient accepted the email.")
+    except Exception as exc:
+        async with AsyncSessionLocal() as session:
+            outbox = await session.scalar(
+                select(TaskOutbox)
+                .where(TaskOutbox.dedupe_key == notification_email_outbox_dedupe_key(parsed_id))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            notification = await session.scalar(
+                select(Notification)
+                .where(Notification.id == parsed_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if notification is not None and notification.email_status == "sending":
+                notification.email_status = "unknown"
+            if outbox is not None and outbox.status == "processing":
+                outbox.status = "manual_review"
+                outbox.lease_until = None
+            await session.commit()
+        logger.warning(
+            "email_delivery_outcome_unknown",
+            notification_id=notification_id,
+            error_type=type(exc).__name__,
+        )
+        return "notification email delivery outcome requires review"
+
+    async with AsyncSessionLocal() as session:
+        outbox = await session.scalar(
+            select(TaskOutbox)
+            .where(TaskOutbox.dedupe_key == notification_email_outbox_dedupe_key(parsed_id))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        notification = await session.scalar(
+            select(Notification)
+            .where(Notification.id == parsed_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if notification is not None and notification.email_status == "sending":
+            notification.email_status = "sent"
+        if outbox is not None and outbox.status == "processing":
+            outbox.status = "completed"
+            outbox.lease_until = None
+        await session.commit()
+    logger.info("email_sent", notification_id=notification_id)
     return f"notification email sent to {delivered} recipient"
 
 

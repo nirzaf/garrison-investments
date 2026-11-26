@@ -12950,7 +12950,7 @@ export interface components {
         /** LeaveRequestDecisionState */
         LeaveRequestDecisionState: {
             /** Allowed Actions */
-            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route")[];
+            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route" | "restore_supervisor")[];
             /** Decided By Id */
             decided_by_id: string | null;
             /**
@@ -12977,7 +12977,7 @@ export interface components {
         /** LeaveRequestResponse */
         LeaveRequestResponse: {
             /** Allowed Actions */
-            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route")[];
+            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route" | "restore_supervisor")[];
             /** Approval Route */
             approval_route?: ("supervisor" | "hr_fallback") | null;
             /** Assigned Supervisor User Id */
@@ -12995,6 +12995,8 @@ export interface components {
             decided_at: string | null;
             /** Decided By Id */
             decided_by_id: string | null;
+            /** Decided By Name */
+            decided_by_name?: string | null;
             /** Decision Notes */
             decision_notes: string | null;
             /**
@@ -18199,7 +18201,7 @@ export interface components {
         /** SupervisorLeaveReviewItem */
         SupervisorLeaveReviewItem: {
             /** Allowed Actions */
-            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route")[];
+            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route" | "restore_supervisor")[];
             /** Chargeable Units */
             chargeable_units: string;
             /** Employee Name */
@@ -19963,6 +19965,8 @@ export interface components {
             outbox_dispatched: number | null;
             /** Outbox Failed */
             outbox_failed: number | null;
+            /** Outbox Manual Review */
+            outbox_manual_review: number | null;
             /** Outbox Oldest Age Seconds */
             outbox_oldest_age_seconds: number | null;
             /** Outbox Pending */
@@ -34103,7 +34107,10 @@ export interface operations {
     };
     list_notifications_api_v1_notifications_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

@@ -9,7 +9,10 @@ from sqlalchemy import select
 from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
-from app.models.inventory import InventoryMovement
+from app.models.activity_log import ActivityLog
+from app.models.daily_report import DailyReportApprovalHistory
+from app.models.inventory import InventoryLocationStock, InventoryMovement
+from app.models.notification import Notification
 from app.models.report_export import ReportExport
 from app.models.task_outbox import TaskOutbox
 from app.models.user import User
@@ -57,6 +60,24 @@ async def create_user(role: str, password: str = "Start123!") -> tuple[str, str]
 def create_test_client() -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=create_app())
     return httpx.AsyncClient(transport=transport, base_url="http://testserver")
+
+
+def prevent_email_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.tasks.outbox.celery_app.send_task", lambda *_args, **_kwargs: None)
+
+
+async def report_notification_ids(report_id: UUID) -> set[UUID]:
+    async with AsyncSessionLocal() as session:
+        return set(
+            (
+                await session.scalars(
+                    select(Notification.id).where(
+                        Notification.reference_type == "daily_report",
+                        Notification.reference_id == report_id,
+                    )
+                )
+            ).all()
+        )
 
 
 async def login_for_token(client: httpx.AsyncClient, email: str, password: str) -> str:
@@ -182,11 +203,11 @@ async def setup_project_team(
         supervisor_headers = {"Authorization": f"Bearer {supervisor_token}"}
         uploaded = await client.post(
             "/api/v1/photos/upload",
-                data={
-                    "entity_type": "supervisor_update",
-                    "entity_id": supervisor_update["id"],
-                    "classification": "operational",
-                },
+            data={
+                "entity_type": "supervisor_update",
+                "entity_id": supervisor_update["id"],
+                "classification": "operational",
+            },
             files={"files": ("progress.jpg", jpeg_bytes(), "image/jpeg")},
             headers=supervisor_headers,
         )
@@ -244,8 +265,20 @@ def report_payload(project_id: str, supervisor_update_id: str | None = None) -> 
     }
 
 
+def report_payload_without_materials(
+    project_id: str, supervisor_update_id: str | None = None
+) -> dict:
+    payload = report_payload(project_id, supervisor_update_id)
+    payload["material_consumption"] = []
+    return payload
+
+
 async def setup_report_consumption_stock(
-    client: httpx.AsyncClient, project_id: str, inventory_manager_token: str
+    client: httpx.AsyncClient,
+    project_id: str,
+    inventory_manager_token: str,
+    *,
+    project_scoped: bool = True,
 ) -> dict:
     suffix = uuid4().hex[:6]
     supplier = (
@@ -274,18 +307,19 @@ async def setup_report_consumption_stock(
             json={
                 "name": f"Project Store {suffix}",
                 "code": f"PS-{suffix}",
-                "location_type": "project_site",
-                "project_id": project_id,
+                "location_type": "project_site" if project_scoped else "warehouse",
+                "project_id": project_id if project_scoped else None,
                 "address": "Site",
             },
             headers={"Authorization": f"Bearer {inventory_manager_token}"},
         )
     ).json()
+    item_name = f"Concrete {suffix}"
     item = (
         await client.post(
             "/api/v1/inventory/items",
             json={
-                "name": "Concrete",
+                "name": item_name,
                 "item_code": f"CON-{suffix}",
                 "category": "Civil",
                 "item_type": "consumable",
@@ -312,6 +346,8 @@ async def setup_report_consumption_stock(
     )
     return {
         "inventory_manager_token": inventory_manager_token,
+        "supplier_id": supplier["id"],
+        "item_name": item_name,
         "item_id": item["id"],
         "location_id": location["id"],
     }
@@ -485,7 +521,9 @@ async def test_project_manager_can_approve_report_and_lock_edits() -> None:
         report = (
             await client.post(
                 "/api/v1/reports",
-                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                json=report_payload_without_materials(
+                    setup["project_id"], setup["supervisor_update_id"]
+                ),
                 headers={"Authorization": f"Bearer {setup['engineer_token']}"},
             )
         ).json()
@@ -550,8 +588,11 @@ async def test_approval_requires_target_covered_confirmation() -> None:
         assert response.json()["error_code"] == "DAILY_REPORT_TARGET_CONFIRMATION_REQUIRED"
 
 
-async def test_report_approval_consumes_matching_inventory_stock() -> None:
+async def test_report_approval_consumes_matching_inventory_stock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     await skip_if_database_unavailable()
+    prevent_email_enqueue(monkeypatch)
 
     async with create_test_client() as client:
         setup = await setup_project_team(client)
@@ -568,13 +609,17 @@ async def test_report_approval_consumes_matching_inventory_stock() -> None:
             headers={"Authorization": f"Bearer {setup['manager_token']}"},
         )
         assert direct_movement.status_code == 403
+        payload = report_payload(setup["project_id"], setup["supervisor_update_id"])
+        payload["material_consumption"][0]["material_name"] = stock["item_name"]
+        payload["material_consumption"][0]["unit"] = "m2"
         report = (
             await client.post(
                 "/api/v1/reports",
-                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                json=payload,
                 headers={"Authorization": f"Bearer {setup['engineer_token']}"},
             )
         ).json()
+        assert report["material_consumption"][0]["material_name"] == stock["item_name"]
         submitted = (
             await client.post(
                 f"/api/v1/reports/{report['id']}/submit",
@@ -599,6 +644,158 @@ async def test_report_approval_consumes_matching_inventory_stock() -> None:
         )
         assert movement is not None
         assert str(movement.quantity) == "12.000"
+
+
+async def test_report_approval_rejects_central_stock_and_rolls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    prevent_email_enqueue(monkeypatch)
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        stock = await setup_report_consumption_stock(
+            client, setup["project_id"], setup["op_token"], project_scoped=False
+        )
+        payload = report_payload(setup["project_id"], setup["supervisor_update_id"])
+        payload["material_consumption"][0]["material_name"] = stock["item_name"]
+        payload["material_consumption"][0]["unit"] = "m2"
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=payload,
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        assert report["material_consumption"][0]["material_name"] == stock["item_name"]
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        prior_notification_ids = await report_notification_ids(UUID(report["id"]))
+
+        response = await client.post(
+            f"/api/v1/reports/{submitted['id']}/approve",
+            json={"comments": "Target covered.", "target_covered": True},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "DAILY_REPORT_MATERIAL_CONSUMPTION_FAILED"
+        assert response.json()["errors"] == [
+            {"field": "material_consumption[0]", "message": "project_stock_missing"}
+        ]
+
+    async with AsyncSessionLocal() as session:
+        report_id = UUID(report["id"])
+        stock_row = await session.scalar(
+            select(InventoryLocationStock).where(
+                InventoryLocationStock.item_id == UUID(stock["item_id"]),
+                InventoryLocationStock.location_id == UUID(stock["location_id"]),
+            )
+        )
+        assert stock_row is not None and str(stock_row.on_hand_qty) == "20.000"
+        assert not (
+            await session.scalars(
+                select(InventoryMovement.id).where(
+                    InventoryMovement.reference_id == report_id,
+                    InventoryMovement.movement_type == "consume",
+                )
+            )
+        ).all()
+        assert not (
+            await session.scalars(
+                select(DailyReportApprovalHistory.id).where(
+                    DailyReportApprovalHistory.report_id == report_id,
+                    DailyReportApprovalHistory.decision == "approved",
+                )
+            )
+        ).all()
+        assert await report_notification_ids(report_id) == prior_notification_ids
+        assert not (
+            await session.scalars(
+                select(ActivityLog.id).where(
+                    ActivityLog.action == "daily_reports.approved",
+                    ActivityLog.entity_id == report_id,
+                )
+            )
+        ).all()
+        assert not (
+            await session.scalars(
+                select(TaskOutbox.id).where(TaskOutbox.dedupe_key == f"report-pdf:{report_id}")
+            )
+        ).all()
+
+
+async def test_report_approval_rejects_repeated_material_quantity_that_exceeds_stock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    prevent_email_enqueue(monkeypatch)
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        stock = await setup_report_consumption_stock(client, setup["project_id"], setup["op_token"])
+        payload = report_payload(setup["project_id"], setup["supervisor_update_id"])
+        payload["material_consumption"] = [
+            {"material_name": stock["item_name"], "unit": "m2", "quantity": "12"},
+            {"material_name": stock["item_name"], "unit": "m2", "quantity": "12"},
+        ]
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=payload,
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        prior_notification_ids = await report_notification_ids(UUID(report["id"]))
+
+        response = await client.post(
+            f"/api/v1/reports/{submitted['id']}/approve",
+            json={"comments": "Target covered.", "target_covered": True},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error_code"] == "DAILY_REPORT_MATERIAL_CONSUMPTION_FAILED"
+        assert response.json()["errors"] == [
+            {"field": "material_consumption[1]", "message": "insufficient_project_stock"}
+        ]
+
+    async with AsyncSessionLocal() as session:
+        report_id = UUID(report["id"])
+        stock_row = await session.scalar(
+            select(InventoryLocationStock).where(
+                InventoryLocationStock.item_id == UUID(stock["item_id"]),
+                InventoryLocationStock.location_id == UUID(stock["location_id"]),
+            )
+        )
+        assert stock_row is not None and str(stock_row.on_hand_qty) == "20.000"
+        assert not (
+            await session.scalars(
+                select(InventoryMovement.id).where(
+                    InventoryMovement.reference_id == report_id,
+                    InventoryMovement.movement_type == "consume",
+                )
+            )
+        ).all()
+        assert not (
+            await session.scalars(
+                select(DailyReportApprovalHistory.id).where(
+                    DailyReportApprovalHistory.report_id == report_id,
+                    DailyReportApprovalHistory.decision == "approved",
+                )
+            )
+        ).all()
+        assert await report_notification_ids(report_id) == prior_notification_ids
 
 
 async def test_director_cannot_override_submitted_report() -> None:
@@ -649,7 +846,9 @@ async def test_approved_report_can_be_downloaded_as_pdf(monkeypatch: pytest.Monk
         report = (
             await client.post(
                 "/api/v1/reports",
-                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                json=report_payload_without_materials(
+                    setup["project_id"], setup["supervisor_update_id"]
+                ),
                 headers={"Authorization": f"Bearer {setup['engineer_token']}"},
             )
         ).json()
@@ -693,7 +892,9 @@ async def test_report_outbox_retries_dispatch_and_reuses_the_export(monkeypatch)
         setup = await setup_project_team(client)
         created = await client.post(
             "/api/v1/reports",
-            json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+            json=report_payload_without_materials(
+                setup["project_id"], setup["supervisor_update_id"]
+            ),
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},
         )
         assert created.status_code == 201
@@ -752,7 +953,9 @@ async def test_report_email_updates_export_status_when_delivery_succeeds(monkeyp
         report = (
             await client.post(
                 "/api/v1/reports",
-                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                json=report_payload_without_materials(
+                    setup["project_id"], setup["supervisor_update_id"]
+                ),
                 headers={"Authorization": f"Bearer {setup['engineer_token']}"},
             )
         ).json()
@@ -902,7 +1105,9 @@ async def test_outbox_recovers_stale_dispatch_caps_retries_and_completes_idempot
         setup = await setup_project_team(client)
         created = await client.post(
             "/api/v1/reports",
-            json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+            json=report_payload_without_materials(
+                setup["project_id"], setup["supervisor_update_id"]
+            ),
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},
         )
         assert created.status_code == 201

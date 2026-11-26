@@ -1,52 +1,16 @@
-import asyncio
 from uuid import UUID
 
-from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session as SyncSession
 
-from app.database import AsyncSessionLocal
 from app.models.notification import Notification
+from app.models.task_outbox import TaskOutbox, notification_email_outbox_dedupe_key
 from app.models.user import User
 from app.repositories.notification_repository import NotificationRepository
-from app.tasks.email import send_email_notification
+
+# Kept as a module attribute for existing test/operator patch points; dispatch is persisted below.
+from app.tasks.email import send_email_notification  # noqa: F401
 from app.utils.exceptions import NotFoundException
 from app.utils.security import utc_now
-
-PENDING_EMAIL_NOTIFICATION_IDS = "pending_email_notification_ids"
-
-
-async def _mark_email_enqueue_failed(notification_id: UUID) -> None:
-    async with AsyncSessionLocal() as session:
-        notification = await session.get(Notification, notification_id)
-        if not notification:
-            return
-        notification.email_status = "failed"
-        await session.commit()
-
-
-def _schedule_email_enqueue_failure_update(notification_id: UUID) -> None:
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        asyncio.run(_mark_email_enqueue_failed(notification_id))
-        return
-    loop.create_task(_mark_email_enqueue_failed(notification_id))
-
-
-@event.listens_for(SyncSession, "after_commit")
-def _enqueue_pending_notification_emails(session: SyncSession) -> None:
-    notification_ids = session.info.pop(PENDING_EMAIL_NOTIFICATION_IDS, set())
-    for notification_id in notification_ids:
-        try:
-            send_email_notification.delay(str(notification_id))
-        except Exception:
-            _schedule_email_enqueue_failure_update(notification_id)
-
-
-@event.listens_for(SyncSession, "after_rollback")
-def _discard_pending_notification_emails(session: SyncSession) -> None:
-    session.info.pop(PENDING_EMAIL_NOTIFICATION_IDS, None)
 
 
 class NotificationService:
@@ -81,13 +45,20 @@ class NotificationService:
             )
         )
         if send_email:
-            pending_ids = self.session.info.setdefault(PENDING_EMAIL_NOTIFICATION_IDS, set())
-            pending_ids.add(notification.id)
-            self.session.sync_session.info[PENDING_EMAIL_NOTIFICATION_IDS] = pending_ids
+            self.session.add(
+                TaskOutbox(
+                    dedupe_key=notification_email_outbox_dedupe_key(notification.id),
+                    task_name="send_email_notification",
+                    args_json=[str(notification.id)],
+                    kwargs_json={},
+                )
+            )
         return notification
 
-    async def list_for_user(self, user: User) -> tuple[list[Notification], int]:
-        return await self.notifications.list_for_user(user.id)
+    async def list_for_user(
+        self, user: User, *, limit: int = 100, offset: int = 0
+    ) -> tuple[list[Notification], int]:
+        return await self.notifications.list_for_user(user.id, limit=limit, offset=offset)
 
     async def unread_count(self, user: User) -> int:
         return await self.notifications.unread_count(user.id)

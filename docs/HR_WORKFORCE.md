@@ -311,13 +311,22 @@ roster and evidence.
   Existing submitted requests and ledger entries retain their recorded units.
   Leave request updates are delivered through the portal and email where the
   recipient has an eligible active account and email delivery is configured.
-  Notification delivery does not change the request decision.
+  Notification delivery does not change the request decision. New email-enabled
+  notifications and their `task_outbox` dispatch rows commit together. Celery
+  beat submits queued work every minute; a broker acceptance is not a delivery
+  receipt. The notification becomes `sent` only after provider acceptance.
+  Ambiguous transport outcomes are marked for manual reconciliation and are not
+  automatically resent; old notification records are not backfilled.
   Final approve, reject and approved-leave reversal actions require the revision
   displayed with the request. A stale decision must be reloaded and reviewed;
   it is never retried against a freshly fetched revision automatically. Route
   changes are explicit and audited. A leave action alert for an earlier route or
   revision stays in notification history with a neutral no-longer-actionable
   state and is excluded from the actionable unread count.
+  A valid temporary HR fallback can be restored to the current supervisor only
+  through the advertised, revision-bound action with a recorded reason. The
+  server rechecks the route and excludes the employee and request submitter from
+  reviewer actions.
 
   **Company leave rules and activation.** The managed annual profile implements
   zero annual entitlement in the first calendar year of service, a second-year
@@ -350,6 +359,13 @@ roster and evidence.
   supervisor is missing, ineligible, on approved leave, or temporarily
   unavailable. Routing changes are revision-checked and audited. No business
   role or permission grant is added by this workflow.
+
+  **Employee data quality review.** HR Managers with sensitive employee access
+  can use **Directory & Org → Employee data quality review** to page through
+  missing or future birth dates and unresolved employment start evidence. The
+  page links to the existing employee record workflow; it does not guess dates,
+  bulk-correct records, or expose birth dates. Corrections remain subject to the
+  existing employee revision and review rules.
 
   **Celebrations.** The dashboard lists birthdays occurring from today through
   the next six days, showing employee name and month/day only. It lists work

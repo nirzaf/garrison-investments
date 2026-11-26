@@ -651,7 +651,16 @@ class ReportService:
     async def _consume_report_materials(self, report: DailyReport, actor: User) -> None:
         from app.services.inventory_service import InventoryService
 
-        await InventoryService(self.session).consume_daily_report_materials(report, actor)
+        expected = len(report.material_consumption)
+        consumed = await InventoryService(self.session).consume_daily_report_materials(
+            report, actor
+        )
+        if consumed != expected:
+            raise AppException(
+                "Daily report material consumption did not match its submitted lines.",
+                status_code=409,
+                error_code="DAILY_REPORT_MATERIAL_CONSUMPTION_FAILED",
+            )
 
     def _ensure_engineer(self, actor: User) -> None:
         if actor.role not in OFFICIAL_REPORT_AUTHOR_ROLES or not has_permission(

@@ -177,6 +177,63 @@ async def _policy_for_period(
     return chosen
 
 
+async def require_managed_leave_credit_reconciliation(
+    session: AsyncSession,
+    *,
+    employee_id: UUID,
+    leave_type_id: UUID,
+    leave_year: int,
+    policy_id: UUID,
+) -> HrLeaveEntitlementBaseline | None:
+    """Reject unreviewed positive credits before a managed entitlement is used.
+
+    Accrual posting and leave approval both hold the payroll advisory lock before
+    calling this predicate, so a baseline cannot race a managed credit or debit.
+    """
+    baseline = await session.scalar(
+        select(HrLeaveEntitlementBaseline).where(
+            HrLeaveEntitlementBaseline.employee_id == employee_id,
+            HrLeaveEntitlementBaseline.leave_type_id == leave_type_id,
+            HrLeaveEntitlementBaseline.leave_year == leave_year,
+        )
+    )
+    if baseline is not None:
+        return baseline
+
+    manual_credit = await session.scalar(
+        select(HrLeaveLedger.id)
+        .outerjoin(HrLeaveAccrual, HrLeaveAccrual.ledger_id == HrLeaveLedger.id)
+        .where(
+            HrLeaveLedger.employee_id == employee_id,
+            HrLeaveLedger.leave_type_id == leave_type_id,
+            HrLeaveLedger.leave_year == leave_year,
+            HrLeaveLedger.days_delta > 0,
+            HrLeaveLedger.entry_type.in_(
+                (
+                    "opening_balance",
+                    "accrual",
+                    "adjustment",
+                    "carry_forward",
+                    "carry_forward_in",
+                )
+            ),
+            or_(
+                HrLeaveAccrual.id.is_(None),
+                HrLeaveAccrual.due_date.is_(None),
+                HrLeaveAccrual.policy_id != policy_id,
+            ),
+        )
+        .limit(1)
+    )
+    if manual_credit is not None:
+        raise AppException(
+            "Reconcile the existing managed leave balance before using this entitlement.",
+            status_code=409,
+            error_code="LEAVE_ENTITLEMENT_BASELINE_REQUIRED",
+        )
+    return None
+
+
 def _add_service_month(start: date, month_offset: int) -> date:
     month_index = start.year * 12 + start.month - 1 + month_offset
     year, zero_month = divmod(month_index, 12)
@@ -450,45 +507,13 @@ async def _plan_leave_accrual(
         category = await _eligible_category(session, employee, eligible_from, eligible_through)
     policy = await _policy_for_period(session, payload.leave_type_id, category, start, end)
     if policy.entitlement_rules is not None:
-        baseline = await session.scalar(
-            select(HrLeaveEntitlementBaseline).where(
-                HrLeaveEntitlementBaseline.employee_id == employee.id,
-                HrLeaveEntitlementBaseline.leave_type_id == payload.leave_type_id,
-                HrLeaveEntitlementBaseline.leave_year == start.year,
-            )
+        baseline = await require_managed_leave_credit_reconciliation(
+            session,
+            employee_id=employee.id,
+            leave_type_id=payload.leave_type_id,
+            leave_year=start.year,
+            policy_id=policy.id,
         )
-        if baseline is None:
-            manual_credit = await session.scalar(
-                select(HrLeaveLedger.id)
-                .outerjoin(HrLeaveAccrual, HrLeaveAccrual.ledger_id == HrLeaveLedger.id)
-                .where(
-                    HrLeaveLedger.employee_id == employee.id,
-                    HrLeaveLedger.leave_type_id == payload.leave_type_id,
-                    HrLeaveLedger.leave_year == start.year,
-                    HrLeaveLedger.days_delta > 0,
-                    HrLeaveLedger.entry_type.in_(
-                        (
-                            "opening_balance",
-                            "accrual",
-                            "adjustment",
-                            "carry_forward",
-                            "carry_forward_in",
-                        )
-                    ),
-                    or_(
-                        HrLeaveAccrual.id.is_(None),
-                        HrLeaveAccrual.due_date.is_(None),
-                        HrLeaveAccrual.policy_id != policy.id,
-                    ),
-                )
-                .limit(1)
-            )
-            if manual_credit is not None:
-                raise AppException(
-                    "Reconcile the existing managed leave balance before posting another credit.",
-                    status_code=409,
-                    error_code="LEAVE_ENTITLEMENT_BASELINE_REQUIRED",
-                )
         quote, digest = await _plan_managed_leave_accrual(
             session, payload, employee, policy, actor, start, end
         )

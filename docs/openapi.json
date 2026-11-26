@@ -16467,7 +16467,8 @@
                 "reject",
                 "cancel",
                 "route_to_hr_fallback",
-                "refresh_route"
+                "refresh_route",
+                "restore_supervisor"
               ],
               "type": "string"
             },
@@ -16570,7 +16571,8 @@
                 "reject",
                 "cancel",
                 "route_to_hr_fallback",
-                "refresh_route"
+                "refresh_route",
+                "restore_supervisor"
               ],
               "type": "string"
             },
@@ -16648,6 +16650,17 @@
               }
             ],
             "title": "Decided By Id"
+          },
+          "decided_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Name"
           },
           "decision_notes": {
             "anyOf": [
@@ -31238,7 +31251,8 @@
                 "reject",
                 "cancel",
                 "route_to_hr_fallback",
-                "refresh_route"
+                "refresh_route",
+                "restore_supervisor"
               ],
               "type": "string"
             },
@@ -35817,6 +35831,17 @@
             ],
             "title": "Outbox Failed"
           },
+          "outbox_manual_review": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outbox Manual Review"
+          },
           "outbox_oldest_age_seconds": {
             "anyOf": [
               {
@@ -35951,6 +35976,7 @@
           "outbox_dispatched",
           "outbox_stale_dispatched",
           "outbox_failed",
+          "outbox_manual_review",
           "outbox_oldest_age_seconds",
           "recovery_pending",
           "recovery_dispatching",
@@ -65249,6 +65275,31 @@
     "/api/v1/notifications": {
       "get": {
         "operationId": "list_notifications_api_v1_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

@@ -22,6 +22,7 @@ from app.models.auth import AuthOtpChallenge, AuthRefreshToken, AuthSession
 from app.models.business_log_stream import BusinessLogStream
 from app.models.hr import HrEmployee
 from app.models.import_batch import ImportBatch
+from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.support_admin_commands import (
@@ -68,7 +69,12 @@ from app.services.support_identity import (
     _digest,
     support_session_deadline,
 )
-from app.tasks.outbox import MAX_OUTBOX_ATTEMPTS, _build_dispatch_spec
+from app.tasks.outbox import (
+    MAX_NOTIFICATION_EMAIL_ATTEMPTS,
+    MAX_OUTBOX_ATTEMPTS,
+    _build_dispatch_spec,
+    _parse_notification_email_payload,
+)
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     BUSINESS_ROLE_LABELS,
@@ -966,7 +972,11 @@ class SupportAdminCommands:
             entry = await self.session.get(TaskOutbox, job_id, with_for_update=True)
             if entry is None:
                 raise NotFoundException("Outbox job")
-            if entry.task_name not in {"generate_report_pdf", "run_import_async"}:
+            if entry.task_name not in {
+                "generate_report_pdf",
+                "run_import_async",
+                "send_email_notification",
+            }:
                 raise _denied("This task type is not eligible for technical retry.")
             if entry.status != "failed":
                 raise _stale("Only terminal failed outbox jobs can be retried.")
@@ -989,6 +999,17 @@ class SupportAdminCommands:
                 batch = await self.session.get(ImportBatch, batch_id)
                 if batch is not None and batch.status == "completed":
                     raise _stale("The import batch has already completed.")
+            if entry.task_name == "send_email_notification":
+                notification_id = _parse_notification_email_payload(entry)
+                notification = (
+                    await self.session.get(Notification, notification_id)
+                    if notification_id is not None
+                    else None
+                )
+                if notification is None or notification.email_status != "failed":
+                    raise _stale("Only definitively failed notification dispatches can be retried.")
+                if notification.muted or notification.superseded_at is not None:
+                    raise _stale("Muted or obsolete notification dispatches cannot be retried.")
             return {
                 "before": {
                     "job_source": "task_outbox",
@@ -1574,7 +1595,20 @@ class SupportAdminCommands:
                 )
                 assert entry is not None
                 entry.status = "pending"
-                entry.attempts = min(entry.attempts, MAX_OUTBOX_ATTEMPTS - 1)
+                max_attempts = (
+                    MAX_NOTIFICATION_EMAIL_ATTEMPTS
+                    if entry.task_name == "send_email_notification"
+                    else MAX_OUTBOX_ATTEMPTS
+                )
+                entry.attempts = min(entry.attempts, max_attempts - 1)
+                entry.next_attempt_at = now
+                entry.lease_until = None
+                if entry.task_name == "send_email_notification" and entry.args_json:
+                    notification = await self.session.get(
+                        Notification, UUID(str(entry.args_json[0])), with_for_update=True
+                    )
+                    if notification is not None:
+                        notification.email_status = "queued"
                 if entry.task_name == "run_import_async" and entry.args_json:
                     batch_id = UUID(str(entry.args_json[0]))
                     batch = await self.session.get(

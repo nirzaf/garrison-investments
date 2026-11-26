@@ -24,6 +24,7 @@ import {
   hrServiceRequestTypes,
   listAccessRequests,
   listDepartments,
+  listEmployeeDataQualityIssues,
   listEmployees,
   listExpiringCompliance,
   listHrDocuments,
@@ -47,6 +48,7 @@ import {
   type DepartmentRecord,
   type EmployeeDetailRecord,
   type EmployeeDirectoryRecord,
+  type LeaveRequestRecord,
   type EmployeeSensitiveRecord,
   type ExpiringComplianceResponse,
   type HrDocumentRecord,
@@ -152,6 +154,13 @@ function OrgBranch({ node }: { node: OrgChartNode }) {
   );
 }
 
+function leaveDecisionTimestamp(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(value));
+}
+
 export function HRWorkspacePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -190,12 +199,22 @@ export function HRWorkspacePage() {
   const [leaveTypes, setLeaveTypes] = useState<LeaveTypeRecord[]>([]);
   const [leaveStatus, setLeaveStatus] = useState('');
   const [leaveOffset, setLeaveOffset] = useState(0);
+  const [employeeDataQualityOffset, setEmployeeDataQualityOffset] = useState(0);
+  const [restoreSupervisorRequest, setRestoreSupervisorRequest] =
+    useState<LeaveRequestRecord | null>(null);
+  const [restoreSupervisorReason, setRestoreSupervisorReason] = useState('');
   const leaveQueue = useQuery({
     queryKey: [...LEAVE_REQUESTS_KEY, user?.id, leaveStatus, leaveOffset],
     queryFn: ({ signal }) => listLeaveRequests({
       limit: LEAVE_PAGE_SIZE, offset: leaveOffset, req_status: leaveStatus || undefined
     }, signal),
     enabled: tab === 'leave' && hasPerm('hr:leave:manage'),
+    gcTime: 0
+  });
+  const employeeDataQuality = useQuery({
+    queryKey: ['hr', 'employee-data-quality', user?.id, employeeDataQualityOffset],
+    queryFn: ({ signal }) => listEmployeeDataQualityIssues(20, employeeDataQualityOffset, signal),
+    enabled: tab === 'directory' && hasPerm('hr:employees:sensitive'),
     gcTime: 0
   });
   const [policies, setPolicies] = useState<PolicyDocumentRecord[]>([]);
@@ -539,15 +558,19 @@ export function HRWorkspacePage() {
     }
   }
 
-  async function runChange(action: () => Promise<unknown>, fallback: string, reload = true) {
-    if (pending) return;
+  async function runChange(
+    action: () => Promise<unknown>, fallback: string, reload = true
+  ): Promise<boolean> {
+    if (pending) return false;
     setPending(true);
     setError(null);
     try {
       await action();
       if (reload) await loadCore();
+      return true;
     } catch (error) {
       setError(errMsg(error, fallback));
+      return false;
     } finally {
       setPending(false);
     }
@@ -573,11 +596,15 @@ export function HRWorkspacePage() {
     }, fallback, false);
   }
 
-  async function runLeaveRouteRefresh(requestId: string, expectedRevision: number) {
-    await runChange(async () => {
-      await refreshLeaveRequestRoute(requestId, expectedRevision);
-      await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
+  async function runLeaveRouteRefresh(
+    requestId: string,
+    payload: HrSchemas['LeaveRouteRefreshRequest']
+  ) {
+    const succeeded = await runChange(async () => {
+      await refreshLeaveRequestRoute(requestId, payload);
     }, 'Could not refresh the leave review assignment.', false);
+    await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
+    return succeeded;
   }
 
   async function runServiceRequestChange(action: () => Promise<unknown>, fallback: string) {
@@ -704,6 +731,83 @@ export function HRWorkspacePage() {
 
       {tab === 'directory' && (
         <div className="space-y-6">
+          {hasPerm('hr:employees:sensitive') && (
+            <section className="rounded-lg border border-theme-border bg-theme-card p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold">Employee data quality review</h3>
+                  <p className="text-sm text-theme-text-muted">
+                    Restricted HR findings for missing or inconsistent source records.
+                  </p>
+                </div>
+                <button
+                  className="rounded border border-theme-border px-3 py-1.5 text-sm"
+                  disabled={employeeDataQuality.isFetching}
+                  onClick={() => void employeeDataQuality.refetch()}
+                  type="button"
+                >
+                  Refresh findings
+                </button>
+              </div>
+              {employeeDataQuality.isPending && <p role="status">Loading data quality findings…</p>}
+              {employeeDataQuality.isError && (
+                <p role="alert">
+                  {errMsg(employeeDataQuality.error, 'Could not load data quality findings.')}{' '}
+                  <button type="button" onClick={() => void employeeDataQuality.refetch()}>
+                    Retry
+                  </button>
+                </p>
+              )}
+              {employeeDataQuality.data?.items.length === 0 && (
+                <p>No employee data quality issues are listed on this page.</p>
+              )}
+              {employeeDataQuality.data?.items.map((issue) => (
+                <article
+                  className="flex flex-wrap items-start justify-between gap-3 rounded border border-theme-border p-3"
+                  key={issue.employee_id}
+                >
+                  <div className="space-y-1 text-sm">
+                    <p className="font-medium">
+                      {issue.employee_code} · {issue.full_name}
+                    </p>
+                    <p className="text-theme-text-muted">
+                      {issue.issue_codes.map((code) => code.replace(/_/g, ' ')).join(' · ')}
+                    </p>
+                    <p>{issue.required_correction}</p>
+                  </div>
+                  {hasPerm('hr:employees:read') && (
+                    <button
+                      className="text-sm font-semibold text-brand-600 hover:underline"
+                      onClick={() => void selectEmployee(issue.employee_id)}
+                      type="button"
+                    >
+                      Inspect employee
+                    </button>
+                  )}
+                </article>
+              ))}
+              {(employeeDataQualityOffset > 0 ||
+                (employeeDataQuality.data?.total ?? 0) > 20) && (
+                <nav className="flex gap-3" aria-label="Employee data quality pages">
+                  <button
+                    type="button"
+                    disabled={employeeDataQuality.isFetching || employeeDataQualityOffset === 0}
+                    onClick={() => setEmployeeDataQualityOffset((offset) => Math.max(0, offset - 20))}
+                  >
+                    Previous findings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={employeeDataQuality.isFetching ||
+                      employeeDataQualityOffset + 20 >= (employeeDataQuality.data?.total ?? 0)}
+                    onClick={() => setEmployeeDataQualityOffset((offset) => offset + 20)}
+                  >
+                    Next findings
+                  </button>
+                </nav>
+              )}
+            </section>
+          )}
           {user && hasPerm('hr:employees:sensitive') && (
             <HRDueEmploymentChanges key={user.id} actorId={user.id} inspectEmployee={selectEmployee} />
           )}
@@ -999,6 +1103,9 @@ export function HRWorkspacePage() {
                         );
                         setEmploymentHistory(null);
                         await loadCore();
+                        await queryClient.invalidateQueries({
+                          queryKey: ['hr', 'employee-data-quality', user?.id]
+                        });
                       }}
                     />
                   )}
@@ -1024,6 +1131,9 @@ export function HRWorkspacePage() {
                             manager_employee_id: String(form.get('manager') ?? '') || null
                           });
                           setSelectedEmp(updated);
+                          await queryClient.invalidateQueries({
+                            queryKey: ['hr', 'employee-data-quality', user?.id]
+                          });
                         }, 'Could not save employee.');
                       }}
                     >
@@ -1871,7 +1981,9 @@ export function HRWorkspacePage() {
                 <span>
                   {lr.start_date} → {lr.end_date} ({lr.days_requested}d) · {lr.status}
                   {lr.status === 'submitted' && lr.approval_route &&
-                    ` · Final decision: ${lr.approval_route === 'supervisor' ? 'direct supervisor' : 'HR fallback'}`}
+                    ` · Pending decision: ${lr.approval_route === 'supervisor' ? 'direct supervisor' : 'HR fallback'}`}
+                  {['approved', 'rejected', 'cancelled'].includes(lr.status) &&
+                    ` · Final decision by ${lr.decided_by_name ?? 'actor unavailable'} · ${lr.decided_at ? leaveDecisionTimestamp(lr.decided_at) : 'time unavailable'}`}
                   {lr.setup_error_code === 'LEAVE_APPROVER_NOT_CONFIGURED' &&
                     ' · HR fallback is not staffed; the request remains submitted.'}
                   {lr.manager_recommendation && lr.approval_route !== 'supervisor' &&
@@ -1982,11 +2094,27 @@ export function HRWorkspacePage() {
                       </form>
                     </details>
                   )}
-                {lr.allowed_actions?.includes('refresh_route') && (
+                {lr.allowed_actions?.includes('restore_supervisor') && (
                   <button
                     className="rounded border border-theme-border px-2 py-1"
                     disabled={pending}
-                    onClick={() => void runLeaveRouteRefresh(lr.id, lr.record_revision)}
+                    onClick={() => {
+                      setRestoreSupervisorReason('');
+                      setRestoreSupervisorRequest(lr);
+                    }}
+                    type="button"
+                  >
+                    Restore current supervisor
+                  </button>
+                )}
+                {lr.allowed_actions?.includes('refresh_route') &&
+                  !lr.allowed_actions?.includes('restore_supervisor') && (
+                  <button
+                    className="rounded border border-theme-border px-2 py-1"
+                    disabled={pending}
+                    onClick={() => void runLeaveRouteRefresh(lr.id, {
+                      expected_revision: lr.record_revision
+                    })}
                     type="button"
                   >
                     Refresh review assignment
@@ -2256,6 +2384,74 @@ export function HRWorkspacePage() {
               <HROffboarding employees={employees} cases={offboarding} onChange={loadCore} />
             )}
           </div>
+        </div>
+      )}
+      {restoreSupervisorRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <section
+            aria-labelledby="leave-supervisor-restoration-title"
+            aria-modal="true"
+            className="w-full max-w-lg rounded-lg border border-theme-border bg-theme-card p-5 shadow-xl"
+            role="dialog"
+          >
+            <h3 className="text-lg font-semibold" id="leave-supervisor-restoration-title">
+              Restore the current supervisor
+            </h3>
+            <p className="mt-2 text-sm text-theme-text-muted">
+              Record why this temporary fallback should return to the currently assigned supervisor.
+            </p>
+            <form
+              className="mt-4 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const reason = restoreSupervisorReason.trim();
+                if (!reason || pending) return;
+                void runLeaveRouteRefresh(restoreSupervisorRequest.id, {
+                  expected_revision: restoreSupervisorRequest.record_revision,
+                  restoration_reason: reason
+                }).then((succeeded) => {
+                  if (succeeded) {
+                    setRestoreSupervisorRequest(null);
+                    setRestoreSupervisorReason('');
+                  }
+                });
+              }}
+            >
+              <label className="block text-sm">
+                Restoration reason
+                <textarea
+                  autoFocus
+                  className="mt-1 block w-full rounded border border-theme-border bg-theme-input p-2"
+                  disabled={pending}
+                  maxLength={500}
+                  onChange={(event) => setRestoreSupervisorReason(event.target.value)}
+                  required
+                  rows={3}
+                  value={restoreSupervisorReason}
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button
+                  className="rounded border border-theme-border px-3 py-1.5"
+                  disabled={pending}
+                  onClick={() => {
+                    setRestoreSupervisorRequest(null);
+                    setRestoreSupervisorReason('');
+                  }}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded bg-brand-600 px-3 py-1.5 text-white"
+                  disabled={pending || !restoreSupervisorReason.trim()}
+                  type="submit"
+                >
+                  Restore supervisor
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
       )}
     </div>

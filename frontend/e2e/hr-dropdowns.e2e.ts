@@ -595,11 +595,128 @@ test('a direct supervisor makes the final leave decision in My HR while HR retai
       params: { req_status: 'rejected' }
     });
     expect(rejectedForHr.status()).toBe(200);
-    expect((await rejectedForHr.json()).items).toContainEqual(
-      expect.objectContaining({ id: seeded.id, status: 'rejected' })
-    );
+    const rejectedItems = (await rejectedForHr.json()).items as Array<{
+      id: string;
+      status: string;
+      decided_by_id: string | null;
+      decided_by_name: string | null;
+      decided_at: string | null;
+    }>;
+    const rejectedForDisplay = rejectedItems.find((item) => item.id === seeded.id);
+    expect(rejectedForDisplay).toMatchObject({
+      status: 'rejected',
+      decided_by_id: seeded.supervisorUserId
+    });
+    expect(rejectedForDisplay?.decided_by_name).toBeTruthy();
+    expect(rejectedForDisplay?.decided_at).toBeTruthy();
+
+    await page.goto('/hr');
+    await page.getByRole('button', { name: 'Leave', exact: true }).click();
+    const requestsSection = page.getByRole('heading', { name: /^Leave Requests/ }).locator('..');
+    const requestRow = requestsSection
+      .locator('div.flex.items-center.justify-between')
+      .filter({ hasText: seeded.leaveDate })
+      .first();
+    await expect(requestRow).toContainText(`Final decision by ${rejectedForDisplay?.decided_by_name}`);
   } finally {
     await supervisorPage.close();
   }
+});
+
+test('HR restores a temporary leave fallback through the advertised reasoned action', async ({
+  page,
+  request
+}) => {
+  const hrAccount = seedAccount('hr_manager');
+  const supervisorAccount = seedAccount('group_project_manager');
+  const workerAccount = seedAccount('quantity_surveyor');
+  const seeded = seedDirectReportLeave(supervisorAccount.email, workerAccount.email);
+  const hrLogin = await signIn(page, hrAccount);
+  const headers = { Authorization: `Bearer ${hrLogin.accessToken}` };
+
+  const pending = await request.get('/api/v1/hr/leave/requests', {
+    headers,
+    params: { req_status: 'submitted' }
+  });
+  expect(pending.status()).toBe(200);
+  const pendingItems = (await pending.json()).items as Array<{
+    id: string;
+    record_revision: number;
+  }>;
+  const current = pendingItems.find((item) => item.id === seeded.id);
+  expect(current).toBeDefined();
+
+  const fallback = await request.post(`/api/v1/hr/leave/requests/${seeded.id}/fallback`, {
+    headers,
+    data: {
+      reason_code: 'manager_temporarily_unavailable',
+      reason: 'Synthetic browser fixture temporary absence',
+      expected_revision: current!.record_revision,
+      until: seeded.leaveDate
+    }
+  });
+  expect(fallback.status()).toBe(200);
+  const fallbackBody = (await fallback.json()) as {
+    allowed_actions: string[];
+    record_revision: number;
+  };
+  expect(fallbackBody.allowed_actions).toContain('restore_supervisor');
+
+  await page.goto('/hr');
+  await page.getByRole('button', { name: 'Leave', exact: true }).click();
+  const requestsSection = page.getByRole('heading', { name: /^Leave Requests/ }).locator('..');
+  const requestRow = requestsSection
+    .locator('div.flex.items-center.justify-between')
+    .filter({ hasText: seeded.leaveDate })
+    .first();
+  await expect(requestRow).toContainText('Pending decision: HR fallback');
+  await requestRow.getByRole('button', { name: 'Restore current supervisor' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Restore the current supervisor' });
+  const reason = dialog.getByRole('textbox', { name: 'Restoration reason' });
+  const restoreButton = dialog.getByRole('button', { name: 'Restore supervisor', exact: true });
+  await expect(restoreButton).toBeDisabled();
+  await reason.fill('Synthetic reviewed restoration reason');
+  const routeRefresh = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === `/api/v1/hr/leave/requests/${seeded.id}/route-refresh` &&
+    response.request().method() === 'POST'
+  );
+  await restoreButton.click();
+  expect((await routeRefresh).status()).toBe(200);
+  await expect(dialog).toHaveCount(0);
+
+  const refreshed = await request.get('/api/v1/hr/leave/requests', {
+    headers,
+    params: { req_status: 'submitted' }
+  });
+  expect(refreshed.status()).toBe(200);
+  expect((await refreshed.json()).items).toContainEqual(expect.objectContaining({
+    id: seeded.id,
+    approval_route: 'supervisor',
+    assigned_supervisor_user_id: seeded.supervisorUserId,
+    record_revision: fallbackBody.record_revision + 1
+  }));
+});
+
+test('HR reviews private employee data-quality findings and opens the existing record', async ({
+  page,
+  request
+}) => {
+  const account = seedAccount('hr_manager');
+  const login = await signIn(page, account);
+  const code = `DQ-${uniqueSuffix()}`;
+  await createEmployee(request, login.accessToken, { code });
+
+  await page.goto('/hr');
+  await page.getByRole('button', { name: 'Directory & Org', exact: true }).click();
+  const heading = page.getByRole('heading', { name: 'Employee data quality review' });
+  const panel = heading.locator('xpath=../../..');
+  const issue = panel.locator('article').filter({ hasText: code });
+  await expect(issue).toContainText('missing birth date');
+  await expect(issue).toContainText('employment start unverified');
+  expect(await issue.innerText()).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
+  await issue.getByRole('button', { name: 'Inspect employee' }).click();
+  const selected = page.getByRole('heading', { name: 'Selected Employee' }).locator('..');
+  await expect(selected).toContainText(code);
 });
 

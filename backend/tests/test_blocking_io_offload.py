@@ -35,6 +35,7 @@ from tests.test_daily_reports import (
     create_test_client,
     report_payload,
     setup_project_team,
+    setup_report_consumption_stock,
     skip_if_database_unavailable,
 )
 from tests.test_finance import add_invoice, create_project_and_supplier, create_user
@@ -181,10 +182,16 @@ async def test_report_pdf_build_upload_and_download_offload_without_orm_objects(
 
     async with create_test_client() as client:
         setup = await setup_project_team(client)
+        stock = await setup_report_consumption_stock(
+            client, setup["project_id"], setup["op_token"]
+        )
+        payload = report_payload(setup["project_id"], setup["supervisor_update_id"])
+        payload["material_consumption"][0]["material_name"] = stock["item_name"]
+        payload["material_consumption"][0]["unit"] = "m2"
         report = (
             await client.post(
                 "/api/v1/reports",
-                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                json=payload,
                 headers={"Authorization": f"Bearer {setup['engineer_token']}"},
             )
         ).json()

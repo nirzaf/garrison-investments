@@ -15,11 +15,11 @@ from app.models.hr import (
     HrSiteAttendanceSubmission,
 )
 from app.models.inventory import InventoryRegistration, MaterialRequest
-from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.user import User
+from app.repositories.notification_repository import NotificationRepository
 from app.schemas.dashboard import (
     AnniversaryItem,
     AnniversaryPageResponse,
@@ -29,9 +29,17 @@ from app.schemas.dashboard import (
     SiteOperationsSummary,
 )
 from app.services.approval_service import MATERIAL_STAGE_STATES
+from app.services.authorization import document_scope_filter
+from app.services.evidence_classification import (
+    FINANCIAL,
+    OPERATIONAL,
+    UNCLASSIFIED,
+    operational_document_predicate,
+)
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_DASHBOARD_COMPANY,
+    PERMISSION_FINANCIAL_VIEW,
     PERMISSION_REPORTS_VIEW,
     PROJECT_OPERATIONAL_MANAGER_ROLES,
     has_permission,
@@ -50,7 +58,7 @@ class DashboardService:
         active_projects = await self._count_projects(project_ids)
         pending_reports = await self._count_reports(project_ids, "submitted")
         approved_reports = await self._count_reports(project_ids, "approved")
-        pending_documents = await self._count_documents(project_ids)
+        pending_documents = await self._count_documents(project_ids, actor)
         unread_notifications = await self._count_notifications(actor)
         recent_activity: list[str] = []
         if has_permission(actor, PERMISSION_REPORTS_VIEW):
@@ -173,9 +181,7 @@ class DashboardService:
             limit=limit,
         )
 
-    async def upcoming_anniversaries(
-        self, *, offset: int, limit: int
-    ) -> AnniversaryPageResponse:
+    async def upcoming_anniversaries(self, *, offset: int, limit: int) -> AnniversaryPageResponse:
         today = business_today()
         offsets = func.generate_series(0, 29).table_valued("day_offset").render_derived()
         occurrence = cast(literal(today) + offsets.c.day_offset, Date)
@@ -274,9 +280,7 @@ class DashboardService:
         ).all()
         return AnniversaryPageResponse(
             items=[
-                AnniversaryItem(
-                    name=name, day=day, month=month, completed_years=completed_years
-                )
+                AnniversaryItem(name=name, day=day, month=month, completed_years=completed_years)
                 for name, day, month, completed_years in rows
             ],
             total=total,
@@ -408,7 +412,9 @@ class DashboardService:
             query = query.where(DailyReport.project_id.in_(project_ids))
         return int(await self.session.scalar(query) or 0)
 
-    async def _count_documents(self, project_ids: list | None) -> int:
+    async def _count_documents(self, project_ids: list | None, actor: User) -> int:
+        if project_ids is not None and not project_ids:
+            return 0
         query = (
             select(func.count())
             .select_from(Document)
@@ -417,25 +423,21 @@ class DashboardService:
                 Document.deleted_at.is_(None),
             )
         )
+        scope_filter = await document_scope_filter(self.session, actor)
+        if scope_filter is not None:
+            query = query.where(scope_filter)
+        classification_filter = (
+            Document.classification.in_({UNCLASSIFIED, OPERATIONAL, FINANCIAL})
+            if has_permission(actor, PERMISSION_FINANCIAL_VIEW)
+            else operational_document_predicate()
+        )
+        query = query.where(classification_filter)
         if project_ids is not None:
-            if not project_ids:
-                return 0
             query = query.where(Document.project_id.in_(project_ids))
         return int(await self.session.scalar(query) or 0)
 
     async def _count_notifications(self, actor: User) -> int:
-        return int(
-            await self.session.scalar(
-                select(func.count())
-                .select_from(Notification)
-                .where(
-                    Notification.user_id == actor.id,
-                    Notification.is_read.is_(False),
-                    Notification.deleted_at.is_(None),
-                )
-            )
-            or 0
-        )
+        return await NotificationRepository(self.session).unread_count(actor.id)
 
     async def _recent_activity(self, project_ids: list | None) -> list[str]:
         query = select(DailyReport.report_number, DailyReport.status).where(

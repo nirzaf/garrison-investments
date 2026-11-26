@@ -240,6 +240,7 @@ from app.services.hr_leave_accrual import (
     _managed_service_start,
     _policy_for_period,
     ensure_leave_year_open,
+    require_managed_leave_credit_reconciliation,
 )
 from app.services.hr_leave_date_evidence import (
     require_approved_leave_debit,
@@ -4818,9 +4819,9 @@ class HrWorkforceService:
         employee: HrEmployee,
         start: date,
         end: date,
-    ) -> None:
+    ) -> list[HrLeavePolicy]:
         if not leave_type.policy_required:
-            return
+            return []
         category = await _eligible_category(self.session, employee, start, end)
         policies = list(
             await self.session.scalars(
@@ -4843,19 +4844,26 @@ class HrWorkforceService:
         # A leave request may cross adjacent reviewed policy windows. Require
         # approved coverage for every date, while preserving category-specific
         # policy precedence and allowing the request to be checked at decision.
+        effective_policies: dict[UUID, HrLeavePolicy] = {}
         for day_offset in range((end - start).days + 1):
             leave_date = start + timedelta(days=day_offset)
-            if not any(
-                policy.effective_from is not None
+            matching = [
+                policy
+                for policy in policies
+                if policy.effective_from is not None
                 and policy.effective_to is not None
                 and policy.effective_from <= leave_date <= policy.effective_to
-                for policy in policies
-            ):
+            ]
+            if not matching:
                 raise AppException(
                     "One dated, approved policy must cover each requested leave date.",
                     status_code=409,
                     error_code="LEAVE_ACCRUAL_POLICY_PERIOD",
                 )
+            # The query orders category-specific policy before the generic
+            # fallback, matching _policy_for_period's existing precedence.
+            effective_policies[matching[0].id] = matching[0]
+        return list(effective_policies.values())
 
     async def _resolve_leave_route(
         self, employee: HrEmployee, submitter_id: UUID | None
@@ -5466,7 +5474,7 @@ class HrWorkforceService:
         decision_notes = payload.notes
         if payload.decision == "approved":
             lt = await self._active_leave_type(req.leave_type_id)
-            await self._require_configured_leave_type_policy(
+            applicable_policies = await self._require_configured_leave_type_policy(
                 lt, emp, req.start_date, req.end_date
             )
             units, workdays = await self._calculate_leave_schedule(
@@ -5480,6 +5488,23 @@ class HrWorkforceService:
                     "Reject the request so it can be resubmitted.",
                     status_code=409,
                     error_code="LEAVE_SCHEDULE_CHANGED",
+                )
+            managed_policy_ids = {
+                policy.id for policy in applicable_policies if policy.entitlement_rules is not None
+            }
+            if len(managed_policy_ids) > 1:
+                raise AppException(
+                    "The managed leave policy changed during this leave year. Ask HR to review it.",
+                    status_code=409,
+                    error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+                )
+            if managed_policy_ids:
+                await require_managed_leave_credit_reconciliation(
+                    self.session,
+                    employee_id=req.employee_id,
+                    leave_type_id=req.leave_type_id,
+                    leave_year=req.start_date.year,
+                    policy_id=next(iter(managed_policy_ids)),
                 )
             req.scheduled_work_dates = workdays
             if lt.is_paid and not await self._leave_allows_negative_balance(
@@ -5876,10 +5901,13 @@ class HrWorkforceService:
             user_id=actor.id,
             entity_type="hr_leave_requests",
             entity_id=request.id,
-            old_values={"route": old_route, "supervisor_user_id": old_supervisor_id},
+            old_values={
+                "route": old_route,
+                "supervisor_user_id": str(old_supervisor_id) if old_supervisor_id else None,
+            },
             new_values={
                 "route": route,
-                "supervisor_user_id": supervisor_id,
+                "supervisor_user_id": str(supervisor_id) if supervisor_id else None,
                 "revision": request.record_revision,
                 "source": "employee_manager_update",
             },

@@ -176,6 +176,7 @@ class SupportJobsMonitorRead(_StrictModel):
     outbox_dispatched: int | None
     outbox_stale_dispatched: int | None
     outbox_failed: int | None
+    outbox_manual_review: int | None
     outbox_oldest_age_seconds: int | None
     recovery_pending: int | None
     recovery_dispatching: int | None

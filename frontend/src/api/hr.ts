@@ -110,6 +110,7 @@ export type LeavePolicyRecord = HrSchemas['LeavePolicyResponse'];
 export type LeaveBalanceItem = HrSchemas['LeaveBalanceItem'];
 export type LeaveRequestRecord = HrSchemas['LeaveRequestResponse'];
 export type SupervisorLeaveReviewRecord = HrSchemas['SupervisorLeaveReviewItem'];
+export type EmployeeDataQualityPage = HrSchemas['HrEmployeeDataQualityPage'];
 export type PolicyDocumentRecord = HrSchemas['PolicyDocumentResponse'];
 export type LetterTemplateRecord = HrSchemas['LetterTemplateResponse'];
 export type LetterRenderRecord = HrSchemas['LetterRenderResponse'];
@@ -217,6 +218,18 @@ export async function listEmployees(params?: {
 
 export async function getEmployee(employeeId: string) {
   const { data } = await apiClient.get<EmployeeDetailRecord>(`/hr/employees/${employeeId}`);
+  return data;
+}
+
+export async function listEmployeeDataQualityIssues(
+  limit: number,
+  offset: number,
+  signal?: AbortSignal
+) {
+  const { data } = await apiClient.get<EmployeeDataQualityPage>('/hr/employee-data-quality', {
+    params: { limit, offset },
+    signal
+  });
   return data;
 }
 
@@ -981,10 +994,13 @@ export async function routeLeaveRequestToHrFallback(
   return data;
 }
 
-export async function refreshLeaveRequestRoute(leaveRequestId: string, expectedRevision: number) {
+export async function refreshLeaveRequestRoute(
+  leaveRequestId: string,
+  payload: HrSchemas['LeaveRouteRefreshRequest']
+) {
   const { data } = await apiClient.post<LeaveRequestRecord>(
     `/hr/leave/requests/${leaveRequestId}/route-refresh`,
-    { expected_revision: expectedRevision }
+    payload
   );
   return data;
 }

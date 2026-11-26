@@ -47,6 +47,10 @@ celery_app.conf.beat_schedule = {
         "task": "dispatch_task_outbox",
         "schedule": 60,
     },
+    "dispatch-notification-email-outbox-every-minute": {
+        "task": "dispatch_notification_email_outbox",
+        "schedule": 60,
+    },
     "run-database-backup-daily": {
         "task": "run_database_backup",
         "schedule": crontab(hour=1, minute=0),

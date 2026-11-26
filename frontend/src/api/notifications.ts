@@ -5,8 +5,13 @@ export type NotificationRecord = components['schemas']['NotificationResponse'];
 export type NotificationListResponse = components['schemas']['NotificationListResponse'];
 export type UnreadCountResponse = components['schemas']['UnreadCountResponse'];
 
-export async function listNotifications(): Promise<NotificationListResponse> {
-  const response = await apiClient.get<NotificationListResponse>('/notifications');
+export async function listNotifications(
+  limit = 100,
+  offset = 0
+): Promise<NotificationListResponse> {
+  const response = await apiClient.get<NotificationListResponse>('/notifications', {
+    params: { limit, offset }
+  });
   return response.data;
 }
 

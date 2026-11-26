@@ -481,6 +481,8 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         from app.models.notification import Notification
         from app.services.approval_service import ApprovalService
         from app.tasks.email import _send_email_notification
+        from app.tasks.outbox import _dispatch_notification_email_outbox
+        from tests.test_notifications import prioritize_notification_outbox
 
         delivered: list[tuple[list[str], str, str]] = []
 
@@ -518,6 +520,11 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             # The validator locks the approval row. Release that lock before the worker opens a
             # second session to validate and deliver the queued notification.
             await session.commit()
+            monkeypatch.setattr(
+                "app.tasks.outbox.celery_app.send_task", lambda *_args, **_kwargs: None
+            )
+            await prioritize_notification_outbox(returned_notice_id)
+            assert await _dispatch_notification_email_outbox() >= 1
             assert (
                 await _send_email_notification(str(returned_notice_id))
                 == "notification email sent to 1 recipient"
@@ -586,7 +593,7 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
                 stale_return_notice
             )
         assert await _send_email_notification(str(returned_notice_id)) == (
-            "notification email already sent"
+            "notification email is not eligible for delivery"
         )
         assert len(delivered) == 1
         evidence = await client.get(

@@ -450,6 +450,14 @@ async def _leave_request_response(
         and eligible_approver_count == 0
         else None
     )
+    if (
+        actor is not None
+        and has_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
+        and row.decided_by_id is not None
+    ):
+        result.decided_by_name = await session.scalar(
+            select(User.full_name).where(User.id == row.decided_by_id)
+        )
     if actor is not None:
         from app.services.hr_workforce_service import HrWorkforceService
 
@@ -462,23 +470,31 @@ async def _leave_request_response(
             except AppException:
                 route_current = False
         actions: list[LeaveRequestAllowedAction] = []
+        actor_is_subject_or_submitter = actor.id in {
+            employee.user_id if employee else None,
+            row.requested_by_id,
+        }
         if row.status in {"draft", "submitted"} and employee is not None and (
             employee.user_id == actor.id and row.requested_by_id == actor.id
         ):
             actions.append("cancel")
         if row.status == "submitted":
-            from app.utils.permissions import PERMISSION_HR_LEAVE_APPROVE
-
             actor_can_approve = has_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
-            if actor_can_approve:
+            if actor_can_approve and not actor_is_subject_or_submitter:
                 actions.append("refresh_route")
+                if (
+                    row.approval_route == "hr_fallback"
+                    and row.fallback_reason_code == "manager_temporarily_unavailable"
+                    and route_current
+                ):
+                    actions.append("restore_supervisor")
             if route_current and row.approval_route == "supervisor":
                 if row.assigned_supervisor_user_id == actor.id and actor.id not in {
                     employee.user_id if employee else None,
                     row.requested_by_id,
                 }:
                     actions.extend(("approve", "reject"))
-                elif actor_can_approve:
+                elif actor_can_approve and not actor_is_subject_or_submitter:
                     actions.append("route_to_hr_fallback")
             elif (
                 route_current
@@ -547,14 +563,32 @@ async def _leave_request_list_response(
         from app.services.hr_workforce_service import HrWorkforceService
 
         route_current = await HrWorkforceService(session)._leave_routes_current(rows)
+    decider_names: dict[UUID, str] = {}
+    if actor is not None and has_permission(actor, PERMISSION_HR_LEAVE_APPROVE):
+        decided_by_ids = {row.decided_by_id for row in rows if row.decided_by_id is not None}
+        if decided_by_ids:
+            decider_names = dict(
+                (
+                    await session.execute(
+                        select(User.id, User.full_name).where(User.id.in_(decided_by_ids))
+                    )
+                ).all()
+            )
     items: list[LeaveRequestResponse] = []
     for row in rows:
         response = LeaveRequestResponse.model_validate(row)
+        response.decided_by_name = (
+            decider_names.get(row.decided_by_id) if row.decided_by_id is not None else None
+        )
         is_route_current = route_current.get(row.id, False)
         if row.id in setup_errors:
             response.setup_error_code = "LEAVE_APPROVER_NOT_CONFIGURED"
         if actor is not None:
             actions: list[LeaveRequestAllowedAction] = []
+            actor_is_subject_or_submitter = actor.id in {
+                employee_users.get(row.employee_id),
+                row.requested_by_id,
+            }
             if (
                 row.status in {"draft", "submitted"}
                 and employee_users.get(row.employee_id) == actor.id
@@ -563,8 +597,14 @@ async def _leave_request_list_response(
                 actions.append("cancel")
             if row.status == "submitted":
                 actor_can_approve = has_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
-                if actor_can_approve:
+                if actor_can_approve and not actor_is_subject_or_submitter:
                     actions.append("refresh_route")
+                    if (
+                        row.approval_route == "hr_fallback"
+                        and row.fallback_reason_code == "manager_temporarily_unavailable"
+                        and is_route_current
+                    ):
+                        actions.append("restore_supervisor")
                 if is_route_current and row.approval_route == "supervisor":
                     if (
                         row.assigned_supervisor_user_id == actor.id
@@ -572,7 +612,7 @@ async def _leave_request_list_response(
                         not in {employee_users.get(row.employee_id), row.requested_by_id}
                     ):
                         actions.extend(("approve", "reject"))
-                    elif actor_can_approve:
+                    elif actor_can_approve and not actor_is_subject_or_submitter:
                         actions.append("route_to_hr_fallback")
                 elif (
                     is_route_current

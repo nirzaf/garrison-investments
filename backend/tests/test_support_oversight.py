@@ -1318,7 +1318,9 @@ async def test_jobs_monitor_exposes_worker_heartbeat_stale_outbox_and_honest_sta
 
     async with AsyncSessionLocal() as session:
         await session.execute(
-            delete(TaskOutbox).where(TaskOutbox.status.in_(["failed", "dispatched"]))
+            delete(TaskOutbox).where(
+                TaskOutbox.status.in_(["failed", "dispatched", "manual_review"])
+            )
         )
         await session.execute(
             delete(SupportRecoveryDelivery).where(SupportRecoveryDelivery.status == "unknown")
@@ -1326,6 +1328,7 @@ async def test_jobs_monitor_exposes_worker_heartbeat_stale_outbox_and_honest_sta
         await session.commit()
 
     stale_key = f"report-pdf:{uuid4()}"
+    manual_review_key = f"notification-email:{uuid4()}"
     try:
         async with client() as actor:
             operator_id, _, _ = await login(actor, custodian=False)
@@ -1393,11 +1396,30 @@ async def test_jobs_monitor_exposes_worker_heartbeat_stale_outbox_and_honest_sta
             assert stale_body["source_status"] == "degraded"
             assert stale_body["freshness"] == "stale"
 
+            async with AsyncSessionLocal() as session:
+                session.add(
+                    TaskOutbox(
+                        dedupe_key=manual_review_key,
+                        task_name="send_email_notification",
+                        args_json=[str(uuid4())],
+                        kwargs_json={},
+                        status="manual_review",
+                        attempts=1,
+                    )
+                )
+                await session.commit()
+            review_res = await actor.get(f"{API}/monitor/jobs")
+            assert review_res.status_code == 200
+            assert review_res.json()["outbox_manual_review"] >= 1
+            assert review_res.json()["source_status"] == "degraded"
+
             # 4. Also exercise real read_worker_heartbeats against configured Redis safely
             _ = await read_worker_heartbeats(get_settings(), utc_now())
     finally:
         async with AsyncSessionLocal() as session:
-            await session.execute(delete(TaskOutbox).where(TaskOutbox.dedupe_key == stale_key))
+            await session.execute(
+                delete(TaskOutbox).where(TaskOutbox.dedupe_key.in_((stale_key, manual_review_key)))
+            )
             await session.commit()
 
 

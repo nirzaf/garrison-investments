@@ -5,12 +5,13 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models.import_batch import ImportBatch
-from app.models.task_outbox import TaskOutbox
+from app.models.notification import Notification
+from app.models.task_outbox import TaskOutbox, notification_email_outbox_dedupe_key
 from app.repositories.report_export_repository import ReportExportRepository
 from app.services.import_service import (
     InvalidToken,
@@ -25,11 +26,19 @@ logger = structlog.get_logger("celery.task")
 
 MAX_OUTBOX_ATTEMPTS = 5
 STALE_DISPATCH_TIMEOUT = timedelta(minutes=5)
+MAX_NOTIFICATION_EMAIL_ATTEMPTS = 8
+NOTIFICATION_EMAIL_TASK = "send_email_notification"
+NOTIFICATION_EMAIL_LEASE = timedelta(minutes=5)
 
 
 @celery_app.task(name="dispatch_task_outbox", queue="maintenance")
 def dispatch_task_outbox() -> int:
     return run_async_task(_dispatch_task_outbox())
+
+
+@celery_app.task(name="dispatch_notification_email_outbox", queue="maintenance")
+def dispatch_notification_email_outbox() -> int:
+    return run_async_task(_dispatch_notification_email_outbox())
 
 
 def _parse_report_pdf_payload(entry: TaskOutbox) -> tuple[UUID, bool] | None:
@@ -83,6 +92,20 @@ def _parse_import_async_payload(entry: TaskOutbox) -> dict[str, Any] | None:
     }
 
 
+def _parse_notification_email_payload(entry: TaskOutbox) -> UUID | None:
+    if entry.task_name != NOTIFICATION_EMAIL_TASK or len(entry.args_json or []) != 1:
+        return None
+    try:
+        notification_id = UUID(str(entry.args_json[0]))
+    except (ValueError, TypeError):
+        return None
+    if entry.dedupe_key != notification_email_outbox_dedupe_key(notification_id):
+        return None
+    if entry.kwargs_json:
+        return None
+    return notification_id
+
+
 def _scrub_outbox_ciphertext(entry: TaskOutbox) -> None:
     if isinstance(entry.kwargs_json, dict) and "content_ciphertext" in entry.kwargs_json:
         entry.kwargs_json = {
@@ -130,6 +153,8 @@ async def _mark_import_batch_dispatch_failed(session: AsyncSession, entry: TaskO
 
 
 def _build_dispatch_spec(entry: TaskOutbox) -> tuple[list[Any], dict[str, Any], str] | None:
+    if _parse_notification_email_payload(entry) is not None:
+        return list(entry.args_json), {}, "email"
     if entry.task_name == "generate_report_pdf":
         if _parse_report_pdf_payload(entry) is None:
             return None
@@ -140,6 +165,140 @@ def _build_dispatch_spec(entry: TaskOutbox) -> tuple[list[Any], dict[str, Any], 
             return None
         return [], import_kwargs, "maintenance"
     return None
+
+
+async def _lock_notification_for_outbox(
+    session: AsyncSession, entry: TaskOutbox
+) -> Notification | None:
+    notification_id = _parse_notification_email_payload(entry)
+    if notification_id is None:
+        return None
+    return await session.scalar(
+        select(Notification)
+        .where(Notification.id == notification_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+async def _dispatch_notification_email_outbox() -> int:
+    """Persist bounded notification dispatch claims before submitting to Celery."""
+    now = utc_now()
+    claimed: list[tuple[UUID, int]] = []
+    async with AsyncSessionLocal() as session:
+        candidates = list(
+            await session.scalars(
+                select(TaskOutbox)
+                .where(
+                    TaskOutbox.task_name == NOTIFICATION_EMAIL_TASK,
+                    or_(
+                        and_(
+                            TaskOutbox.status == "pending",
+                            or_(
+                                TaskOutbox.next_attempt_at.is_(None),
+                                TaskOutbox.next_attempt_at <= now,
+                            ),
+                        ),
+                        and_(
+                            TaskOutbox.status.in_(("dispatching", "dispatched", "processing")),
+                            TaskOutbox.lease_until.is_not(None),
+                            TaskOutbox.lease_until <= now,
+                        ),
+                    ),
+                )
+                .order_by(TaskOutbox.next_attempt_at, TaskOutbox.created_at, TaskOutbox.id)
+                .limit(100)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        for entry in candidates:
+            notification = await _lock_notification_for_outbox(session, entry)
+            if _parse_notification_email_payload(entry) is None or notification is None:
+                entry.status = "failed"
+                entry.lease_until = None
+                logger.error("notification_email_outbox_payload_invalid", outbox_id=str(entry.id))
+                continue
+            if notification.email_status in {"sent", "skipped"}:
+                entry.status = "completed"
+                entry.lease_until = None
+                continue
+            if entry.status != "pending":
+                # A claim or worker lease expired after the broker/provider outcome may have
+                # become ambiguous. Do not resend without an explicit audited reconciliation.
+                entry.status = "manual_review"
+                entry.lease_until = None
+                notification.email_status = "unknown"
+                logger.warning(
+                    "notification_email_dispatch_outcome_unknown", outbox_id=str(entry.id)
+                )
+                continue
+            if _build_dispatch_spec(entry) is None:
+                entry.status = "failed"
+                notification.email_status = "failed"
+                continue
+            if entry.attempts >= MAX_NOTIFICATION_EMAIL_ATTEMPTS:
+                entry.status = "failed"
+                notification.email_status = "failed"
+                logger.error("notification_email_dispatch_exhausted", outbox_id=str(entry.id))
+                continue
+            entry.attempts += 1
+            entry.status = "dispatching"
+            entry.lease_until = now + NOTIFICATION_EMAIL_LEASE
+            entry.next_attempt_at = None
+            claimed.append((entry.id, entry.attempts))
+        await session.commit()
+
+    submitted = 0
+    for outbox_id, attempt in claimed:
+        async with AsyncSessionLocal() as session:
+            dispatch_entry = await session.get(TaskOutbox, outbox_id)
+        if dispatch_entry is None:
+            continue
+        dispatch_ok = await _dispatch_entry(
+            dispatch_entry, task_id=f"notification-email-{outbox_id}-attempt-{attempt}"
+        )
+        if dispatch_ok:
+            submitted += 1
+        async with AsyncSessionLocal() as session:
+            final_entry = await session.scalar(
+                select(TaskOutbox)
+                .where(TaskOutbox.id == outbox_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if (
+                final_entry is None
+                or final_entry.status != "dispatching"
+                or final_entry.attempts != attempt
+            ):
+                # The worker may already have claimed or completed this message.
+                continue
+            if dispatch_ok:
+                final_entry.status = "dispatched"
+                final_entry.dispatched_at = utc_now()
+                final_entry.lease_until = utc_now() + NOTIFICATION_EMAIL_LEASE
+            elif attempt >= MAX_NOTIFICATION_EMAIL_ATTEMPTS:
+                final_entry.status = "failed"
+                final_entry.lease_until = None
+                notification = await _lock_notification_for_outbox(session, final_entry)
+                if notification is not None and notification.email_status not in {
+                    "sent",
+                    "skipped",
+                }:
+                    notification.email_status = "failed"
+            else:
+                final_entry.status = "pending"
+                final_entry.lease_until = None
+                final_entry.next_attempt_at = utc_now() + timedelta(
+                    seconds=min(30 * (2 ** (attempt - 1)), 3600)
+                )
+                logger.warning(
+                    "notification_email_enqueue_deferred",
+                    outbox_id=str(final_entry.id),
+                    attempts=attempt,
+                )
+            await session.commit()
+    return submitted
 
 
 def _entry_task_id(entry: TaskOutbox, *, attempt: int | None = None) -> str:
@@ -227,7 +386,10 @@ async def _dispatch_task_outbox() -> int:
         pending_entries = list(
             await session.scalars(
                 select(TaskOutbox)
-                .where(TaskOutbox.status == "pending")
+                .where(
+                    TaskOutbox.status == "pending",
+                    TaskOutbox.task_name != NOTIFICATION_EMAIL_TASK,
+                )
                 .order_by(TaskOutbox.created_at, TaskOutbox.id)
                 .limit(25)
                 .with_for_update(skip_locked=True)
@@ -271,6 +433,7 @@ async def _dispatch_task_outbox() -> int:
                 select(TaskOutbox)
                 .where(
                     TaskOutbox.status == "dispatched",
+                    TaskOutbox.task_name != NOTIFICATION_EMAIL_TASK,
                     TaskOutbox.dispatched_at.is_not(None),
                     TaskOutbox.dispatched_at < stale_cutoff,
                 )

@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from typing import Literal
 from uuid import UUID
@@ -580,42 +582,57 @@ class HrService(HrWorkforceService):
         await self._commit_and_refresh(emp)
         return await self._serialize_employee_detail(emp)
 
-    async def update_employee(
-        self, employee_id: UUID, payload: EmployeeUpdateRequest, actor: User
-    ) -> EmployeeDetailResponse:
-        pending_leave: list[HrLeaveRequest] = []
-        if "manager_employee_id" in payload.model_fields_set:
-            # Match leave-decision lock order: payroll guard, request rows, employee row.
-            await lock_payroll_periods(self.session)
-            await self.session.execute(
-                text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_reporting_lines'))")
-            )
-            pending_leave = list(
-                await self.session.scalars(
-                    select(HrLeaveRequest)
-                    .where(
-                        HrLeaveRequest.employee_id == employee_id,
-                        HrLeaveRequest.status == "submitted",
-                    )
-                    .order_by(HrLeaveRequest.id)
-                    .with_for_update()
+    @asynccontextmanager
+    async def _manager_change_boundary(
+        self, employee_id: UUID, actor: User
+    ) -> AsyncIterator[HrEmployee]:
+        # Keep leave routing changes in the payroll -> reporting line -> request -> employee
+        # lock order shared with leave decisions and other manager changes.
+        await lock_payroll_periods(self.session)
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_reporting_lines'))")
+        )
+        pending_leave = list(
+            await self.session.scalars(
+                select(HrLeaveRequest)
+                .where(
+                    HrLeaveRequest.employee_id == employee_id,
+                    HrLeaveRequest.status == "submitted",
                 )
+                .order_by(HrLeaveRequest.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
             )
+        )
         emp = await self._require_employee(employee_id, for_update=True)
         previous_manager_id = emp.manager_employee_id
-        if emp.employment_status in ACTIVE_ASSIGNMENT_EMPLOYMENT and any(
-            name in payload.model_fields_set and getattr(payload, name) != getattr(emp, name)
-            for name in ("first_name", "last_name", "full_name")
-        ):
-            raise AppException(
-                "Propose a reviewed profile correction to change this employee's name.",
-                status_code=409,
-                error_code="PROFILE_CORRECTION_REQUIRED",
-            )
-        await self._stage_employee_update(emp, payload, actor, "updated", utc_now().date())
+        yield emp
         if previous_manager_id != emp.manager_employee_id:
             for leave_request in pending_leave:
                 await self._reroute_pending_leave_request(leave_request, emp, actor)
+
+    async def update_employee(
+        self, employee_id: UUID, payload: EmployeeUpdateRequest, actor: User
+    ) -> EmployeeDetailResponse:
+
+        async def stage_update(emp: HrEmployee) -> None:
+            if emp.employment_status in ACTIVE_ASSIGNMENT_EMPLOYMENT and any(
+                name in payload.model_fields_set and getattr(payload, name) != getattr(emp, name)
+                for name in ("first_name", "last_name", "full_name")
+            ):
+                raise AppException(
+                    "Propose a reviewed profile correction to change this employee's name.",
+                    status_code=409,
+                    error_code="PROFILE_CORRECTION_REQUIRED",
+                )
+            await self._stage_employee_update(emp, payload, actor, "updated", utc_now().date())
+
+        if "manager_employee_id" in payload.model_fields_set:
+            async with self._manager_change_boundary(employee_id, actor) as emp:
+                await stage_update(emp)
+        else:
+            emp = await self._require_employee(employee_id, for_update=True)
+            await stage_update(emp)
         try:
             await self.session.commit()
             await self.session.refresh(emp)
@@ -1302,65 +1319,44 @@ class HrService(HrWorkforceService):
         self, employee_id: UUID, change_id: UUID, actor: User
     ) -> HrEmploymentChange:
         ensure_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
-        # Match manager edits and leave decisions: payroll guard, reporting-line
-        # guard, submitted requests in stable order, then employee/change rows.
-        await lock_payroll_periods(self.session)
-        await self.session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_reporting_lines'))")
-        )
-        pending_leave = list(
-            await self.session.scalars(
-                select(HrLeaveRequest)
-                .where(
-                    HrLeaveRequest.employee_id == employee_id,
-                    HrLeaveRequest.status == "submitted",
+        async with self._manager_change_boundary(employee_id, actor) as emp:
+            row = await self.get_employment_change(employee_id, change_id, lock=True)
+            if row.status == "applied":
+                return row
+            if row.status != "approved" or row.effective_date > business_today():
+                raise AppException(
+                    "Apply an approved change on or after its effective date.", status_code=409
                 )
-                .order_by(HrLeaveRequest.id)
-                .with_for_update()
-            )
-        )
-        emp = await self._require_employee(employee_id, for_update=True)
-        previous_manager_id = emp.manager_employee_id
-        row = await self.get_employment_change(employee_id, change_id, lock=True)
-        if row.status == "applied":
-            return row
-        if row.status != "approved" or row.effective_date > business_today():
-            raise AppException(
-                "Apply an approved change on or after its effective date.", status_code=409
-            )
-        updates = EmploymentChangeFields.model_validate(row.updates)
-        if row.change_type == "rehire":
-            await self._apply_rehire(emp, row, updates, actor)
-        else:
-            self._check_employment_change_base(emp, row.employee_revision, row.effective_date)
-            contract_history = None
-            if row.change_type == "contract_renewal":
-                await self._check_contract_renewal(emp, updates, row.effective_date, actor)
-                employee_updates = {}
-                contract_history = row.updates
+            updates = EmploymentChangeFields.model_validate(row.updates)
+            if row.change_type == "rehire":
+                await self._apply_rehire(emp, row, updates, actor)
             else:
-                await self._check_employment_change_fields(emp, updates)
-                employee_updates = updates.model_dump(exclude_unset=True)
-            await self._stage_employee_update(
-                emp,
-                EmployeeUpdateRequest(
-                    expected_revision=row.employee_revision,
-                    reason=row.reason,
-                    **employee_updates,
-                ),
-                actor,
-                row.change_type,
-                row.effective_date,
-                contract_history=contract_history,
-            )
-        if previous_manager_id != emp.manager_employee_id:
-            for leave_request in pending_leave:
-                await self._reroute_pending_leave_request(leave_request, emp, actor)
-        row.status = "applied"
-        row.applied_by = actor.id
-        row.applied_at = utc_now()
-        row.applied_employee_revision = emp.record_revision
-        await self._record_employment_change(row, actor)
+                self._check_employment_change_base(emp, row.employee_revision, row.effective_date)
+                contract_history = None
+                if row.change_type == "contract_renewal":
+                    await self._check_contract_renewal(emp, updates, row.effective_date, actor)
+                    employee_updates = {}
+                    contract_history = row.updates
+                else:
+                    await self._check_employment_change_fields(emp, updates)
+                    employee_updates = updates.model_dump(exclude_unset=True)
+                await self._stage_employee_update(
+                    emp,
+                    EmployeeUpdateRequest(
+                        expected_revision=row.employee_revision,
+                        reason=row.reason,
+                        **employee_updates,
+                    ),
+                    actor,
+                    row.change_type,
+                    row.effective_date,
+                    contract_history=contract_history,
+                )
+            row.status = "applied"
+            row.applied_by = actor.id
+            row.applied_at = utc_now()
+            row.applied_employee_revision = emp.record_revision
+            await self._record_employment_change(row, actor)
         await self.session.commit()
         return row
 

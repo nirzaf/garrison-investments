@@ -39,7 +39,6 @@ from app.schemas.inventory import (
     MaterialRequestReplacementRequest,
 )
 from app.services.approval_service import ApprovalService
-from app.services.email_service import EmailDeliveryError
 from app.services.inventory_service import InventoryService
 from app.tasks.email import _send_email_notification
 from app.utils.exceptions import AppException
@@ -434,6 +433,14 @@ async def test_cancelled_material_approval_suppresses_queued_and_retried_email(
         )
         deliveries = {notification.title: str(notification.id) for notification in notifications}
     assert deliveries.keys() == {"Approval reminder", "Approval escalated"}
+    from app.tasks.outbox import _dispatch_notification_email_outbox
+    from tests.test_notifications import prioritize_notification_outboxes
+
+    monkeypatch.setattr("app.tasks.outbox.celery_app.send_task", lambda *_args, **_kwargs: None)
+    await prioritize_notification_outboxes(
+        {UUID(deliveries["Approval reminder"]), UUID(deliveries["Approval escalated"])}
+    )
+    assert await _dispatch_notification_email_outbox() >= 2
 
     # Once escalation is committed, an older reminder for the original approver
     # is stale. The escalation message remains deliverable until cancellation.
@@ -441,20 +448,23 @@ async def test_cancelled_material_approval_suppresses_queued_and_retried_email(
         "notification email skipped"
     )
     assert attempts == []
-    with pytest.raises(EmailDeliveryError):
-        await _send_email_notification(deliveries["Approval escalated"])
+    assert await _send_email_notification(deliveries["Approval escalated"]) == (
+        "notification email delivery outcome requires review"
+    )
     assert attempts == ["Approval escalated"]
     async with AsyncSessionLocal() as session:
         await InventoryService(session).cancel_request(fixture.request.id, fixture.store)
 
     for notification_id in deliveries.values():
-        assert await _send_email_notification(notification_id) == "notification email skipped"
+        assert await _send_email_notification(notification_id) == (
+            "notification email is not eligible for delivery"
+        )
     assert attempts == ["Approval escalated"]
     async with AsyncSessionLocal() as session:
         email_statuses = await session.scalars(
             select(Notification.email_status).where(Notification.reference_id == approval_id)
         )
-        assert email_statuses.all() == ["skipped", "skipped"]
+        assert set(email_statuses.all()) == {"skipped", "unknown"}
 
 
 async def test_cancelled_request_cannot_be_revived_by_an_open_approval() -> None:

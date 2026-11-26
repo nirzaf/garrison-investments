@@ -269,6 +269,7 @@ export function SupportCockpit({
                     <Values
                       entries={[
                         ['Failed outbox entries', data.outbox_failed],
+                        ['Outbox delivery review', data.outbox_manual_review],
                         ['Stale dispatched entries', data.outbox_stale_dispatched],
                         ['Unknown recovery deliveries', data.recovery_unknown],
                         ['Worker heartbeat', statusLabel(data.worker_status)]

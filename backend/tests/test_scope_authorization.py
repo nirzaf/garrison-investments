@@ -23,6 +23,7 @@ from tests.test_daily_reports import (
     login_for_token,
     report_payload,
     setup_project_team,
+    setup_report_consumption_stock,
     skip_if_database_unavailable,
 )
 from tests.test_documents import pdf_bytes
@@ -52,10 +53,14 @@ async def two_teams(client) -> tuple[dict, dict]:
 
 
 async def upload_report_photo(client, team: dict) -> tuple[str, str]:
+    stock = await setup_report_consumption_stock(client, team["project_id"], team["op_token"])
+    payload = report_payload(team["project_id"], team["supervisor_update_id"])
+    payload["material_consumption"][0]["material_name"] = stock["item_name"]
+    payload["material_consumption"][0]["unit"] = "m2"
     report = (
         await client.post(
             "/api/v1/reports",
-            json=report_payload(team["project_id"], team["supervisor_update_id"]),
+            json=payload,
             headers=auth(team["engineer_token"]),
         )
     ).json()

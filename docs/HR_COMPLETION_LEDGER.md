@@ -2246,3 +2246,79 @@ reasons to weaken the existing role or policy controls.
   implementation-scope SHA-256 was
   `8895d16a17bb318a151e38953cd1ed8009265da7cf18c7209bc769bb24782474`
   over 34 changed/new feature files.
+
+## 26-finding audit addendum · local candidate based on `37dab2ad`
+
+This addendum records the separate 26-finding assignment against the actual
+local baseline `37dab2ad14d981b71ac048884df3cc47337aab9f` (`main`), matching
+`origin/main` at preflight. The candidate is local and unpushed; its current
+single Alembic head is `202605310116`. These IDs belong to the 26-finding audit
+and are not replacements for the similarly named IDs in the 60-finding
+register above. No production state was read or changed. `COMPLETED` means the
+local behavior and focused evidence passed; it does not mean policy activation,
+production release or UAT.
+
+| Finding | Status | Local implementation and executed evidence | Remaining dependency |
+| --- | --- | --- | --- |
+| INV-01 | PARTIAL | `inventory_service.py` requires eligible project stock and stable stock locks; `test_daily_reports.py` covers project stock, central-stock rejection/rollback and insufficient repeated quantity; `test_report_payment_concurrency.py::test_double_approve_consumes_stock_once` covers one movement under concurrent approval. | Add focused foreign-project, deleted/inactive stock and reserved-stock cases. |
+| INV-02 | PARTIAL | `inventory_service.py` resolves exact normalized code/name and validates item eligibility, units and Decimal quantities before movement; report regressions pass. | Explicit ambiguity, inactive/non-consumable item and unit-mismatch acceptance cases remain. |
+| INV-03 | PARTIAL | `report_service.py` rejects a consumed-line count mismatch; all material lines validate before movements, and report approval rollback is tested for central/missing stock. | Add explicit empty-report, line-error correction/retry and candidate-stock lock race cases. |
+| HR-01 | PARTIAL | `hr_leave_accrual.py` shares the managed legacy-credit reconciliation guard with final approval; `test_hr_leave_accrual.py::test_managed_leave_approval_requires_reconciliation_for_legacy_credit` and the focused HR/accrual suite pass. | Add separate-session approval versus accrual/baseline serialization coverage. |
+| SEC-01 | COMPLETED | `dashboard_service.py` intersects project scope with document service visibility and classification before SQL counting; `test_dashboard_pending_document_count_uses_document_scope_and_classification` passed for scoped supervisor and financial director projections. | Production visibility remains unverified. |
+| NOT-01 | COMPLETED | `notification_service.py`, `task_outbox.py`, `tasks/outbox.py`, and `tasks/email.py` persist dispatch state with notifications, lease and retry delivery, and retain ambiguous outcomes for review. Transaction rollback, broker retry, provider result, duplicate delivery and expired-claim tests in `test_notifications.py` passed. | Live provider receipt and worker/beat health remain unverified; no exactly-once external-mail claim. |
+| NOT-02 | COMPLETED | `api/v1/notifications.py`, `notification_repository.py`, `NotificationsPage.tsx`, and `notifications.ts` implement bounded stable pagination and previous/next navigation; `test_notification_pagination_unread_parity_and_bulk_read_are_complete` and frontend notification tests passed. | None for local behavior. |
+| NOT-03 | COMPLETED | `NotificationRepository.mark_all_read` performs one user-scoped update across unread nondeleted rows, including muted/superseded rows, preserving existing read timestamps; notification regression passed. | None for local behavior. |
+| NOT-04 | COMPLETED | Dashboard unread badge uses `NotificationRepository.unread_count` with the same muted/superseded/deleted predicates; notification parity regression passed. | None for local behavior. |
+| NOT-05 | COMPLETED | `frontend/src/pages/notifications/workflowLinks.ts` allowlists the two verified internal destinations and rejects external, protocol-relative and prefix-lookalike links; `NotificationsPage.test.ts` passed. | None for local behavior. |
+| HR-07 | COMPLETED | `hr.py` and `hr_workforce_service.py` advertise only eligible revision-bound route actions and exclude subject/submitter; `test_hr.py` authorization cases and the browser restoration path passed. | Live account assignments remain unverified. |
+| HR-04 | COMPLETED | `HRWorkspacePage.tsx` renders the advertised reasoned restoration action, retains input on failure and refreshes state after success; the fallback-restoration Chrome workflow passed. | None for local behavior. |
+| HR-05 | COMPLETED | Scoped HR projections expose the actual final actor and localized decision time; backend actor-projection test and direct-supervisor Chrome workflow passed. | Live account names and decisions were not accessed. |
+| HR-06 | COMPLETED | `hr.py` exposes a paginated HR-only data-quality projection and `HRWorkspacePage.tsx` links to the existing employee editor without revealing source dates or adding bulk mutations; backend authorization test and data-quality Chrome workflow passed. | Live data counts and corrections require authorized HR review. |
+| LIFE-04 | BLOCKED_AUTHORIZATION | Existing manual reviewed employment-change apply path and manager reroute are retained; no scheduled identity was fabricated. | Approved system execution identity, scheduling authority and audit source are absent. |
+| HR-02 | BLOCKED_POLICY | Existing annual-block verification and zero-carry rollover protections remain in place; no exception receipt or waiver was created. | An approved source policy permitting closure exceptions and named independent decision authority are missing. |
+| HR-03 | BLOCKED_POLICY | Additional leave types remain inactive until configured through existing reviewed policy paths. | Approved sick, maternity and unpaid eligibility, entitlement/pay treatment, evidence, limits, half-day and expiry rules are missing. |
+| PAY-01 | BLOCKED_POLICY | Existing reviewed payroll policy, Decimal accounting and write restrictions remain unchanged. | Approved jurisdiction, currency, period, pay components, ordering/rounding and worked examples are missing. |
+| PAY-02 | BLOCKED_POLICY | Existing frozen time/leave input and export guards remain unchanged. | Approved reconciliation rules for payroll periods, overtime and unpaid leave are missing. |
+| PAY-03 | BLOCKED_POLICY | Closed payroll runs and original settlements remain immutable; no finance execution path was added. | Approved positive/negative/zero correction treatment, named independent Finance authority and external evidence rules are missing. |
+| PAY-04 | BLOCKED_POLICY | Existing employee payslip publication/read path remains intact; no replacement statement was issued. | Approved correction statement publication and settlement/recovery policy are missing. |
+| PAY-05 | BLOCKED_POLICY | Locked attendance and payroll source records remain protected; no direct correction was made. | Approved discrepancy-to-correction authority and calculation policy are missing. |
+| LIFE-01 | BLOCKED_POLICY | Historical attendance recorder and assigned-engineer checks remain unchanged. | Approved scoped substitute delegation, work-date evidence and eligible reviewer assignment are missing. |
+| LIFE-02 | BLOCKED_POLICY | Existing encrypted opener-scoped HR case access and deny-by-default permission state remain unchanged. | Approved case investigator, independent decision/appeal assignments and evidence scope are missing. |
+| LIFE-03 | BLOCKED_POLICY | Existing recruitment transitions remain unchanged; no maker identity or approval was fabricated. | Management decision on requisition and offer maker/checker independence is missing. |
+| IMG-01 | PARTIAL | Local `rg` found no image task producers; synchronous photo upload/thumbnail behavior remains. Celery registration and support task-name mappings remain because queued-work migration was not authorized. | Production queued-task drain state is unavailable, so compatibility task stubs were retained. |
+
+The policy-blocked items above do not block independent local fixes. The
+local candidate has no hosted CI, deployment or independent production
+readback; those states are recorded separately from local verification below.
+
+### 26-finding verification record
+
+- Final pre-commit checkout was `main` at `37dab2ad14d981b71ac048884df3cc47337aab9f`;
+  a read-only fetch confirmed `origin/main` still matched. The candidate remains
+  local and unpushed. Its implementation-scope SHA-256 is
+  `d515a8114fbe599e28ac71c265cb052e8ffc057df4c66c21f85f698ea4edd79f` over 46
+  changed/new files, excluding this completion ledger to avoid a self-referential
+  hash. No staged changes were present before final review.
+- A fresh disposable PostgreSQL database upgraded from empty to Alembic head
+  `202605310116`. A populated forward-upgrade rehearsal from `202605310115` to
+  `202605310116` preserved a synthetic outbox row and its pre-existing fields;
+  the new due index exists. No production database was used.
+- Backend `ruff check .`, `mypy .` (466 source files), and
+  `scripts/export_openapi.py --check` passed. The full backend suite passed
+  **1,479 tests**, with **6 skipped** (five explicit Docker-opt-in stack tests
+  and one local Docker-ingress test) and **18 warnings** (Celery queue and
+  HTTPX cookie deprecations). The six failures from the first run were traced to
+  legacy test fixtures/assertions that omitted required synthetic stock, assumed
+  an empty shared test database, or expected pre-outbox synchronous mail. Those
+  cases were corrected and all six passed in a focused rerun before the clean
+  full-suite rerun.
+- Frontend lint and generated API type check passed; Vitest reported **15 files
+  and 72 tests passed**; the production build passed with the existing large
+  bundle warning. The full Chrome suite on the same application runtime passed
+  **89 tests with 1 skipped** before two additional E2E specifications were
+  added. The current direct-supervisor final-decision, reasoned fallback
+  restoration, and HR data-quality workflows then passed in a focused run (**3
+  passed**); the full Chrome suite was not rerun after those test-only additions.
+- `git diff --check` and `graphify update .` passed. No hosted CI, push, merge,
+  deploy, production readback, live notification delivery, policy activation,
+  production data disposition or business UAT is claimed.

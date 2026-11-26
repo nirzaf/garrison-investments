@@ -202,6 +202,14 @@ async def read_jobs_monitor(
             )
             or 0
         )
+        outbox_manual_review = int(
+            await db.scalar(
+                select(func.count())
+                .select_from(TaskOutbox)
+                .where(TaskOutbox.status == "manual_review")
+            )
+            or 0
+        )
         oldest_pending = await db.scalar(
             select(func.min(TaskOutbox.created_at)).where(TaskOutbox.status == "pending")
         )
@@ -277,6 +285,7 @@ async def read_jobs_monitor(
             worker_status == "unavailable"
             or outbox_failed > 0
             or outbox_stale_dispatched > 0
+            or outbox_manual_review > 0
             or rec_unknown > 0
         ):
             source_status = "degraded"
@@ -304,6 +313,7 @@ async def read_jobs_monitor(
             outbox_dispatched=outbox_dispatched,
             outbox_stale_dispatched=outbox_stale_dispatched,
             outbox_failed=outbox_failed,
+            outbox_manual_review=outbox_manual_review,
             outbox_oldest_age_seconds=oldest_age,
             recovery_pending=rec_pending,
             recovery_dispatching=rec_dispatching,
@@ -327,6 +337,7 @@ async def read_jobs_monitor(
             outbox_dispatched=None,
             outbox_stale_dispatched=None,
             outbox_failed=None,
+            outbox_manual_review=None,
             outbox_oldest_age_seconds=None,
             recovery_pending=None,
             recovery_dispatching=None,

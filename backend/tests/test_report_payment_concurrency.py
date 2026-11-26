@@ -52,10 +52,13 @@ async def _submitted_report_with_stock() -> tuple[UUID, UUID, UUID, UUID]:
         stock = await setup_report_consumption_stock(
             client, setup["project_id"], setup["op_token"]
         )
+        payload = report_payload(setup["project_id"], setup["supervisor_update_id"])
+        payload["material_consumption"][0]["material_name"] = stock["item_name"]
+        payload["material_consumption"][0]["unit"] = "m2"
         report = (
             await client.post(
                 "/api/v1/reports",
-                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                json=payload,
                 headers={"Authorization": f"Bearer {setup['engineer_token']}"},
             )
         ).json()

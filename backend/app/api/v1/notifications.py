@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.api.dependencies import CurrentUser, DbSession
 from app.schemas.notifications import (
@@ -17,8 +17,12 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 async def list_notifications(
     current_user: CurrentUser,
     session: DbSession,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ) -> NotificationListResponse:
-    notifications, total = await NotificationService(session).list_for_user(current_user)
+    notifications, total = await NotificationService(session).list_for_user(
+        current_user, limit=limit, offset=offset
+    )
     return NotificationListResponse(
         items=[NotificationResponse.model_validate(item) for item in notifications],
         total=total,

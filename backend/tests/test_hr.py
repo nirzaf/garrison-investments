@@ -35,6 +35,7 @@ from app.models.hr import (
     HrDocumentVersion,
     HrEmployee,
     HrEmployeePrivate,
+    HrEmploymentChange,
     HrEmploymentPeriod,
     HrIssuedLetter,
     HrLeaveLedger,
@@ -54,12 +55,15 @@ from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.hr import (
+    EmployeeUpdateRequest,
     HrDocumentDecisionRequest,
+    LeaveRequestDecisionRequest,
     LeaveRouteRefreshRequest,
     OnboardingCaseCreateRequest,
     OnboardingTaskUpdateRequest,
 )
 from app.services.hr_crypto import encrypt_hr_value
+from app.services.hr_service import HrService
 from app.services.hr_workforce_service import HrWorkforceService
 from app.tasks.maintenance import (
     _check_hr_credential_expiry,
@@ -234,11 +238,38 @@ async def test_leave_route_refresh_persists_current_routes_and_audit_notificatio
             recorded_by=fallback_recorder.id,
             leave_type_id=leave_type.id,
         )
-        session.add_all([current_request, expired_request, reassigned_request])
+        decided_request = fallback_request(
+            employee,
+            reason_code="manager_temporarily_unavailable",
+            reason="Synthetic completed decision",
+            supervisor_id=manager_a.id,
+            until=today,
+            submitted_by=submitter.id,
+            recorded_by=fallback_recorder.id,
+            leave_type_id=leave_type.id,
+        )
+        decided_request.status = "approved"
+        decided_request.decided_by_id = reviewer.id
+        decided_request.decided_at = now
+        session.add_all(
+            [current_request, expired_request, reassigned_request, decided_request]
+        )
         await session.commit()
 
         service = HrWorkforceService(session)
+        from app.api.v1.hr import _leave_request_response
+
+        completed_projection = await _leave_request_response(session, decided_request, reviewer)
+        assert completed_projection.decided_by_id == reviewer.id
+        assert completed_projection.decided_by_name == "Synthetic reviewer"
+        assert completed_projection.decided_at == now
+        reviewer_projection = await _leave_request_response(session, current_request, reviewer)
+        assert "restore_supervisor" in reviewer_projection.allowed_actions
+        assert "refresh_route" in reviewer_projection.allowed_actions
         for blocked_actor in (subject, submitter):
+            projected = await _leave_request_response(session, current_request, blocked_actor)
+            assert "refresh_route" not in projected.allowed_actions
+            assert "restore_supervisor" not in projected.allowed_actions
             with pytest.raises(AppException) as rejected:
                 await service.refresh_leave_route(
                     current_request.id,
@@ -464,6 +495,318 @@ async def test_leave_route_refresh_persists_current_routes_and_audit_notificatio
             )
         )
         assert changed_reason_notification is not None
+
+
+@pytest.mark.asyncio
+async def test_lm06_manager_changes_reroute_pending_leave_once_and_serialize_with_decisions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from app.services import notification_service
+
+    monkeypatch.setattr(
+        notification_service.send_email_notification,
+        "delay",
+        lambda *_args, **_kwargs: None,
+    )
+    today = business_today()
+    now = datetime.now(UTC)
+    tag = uuid4().hex[:12]
+
+    def new_user(role: str, label: str) -> User:
+        return User(
+            email=f"{label}-{tag}@example.com",
+            full_name=f"Synthetic {label}",
+            role=role,
+            must_change_password=False,
+        )
+
+    def new_employee(
+        label: str, *, user: User | None = None, manager_id: UUID | None = None
+    ) -> HrEmployee:
+        return HrEmployee(
+            user_id=user.id if user else None,
+            employee_code=f"LM06-{label[:5]}-{tag}",
+            first_name="Synthetic",
+            last_name=label,
+            full_name=f"Synthetic {label}",
+            work_email=user.email if user else None,
+            employment_status="active",
+            manager_employee_id=manager_id,
+            line_manager_reviewer_id=manager_id,
+            record_revision=1,
+        )
+
+    async with AsyncSessionLocal() as session:
+        actor = new_user("hr_manager", "actor")
+        independent_reviewer = new_user("hr_manager", "reviewer")
+        old_supervisor = new_user("group_project_manager", "old-supervisor")
+        new_supervisor = new_user("group_project_manager", "new-supervisor")
+        session.add_all([actor, independent_reviewer, old_supervisor, new_supervisor])
+        await session.flush()
+        actor_id = actor.id
+        reviewer_id = independent_reviewer.id
+        old_supervisor_id = old_supervisor.id
+        new_supervisor_id = new_supervisor.id
+
+        old_manager_employee = new_employee("Old Manager", user=old_supervisor)
+        new_manager_employee = new_employee("New Manager", user=new_supervisor)
+        session.add_all([old_manager_employee, new_manager_employee])
+        await session.flush()
+        old_manager_employee_id = old_manager_employee.id
+        new_manager_employee_id = new_manager_employee.id
+
+        direct_employee = new_employee("Direct Report", manager_id=old_manager_employee_id)
+        reviewed_employee = new_employee("Reviewed Report", manager_id=old_manager_employee_id)
+        unchanged_employee = new_employee("Unchanged Report", manager_id=old_manager_employee_id)
+        session.add_all([direct_employee, reviewed_employee, unchanged_employee])
+        await session.flush()
+
+        leave_type = HrLeaveType(code=f"LM06-{tag}", name="Synthetic LM-06 leave")
+        session.add(leave_type)
+        await session.flush()
+
+        def leave_request(
+            employee: HrEmployee,
+            *,
+            temporary_fallback: bool = False,
+            status: str = "submitted",
+        ) -> HrLeaveRequest:
+            return HrLeaveRequest(
+                employee_id=employee.id,
+                leave_type_id=leave_type.id,
+                start_date=today + timedelta(days=10),
+                end_date=today + timedelta(days=10),
+                days_requested=Decimal("1.00"),
+                status=status,
+                requested_by_id=actor_id,
+                decided_by_id=reviewer_id if status != "submitted" else None,
+                decided_at=now if status != "submitted" else None,
+                decision_notes="Synthetic terminal decision" if status != "submitted" else None,
+                record_revision=1,
+                approval_route="hr_fallback" if temporary_fallback else "supervisor",
+                assigned_supervisor_user_id=old_supervisor_id,
+                fallback_reason_code=(
+                    "manager_temporarily_unavailable" if temporary_fallback else None
+                ),
+                fallback_reason="Synthetic temporary absence" if temporary_fallback else None,
+                fallback_recorded_by_id=actor_id if temporary_fallback else None,
+                fallback_recorded_at=now if temporary_fallback else None,
+                fallback_until=today + timedelta(days=2) if temporary_fallback else None,
+            )
+
+        direct_request = leave_request(direct_employee)
+        terminal_request = leave_request(direct_employee, status="rejected")
+        reviewed_request = leave_request(reviewed_employee)
+        unchanged_request = leave_request(unchanged_employee, temporary_fallback=True)
+        session.add_all([direct_request, terminal_request, reviewed_request, unchanged_request])
+        await session.flush()
+        direct_request_id = direct_request.id
+        terminal_request_id = terminal_request.id
+        reviewed_request_id = reviewed_request.id
+        unchanged_request_id = unchanged_request.id
+
+        employment_change = HrEmploymentChange(
+            employee_id=reviewed_employee.id,
+            change_type="transfer",
+            effective_date=today,
+            employee_revision=1,
+            updates={"manager_employee_id": str(new_manager_employee_id)},
+            reason="Synthetic reviewed reporting-line change",
+            status="approved",
+            proposed_by=actor_id,
+            decided_by=reviewer_id,
+            decided_at=now,
+        )
+        session.add(employment_change)
+        await session.commit()
+        direct_employee_id = direct_employee.id
+        reviewed_employee_id = reviewed_employee.id
+        unchanged_employee_id = unchanged_employee.id
+        employment_change_id = employment_change.id
+
+    rerouting_started = asyncio.Event()
+    release_reroute = asyncio.Event()
+
+    async def transfer_direct_report() -> object:
+        async with AsyncSessionLocal() as session:
+            actor = await session.get(User, actor_id)
+            assert actor is not None
+            service = HrService(session)
+            reroute = service._reroute_pending_leave_request
+
+            async def pause_before_reroute(
+                request: HrLeaveRequest, employee: HrEmployee, actor: User
+            ) -> None:
+                rerouting_started.set()
+                await release_reroute.wait()
+                await reroute(request, employee, actor)
+
+            monkeypatch.setattr(service, "_reroute_pending_leave_request", pause_before_reroute)
+            return await service.update_employee(
+                direct_employee_id,
+                EmployeeUpdateRequest(
+                    expected_revision=1, manager_employee_id=new_manager_employee_id
+                ),
+                actor,
+            )
+
+    async def decide_during_transfer() -> object:
+        async with AsyncSessionLocal() as session:
+            actor = await session.get(User, old_supervisor_id)
+            assert actor is not None
+            return await HrWorkforceService(session).decide_leave_request(
+                direct_request_id,
+                LeaveRequestDecisionRequest(
+                    decision="rejected", expected_revision=1, notes="Synthetic decision"
+                ),
+                actor,
+                supervisor_decision=True,
+            )
+
+    transfer_task = asyncio.create_task(transfer_direct_report())
+    await asyncio.wait_for(rerouting_started.wait(), timeout=5)
+    decision_task = asyncio.create_task(decide_during_transfer())
+    await asyncio.sleep(0)
+    release_reroute.set()
+    transfer_result, decision_result = await asyncio.wait_for(
+        asyncio.gather(transfer_task, decision_task, return_exceptions=True), timeout=10
+    )
+    assert not isinstance(transfer_result, BaseException)
+    assert isinstance(decision_result, AppException)
+    assert decision_result.status_code == 409
+    assert decision_result.error_code == "REVISION_CONFLICT"
+
+    async with AsyncSessionLocal() as session:
+        direct = await session.get(HrLeaveRequest, direct_request_id)
+        terminal = await session.get(HrLeaveRequest, terminal_request_id)
+        assert direct is not None and terminal is not None
+        assert direct.status == "submitted"
+        assert direct.approval_route == "supervisor"
+        assert direct.assigned_supervisor_user_id == new_supervisor_id
+        assert direct.record_revision == 2
+        assert terminal.status == "rejected"
+        assert terminal.assigned_supervisor_user_id == old_supervisor_id
+        assert terminal.record_revision == 1
+
+        direct_events = list(
+            await session.scalars(
+                select(ActivityLog).where(
+                    ActivityLog.entity_id == direct_request_id,
+                    ActivityLog.action == "hr.leave_request.rerouted",
+                )
+            )
+        )
+        assert len(direct_events) == 1
+        assert direct_events[0].new_values is not None
+        assert direct_events[0].new_values["revision"] == 2
+        direct_notifications = list(
+            await session.scalars(
+                select(Notification).where(
+                    Notification.reference_id == direct_request_id,
+                    Notification.event_code == "rerouted",
+                    Notification.event_revision == 2,
+                )
+            )
+        )
+        assert [item.user_id for item in direct_notifications] == [new_supervisor_id]
+
+    async with AsyncSessionLocal() as session:
+        old_supervisor_actor = await session.get(User, old_supervisor_id)
+        assert old_supervisor_actor is not None
+        with pytest.raises(AppException) as old_supervisor_denied:
+            await HrWorkforceService(session).decide_leave_request(
+                direct_request_id,
+                LeaveRequestDecisionRequest(
+                    decision="rejected", expected_revision=2, notes="Synthetic decision"
+                ),
+                old_supervisor_actor,
+                supervisor_decision=True,
+            )
+        assert old_supervisor_denied.value.status_code == 409
+        assert old_supervisor_denied.value.error_code == "LEAVE_ROUTE_CHANGED"
+        await session.rollback()
+
+    async with AsyncSessionLocal() as session:
+        new_supervisor_actor = await session.get(User, new_supervisor_id)
+        assert new_supervisor_actor is not None
+        decided = await HrWorkforceService(session).decide_leave_request(
+            direct_request_id,
+            LeaveRequestDecisionRequest(
+                decision="rejected", expected_revision=2, notes="Synthetic decision"
+            ),
+            new_supervisor_actor,
+            supervisor_decision=True,
+        )
+        assert decided.status == "rejected"
+        assert decided.decided_by_id == new_supervisor_id
+
+    async with AsyncSessionLocal() as session:
+        hr_actor = await session.get(User, actor_id)
+        assert hr_actor is not None
+        service = HrService(session)
+        applied = await service.apply_employment_change(
+            reviewed_employee_id, employment_change_id, hr_actor
+        )
+        assert applied.status == "applied"
+        assert applied.applied_employee_revision == 2
+        reviewed = await session.get(HrLeaveRequest, reviewed_request_id)
+        assert reviewed is not None
+        assert reviewed.approval_route == "supervisor"
+        assert reviewed.assigned_supervisor_user_id == new_supervisor_id
+        assert reviewed.record_revision == 2
+        reviewed_events = list(
+            await session.scalars(
+                select(ActivityLog).where(
+                    ActivityLog.entity_id == reviewed_request_id,
+                    ActivityLog.action == "hr.leave_request.rerouted",
+                )
+            )
+        )
+        assert len(reviewed_events) == 1
+        reviewed_notifications = list(
+            await session.scalars(
+                select(Notification).where(
+                    Notification.reference_id == reviewed_request_id,
+                    Notification.event_code == "rerouted",
+                    Notification.event_revision == 2,
+                )
+            )
+        )
+        assert [item.user_id for item in reviewed_notifications] == [new_supervisor_id]
+
+        await service.update_employee(
+            unchanged_employee_id,
+            EmployeeUpdateRequest(expected_revision=1, work_location="Unrelated edit"),
+            actor,
+        )
+        await service.update_employee(
+            unchanged_employee_id,
+            EmployeeUpdateRequest(expected_revision=2, manager_employee_id=old_manager_employee_id),
+            actor,
+        )
+        unchanged = await session.get(HrLeaveRequest, unchanged_request_id)
+        assert unchanged is not None
+        assert unchanged.approval_route == "hr_fallback"
+        assert unchanged.fallback_reason_code == "manager_temporarily_unavailable"
+        assert unchanged.fallback_until == today + timedelta(days=2)
+        assert unchanged.record_revision == 1
+        assert not (
+            await session.scalars(
+                select(ActivityLog.id).where(
+                    ActivityLog.entity_id == unchanged_request_id,
+                    ActivityLog.action == "hr.leave_request.rerouted",
+                )
+            )
+        ).all()
+        assert not (
+            await session.scalars(
+                select(Notification.id).where(
+                    Notification.reference_id == unchanged_request_id,
+                    Notification.event_code == "rerouted",
+                )
+            )
+        ).all()
 
 
 @pytest.mark.asyncio

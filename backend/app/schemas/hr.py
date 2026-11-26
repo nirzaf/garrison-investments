@@ -1978,7 +1978,12 @@ class LeaveRequestDecisionRequest(BaseModel):
 
 
 LeaveRequestAllowedAction = Literal[
-    "approve", "reject", "cancel", "route_to_hr_fallback", "refresh_route"
+    "approve",
+    "reject",
+    "cancel",
+    "route_to_hr_fallback",
+    "refresh_route",
+    "restore_supervisor",
 ]
 LeaveRequestRouteStatus = Literal[
     "draft",
@@ -2016,6 +2021,7 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
     status: str
     requested_by_id: UUID | None
     decided_by_id: UUID | None
+    decided_by_name: str | None = None
     decided_at: datetime | None
     decision_notes: str | None
     approval_route: Literal["supervisor", "hr_fallback"] | None = None

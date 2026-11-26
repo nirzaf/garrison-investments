@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.business_policy import MAX_MONEY
 from app.models.approval import Approval
-from app.models.daily_report import DailyReport
+from app.models.daily_report import DailyReport, ReportMaterialConsumption
 from app.models.idempotency_record import IdempotencyRecord
 from app.models.inventory import (
     InventoryAsset,
@@ -52,7 +52,12 @@ from app.services.document_service import DocumentService
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.notification_service import NotificationService
 from app.services.supplier_service import SupplierService
-from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
+from app.utils.exceptions import (
+    AppException,
+    ErrorDetail,
+    NotFoundException,
+    PermissionDeniedException,
+)
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_INVENTORY_MANAGE,
@@ -306,24 +311,155 @@ class InventoryService:
         report: DailyReport,
         actor: User,
     ) -> int:
-        consumed = 0
-        for line in report.material_consumption:
-            item: InventoryItem | None = None
-            stock: InventoryLocationStock | None = None
-            for candidate in await self._find_consumption_items(line.material_name):
-                candidate_stock = await self._find_consumption_stock(
-                    item_id=candidate.id,
-                    project_id=report.project_id,
-                    quantity=line.quantity,
+        lines = list(report.material_consumption)
+        if not lines:
+            return 0
+
+        candidates = await self._find_consumption_items(
+            {self._normalize_consumption_value(line.material_name) for line in lines}
+        )
+        resolved: list[tuple[int, ReportMaterialConsumption, InventoryItem]] = []
+        errors: list[ErrorDetail] = []
+        for index, line in enumerate(lines):
+            normalized = self._normalize_consumption_value(line.material_name)
+            code_matches = [
+                item
+                for item in candidates
+                if item.item_code
+                and self._normalize_consumption_value(item.item_code) == normalized
+            ]
+            selected_matches = code_matches or [
+                item
+                for item in candidates
+                if self._normalize_consumption_value(item.name) == normalized
+            ]
+            if not selected_matches:
+                errors.append(
+                    ErrorDetail(field=f"material_consumption[{index}]", message="item_not_found")
                 )
-                if candidate_stock:
-                    item = candidate
-                    stock = candidate_stock
-                    break
-            if not stock:
                 continue
-            if not item:
+            if len(selected_matches) != 1:
+                errors.append(
+                    ErrorDetail(field=f"material_consumption[{index}]", message="item_ambiguous")
+                )
                 continue
+
+            item = selected_matches[0]
+            if item.deleted_at is not None or not item.is_active or item.item_type != "consumable":
+                errors.append(
+                    ErrorDetail(
+                        field=f"material_consumption[{index}]", message="item_not_consumable"
+                    )
+                )
+                continue
+            if self._normalize_consumption_value(item.unit) != self._normalize_consumption_value(
+                line.unit
+            ):
+                errors.append(
+                    ErrorDetail(field=f"material_consumption[{index}]", message="unit_mismatch")
+                )
+                continue
+            if not line.quantity.is_finite() or line.quantity <= 0:
+                errors.append(
+                    ErrorDetail(field=f"material_consumption[{index}]", message="quantity_invalid")
+                )
+                continue
+            resolved.append((index, line, item))
+
+        if errors:
+            self._raise_daily_report_consumption_error(errors)
+
+        item_ids = sorted({item.id for _, _, item in resolved}, key=str)
+        locations = list(
+            (
+                await self.session.scalars(
+                    select(StorageLocation)
+                    .where(
+                        StorageLocation.project_id == report.project_id,
+                        StorageLocation.deleted_at.is_(None),
+                        StorageLocation.is_active.is_(True),
+                    )
+                    .order_by(StorageLocation.id)
+                    .with_for_update(read=True)
+                )
+            ).all()
+        )
+        location_ids = [location.id for location in locations]
+        stocks: list[InventoryLocationStock] = []
+        if location_ids:
+            stocks = list(
+                (
+                    await self.session.scalars(
+                        select(InventoryLocationStock)
+                        .where(
+                            InventoryLocationStock.item_id.in_(item_ids),
+                            InventoryLocationStock.location_id.in_(location_ids),
+                            InventoryLocationStock.deleted_at.is_(None),
+                        )
+                        .order_by(
+                            InventoryLocationStock.item_id,
+                            InventoryLocationStock.location_id,
+                            InventoryLocationStock.id,
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
+
+        stocks_by_item: dict[UUID, list[InventoryLocationStock]] = {}
+        for stock in stocks:
+            stocks_by_item.setdefault(stock.item_id, []).append(stock)
+        total_by_item: dict[UUID, Decimal] = {}
+        lines_by_item: dict[UUID, list[tuple[int, ReportMaterialConsumption, InventoryItem]]] = {}
+        for resolved_line in resolved:
+            _, line, item = resolved_line
+            total_by_item[item.id] = total_by_item.get(item.id, Decimal("0")) + line.quantity
+            lines_by_item.setdefault(item.id, []).append(resolved_line)
+
+        chosen_stock: dict[UUID, InventoryLocationStock] = {}
+        for item_id in item_ids:
+            item_lines = lines_by_item[item_id]
+            item_stocks = stocks_by_item.get(item_id, [])
+            if not item_stocks:
+                errors.append(
+                    ErrorDetail(
+                        field=f"material_consumption[{item_lines[0][0]}]",
+                        message="project_stock_missing",
+                    )
+                )
+                continue
+            required = total_by_item[item_id]
+            available_by_stock = {
+                stock.id: stock.on_hand_qty - stock.reserved_qty for stock in item_stocks
+            }
+            sufficient = next(
+                (stock for stock in item_stocks if available_by_stock[stock.id] >= required),
+                None,
+            )
+            if sufficient is None:
+                maximum_available = max(available_by_stock.values())
+                cumulative = Decimal("0")
+                failing_index = item_lines[-1][0]
+                for index, line, _item in item_lines:
+                    cumulative += line.quantity
+                    if cumulative > maximum_available:
+                        failing_index = index
+                        break
+                errors.append(
+                    ErrorDetail(
+                        field=f"material_consumption[{failing_index}]",
+                        message="insufficient_project_stock",
+                    )
+                )
+                continue
+            chosen_stock[item_id] = sufficient
+
+        if errors:
+            self._raise_daily_report_consumption_error(errors)
+
+        consumed = 0
+        for _index, line, item in resolved:
+            stock = chosen_stock[item.id]
             await self._create_movement(
                 MovementCreateRequest(
                     item_id=item.id,
@@ -339,15 +475,27 @@ class InventoryService:
                 commit=False,
             )
             consumed += 1
-        if consumed:
-            await self.audit.record(
-                action="inventory.daily_report_consumption_applied",
-                user_id=actor.id,
-                entity_type="daily_reports",
-                entity_id=report.id,
-                new_values={"lines_consumed": consumed},
-            )
+        await self.audit.record(
+            action="inventory.daily_report_consumption_applied",
+            user_id=actor.id,
+            entity_type="daily_reports",
+            entity_id=report.id,
+            new_values={"lines_consumed": consumed},
+        )
         return consumed
+
+    @staticmethod
+    def _normalize_consumption_value(value: str) -> str:
+        return value.strip().lower()
+
+    @staticmethod
+    def _raise_daily_report_consumption_error(errors: list[ErrorDetail]) -> None:
+        raise AppException(
+            "Daily report material consumption could not be fulfilled.",
+            status_code=409,
+            error_code="DAILY_REPORT_MATERIAL_CONSUMPTION_FAILED",
+            errors=errors,
+        )
 
     async def list_movements(
         self,
@@ -1532,52 +1680,23 @@ class InventoryService:
             raise NotFoundException("Inventory item")
         return item
 
-    async def _find_consumption_items(self, material_name: str) -> list[InventoryItem]:
-        normalized = material_name.strip().lower()
+    async def _find_consumption_items(self, material_names: set[str]) -> list[InventoryItem]:
+        if not material_names:
+            return []
         return list(
             (
                 await self.session.scalars(
                     select(InventoryItem)
                     .where(
-                        InventoryItem.deleted_at.is_(None),
                         or_(
-                            func.lower(InventoryItem.name) == normalized,
-                            func.lower(InventoryItem.item_code) == normalized,
+                            func.lower(func.trim(InventoryItem.name)).in_(material_names),
+                            func.lower(func.trim(InventoryItem.item_code)).in_(material_names),
                         ),
                     )
-                    .order_by(InventoryItem.updated_at.desc(), InventoryItem.created_at.desc())
+                    .order_by(InventoryItem.id)
                 )
             ).all()
         )
-
-    async def _find_consumption_stock(
-        self,
-        *,
-        item_id: UUID,
-        project_id: UUID,
-        quantity: Decimal,
-    ) -> InventoryLocationStock | None:
-        stocks = list(
-            (
-                await self.session.scalars(
-                    select(InventoryLocationStock)
-                    .join(StorageLocation, StorageLocation.id == InventoryLocationStock.location_id)
-                    .where(
-                        InventoryLocationStock.item_id == item_id,
-                        InventoryLocationStock.deleted_at.is_(None),
-                        StorageLocation.deleted_at.is_(None),
-                    )
-                    .order_by(
-                        (StorageLocation.project_id == project_id).desc(),
-                        StorageLocation.location_type.desc(),
-                    )
-                )
-            ).all()
-        )
-        for stock in stocks:
-            if stock.on_hand_qty - stock.reserved_qty >= quantity:
-                return stock
-        return None
 
     async def _get_material_request(
         self,

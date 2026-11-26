@@ -4,7 +4,7 @@ Background work recorded in the same database transaction as the operation that 
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/task_outbox.py)
 
-The [outbox dispatcher](../../backend/app/tasks/outbox.py) scans pending records to dispatch Celery tasks and tracks the number of attempts. Report approvals use a dedupe key for export work.
+The [outbox dispatchers](../../backend/app/tasks/outbox.py) scan pending records to dispatch Celery tasks and track attempts. Report approvals use a dedupe key for export work. Email notifications use a separate one-minute dispatcher, stable due ordering, a five-minute lease and at most eight automatic broker submissions with exponential backoff. An expired dispatch/worker lease becomes `manual_review`; it is not automatically resent when delivery may have reached the provider. The audited technical retry command applies only to terminal failed queue submissions, never ambiguous provider outcomes.
 
 ## Columns
 
@@ -19,6 +19,8 @@ The [outbox dispatcher](../../backend/app/tasks/outbox.py) scans pending records
 | `attempts` | `integer` | No | `0` |
 | `created_at` | `timestamptz` | No | `now()` |
 | `dispatched_at` | `timestamptz` | Yes | — |
+| `next_attempt_at` | `timestamptz` | Yes | — |
+| `lease_until` | `timestamptz` | Yes | — |
 
 ## Keys and constraints
 
@@ -32,3 +34,4 @@ The [outbox dispatcher](../../backend/app/tasks/outbox.py) scans pending records
 | Index | Method | Keys | Unique | Predicate |
 | --- | --- | --- | --- | --- |
 | `ix_task_outbox_pending` | `btree` | `created_at, id` | No | `(status = 'pending')` |
+| `ix_task_outbox_notification_due` | `btree` | `next_attempt_at, created_at, id` | No | `(task_name = 'send_email_notification' AND status = 'pending')` |

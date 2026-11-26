@@ -1,6 +1,6 @@
 # notifications
 
-User notifications with read, mute, email delivery state, and retained supersession history for obsolete leave actions.
+User notifications with read, mute, durable email delivery state, and retained supersession history for obsolete leave actions.
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/notification.py)
 
@@ -44,3 +44,10 @@ User notifications with read, mute, email delivery state, and retained supersess
 | --- | --- | --- | --- | --- |
 | `idx_notifications_reference` | `btree` | `reference_type, reference_id` | No | — |
 | `idx_notifications_user` | `btree` | `user_id, is_read, created_at DESC` | No | — |
+
+For new email-enabled notifications, `email_status` is initialized to `queued` and a matching
+[`task_outbox`](task_outbox.md) row is inserted in the same transaction. The worker records
+`sending` before contacting the provider, `sent` only after provider acceptance, and `unknown`
+when transport outcome cannot be determined safely. Unknown outcomes require operational
+reconciliation; they are not automatically resent. Portal-only notifications leave the field
+null. There is no backfill or automatic resend of older notification rows.

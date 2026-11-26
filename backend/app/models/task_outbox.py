@@ -10,6 +10,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
 
+def notification_email_outbox_dedupe_key(notification_id: UUID) -> str:
+    return f"notification-email:{notification_id}"
+
+
 class TaskOutbox(Base):
     __tablename__ = "task_outbox"
     __table_args__ = (
@@ -18,6 +22,15 @@ class TaskOutbox(Base):
             "created_at",
             "id",
             postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "ix_task_outbox_notification_due",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=text(
+                "task_name = 'send_email_notification' AND status = 'pending'"
+            ),
         ),
     )
 
@@ -36,3 +49,5 @@ class TaskOutbox(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

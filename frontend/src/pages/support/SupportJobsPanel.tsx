@@ -113,6 +113,7 @@ export function SupportJobsPanel({ onExpired }: { onExpired: () => void }) {
                 Pending {data.outbox_pending ?? 'Unavailable'} · Dispatched{' '}
                 {data.outbox_dispatched ?? 'Unavailable'} · Failed{' '}
                 {data.outbox_failed ?? 'Unavailable'}
+                {' · Needs review '}{data.outbox_manual_review ?? 'Unavailable'}
               </p>
               {data.outbox_stale_dispatched != null && data.outbox_stale_dispatched > 0 && (
                 <p>Stale dispatched: {data.outbox_stale_dispatched}</p>

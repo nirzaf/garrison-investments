@@ -1,9 +1,10 @@
-from datetime import date, timedelta
-from uuid import uuid4
+from datetime import date, datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
 
 from app.database import AsyncSessionLocal, engine
+from app.models.document import Document, DocumentVersion
 from app.models.hr import HrEmployee, HrEmployeePrivate
 from app.utils.permissions import BUSINESS_ROLES
 from app.utils.time import business_today
@@ -11,6 +12,7 @@ from tests.test_daily_reports import (
     create_test_client,
     create_user,
     login_for_token,
+    project_payload,
     report_payload,
     setup_project_team,
     skip_if_database_unavailable,
@@ -52,6 +54,134 @@ async def test_dashboard_summary_counts_pending_reports_and_notifications() -> N
         summary = response.json()
         assert summary["pending_reports"] >= 1
         assert summary["unread_notifications"] >= 1
+
+
+async def test_dashboard_pending_document_count_uses_document_scope_and_classification() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        foreign_project = await client.post(
+            "/api/v1/projects",
+            json={**project_payload(), "status": "active"},
+            headers={"Authorization": f"Bearer {setup['op_token']}"},
+        )
+        assert foreign_project.status_code == 201, foreign_project.text
+        director_email, director_password = await create_user("managing_director")
+        director_token = await login_for_token(client, director_email, director_password)
+        company_before = await client.get(
+            "/api/v1/dashboard/summary",
+            headers={"Authorization": f"Bearer {director_token}"},
+        )
+        assert company_before.status_code == 200, company_before.text
+
+        async with AsyncSessionLocal() as session:
+            operational = Document(
+                title="Synthetic operational project document",
+                document_type="specification",
+                classification="operational",
+                project_id=UUID(setup["project_id"]),
+                status="pending_approval",
+                metadata_json={},
+            )
+            restricted = [
+                Document(
+                    title=f"Synthetic restricted {kind}",
+                    document_type=document_type,
+                    classification=classification,
+                    project_id=UUID(setup["project_id"]),
+                    status="pending_approval",
+                    metadata_json={},
+                )
+                for kind, document_type, classification in [
+                    ("unclassified", "specification", "unclassified"),
+                    ("financial", "specification", "financial"),
+                    ("invoice", " InVoice ", "operational"),
+                ]
+            ]
+            version_restricted = Document(
+                title="Synthetic version-restricted document",
+                document_type="specification",
+                classification="operational",
+                project_id=UUID(setup["project_id"]),
+                status="pending_approval",
+                metadata_json={},
+            )
+            foreign_operational = Document(
+                title="Synthetic foreign project document",
+                document_type="specification",
+                classification="operational",
+                project_id=UUID(foreign_project.json()["id"]),
+                status="pending_approval",
+                metadata_json={},
+            )
+            company_operational = Document(
+                title="Synthetic company document",
+                document_type="specification",
+                classification="operational",
+                project_id=None,
+                status="pending_approval",
+                metadata_json={},
+            )
+            deleted = Document(
+                title="Synthetic deleted document",
+                document_type="specification",
+                classification="operational",
+                project_id=UUID(setup["project_id"]),
+                status="pending_approval",
+                metadata_json={},
+            )
+            deleted.deleted_at = datetime.now().astimezone()
+            approved = Document(
+                title="Synthetic approved document",
+                document_type="specification",
+                classification="operational",
+                project_id=UUID(setup["project_id"]),
+                status="active",
+                metadata_json={},
+            )
+            session.add_all(
+                [
+                    operational,
+                    *restricted,
+                    version_restricted,
+                    foreign_operational,
+                    company_operational,
+                    deleted,
+                    approved,
+                ]
+            )
+            await session.flush()
+            session.add(
+                DocumentVersion(
+                    document_id=version_restricted.id,
+                    version=1,
+                    status="pending_approval",
+                    classification="unclassified",
+                    storage_path=f"synthetic/{version_restricted.id}/v1",
+                    original_name="reviewed.pdf",
+                    mime_type="application/pdf",
+                    size_bytes=1,
+                )
+            )
+            await session.commit()
+
+        scoped = await client.get(
+            "/api/v1/dashboard/summary",
+            headers={"Authorization": f"Bearer {setup['supervisor_token']}"},
+        )
+        company = await client.get(
+            "/api/v1/dashboard/summary",
+            headers={"Authorization": f"Bearer {director_token}"},
+        )
+        assert scoped.status_code == 200, scoped.text
+        assert company.status_code == 200, company.text
+        assert scoped.json()["pending_documents"] == 1
+        # The shared disposable test DB may already contain synthetic documents
+        # from earlier modules. Assert only this test's visible contribution.
+        assert company.json()["pending_documents"] == company_before.json()[
+            "pending_documents"
+        ] + 7
 
 
 async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped() -> None:
@@ -197,7 +327,8 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
             assert "Future Join Synthetic" not in birthday_names
             assert "Departed Before Birthday Synthetic" not in birthday_names
             birthday_item = next(
-                item for item in birthdays.json()["items"]
+                item
+                for item in birthdays.json()["items"]
                 if item["name"] == "Upcoming Birthday Synthetic"
             )
             assert set(birthday_item) == {"name", "day", "month"}
@@ -206,14 +337,13 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
             assert "Outside Anniversary Synthetic" not in anniversary_names
             assert "Departed Before Anniversary Synthetic" not in anniversary_names
             anniversary_item = next(
-                item for item in anniversaries.json()["items"]
+                item
+                for item in anniversaries.json()["items"]
                 if item["name"] == "Upcoming Anniversary Synthetic"
             )
             assert anniversary_item["completed_years"] == 3
             assert set(anniversary_item) == {"name", "day", "month", "completed_years"}
-            page = await client.get(
-                "/api/v1/dashboard/birthdays?limit=1&offset=0", headers=headers
-            )
+            page = await client.get("/api/v1/dashboard/birthdays?limit=1&offset=0", headers=headers)
             assert page.status_code == 200
             assert page.json()["limit"] == 1 and page.json()["offset"] == 0
         assert (await client.get("/api/v1/dashboard/birthdays")).status_code == 401
@@ -270,7 +400,17 @@ async def test_employee_data_quality_review_is_private_and_does_not_return_sourc
         assert "employment_start_unverified" in by_name["Future Source Synthetic"]["issue_codes"]
         assert "future_birth_date" in by_name["Future Source Synthetic"]["issue_codes"]
         assert not (
-            {"date_of_birth", "join_date", "birth_year"}
-            & set(by_name["Future Source Synthetic"])
+            {"date_of_birth", "join_date", "birth_year"} & set(by_name["Future Source Synthetic"])
         )
+        first_page = await client.get(path, params={"limit": 1, "offset": 0}, headers=hr_headers)
+        assert first_page.status_code == 200
+        assert len(first_page.json()["items"]) == 1
+        assert first_page.json()["total"] >= 2
+        empty_page = await client.get(
+            path,
+            params={"limit": 1, "offset": first_page.json()["total"]},
+            headers=hr_headers,
+        )
+        assert empty_page.status_code == 200
+        assert empty_page.json()["items"] == []
         assert (await client.get(path, headers=supervisor_headers)).status_code == 403
