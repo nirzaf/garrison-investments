@@ -551,7 +551,7 @@ async def _leave_request_list_response(
     for row in rows:
         response = LeaveRequestResponse.model_validate(row)
         is_route_current = route_current.get(row.id, False)
-        if row.id in setup_errors and is_route_current:
+        if row.id in setup_errors:
             response.setup_error_code = "LEAVE_APPROVER_NOT_CONFIGURED"
         if actor is not None:
             actions: list[LeaveRequestAllowedAction] = []

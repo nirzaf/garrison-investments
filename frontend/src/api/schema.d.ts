@@ -13155,6 +13155,8 @@ export interface components {
         LeaveRouteRefreshRequest: {
             /** Expected Revision */
             expected_revision: number;
+            /** Restoration Reason */
+            restoration_reason?: string | null;
         };
         /** LeaveTypeCreateRequest */
         LeaveTypeCreateRequest: {

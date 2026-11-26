@@ -2161,9 +2161,9 @@ reasons to weaken the existing role or policy controls.
 
 | Finding | Status | Local implementation / verification evidence | Remaining dependency |
 | --- | --- | --- | --- |
-| LM-01 | PARTIAL | `hr_workforce_service.py` route resolver and fallback binding; `test_hr.py`; full backend suite | Expand route-change/expiry and sole-eligible-reviewer edge matrix; no production roster readback. |
+| LM-01 | PARTIAL | `hr_workforce_service.py` current-route resolver and reasoned temporary-fallback restoration; four focused route/fallback tests passed on a fresh disposable PostgreSQL database; Ruff, Mypy (465 files), OpenAPI, and generated TypeScript checks pass. | Sole-eligible-reviewer edge matrix and production roster readback remain unverified. |
 | LM-02 | COMPLETED | Revision-required final mutations in `schemas/hr.py` and `hr_workforce_service.py`; focused HR tests and full backend suite | None for local contract; production remains unverified. |
-| LM-03 | PARTIAL | Request-specific independent HR eligibility and batched list projection in `hr_workforce_service.py` / `api/v1/hr.py`; HR tests | Complete all subject/maker/disabled/no-HR permutations and verify current operator assignments. |
+| LM-03 | PARTIAL | Request-specific independent HR eligibility and batched list projection in `hr_workforce_service.py` / `api/v1/hr.py`; focused tests cover subject/maker exclusion, no eligible HR account, multiple eligible reviewers, mutation denial, notification eligibility, and bounded page queries. | Verify current production operator assignments and full role acceptance. |
 | LM-04 | PARTIAL | Managed baseline/accrual reconciliation guards in `hr_leave_accrual.py` and `hr_workforce_service.py`; accrual/HR tests | Approved roster balances and policy inputs are unavailable; complete all concurrent and stale-receipt cases. |
 | LM-05 | PARTIAL | Managed carry/credit guard in `hr_leave_rollover.py` and `hr_workforce_service.py`; leave tests | Complete category-window and concurrent credit/debit matrix; approved live inputs remain absent. |
 | LM-06 | PARTIAL | Direct/reviewed manager updates reroute pending leave in `hr_service.py`; HR tests | Full writer/concurrency matrix and authorized manager/account roster readback. |

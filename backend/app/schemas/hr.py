@@ -2088,9 +2088,10 @@ class LeaveFallbackRequest(BaseModel):
 
 
 class LeaveRouteRefreshRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     expected_revision: int = Field(ge=1)
+    restoration_reason: str | None = Field(default=None, min_length=1, max_length=500)
 
 
 class LeaveDateEvidenceDetail(BaseModel):

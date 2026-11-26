@@ -18,6 +18,7 @@ import httpx
 import pytest
 from cryptography.fernet import Fernet
 from fastapi import UploadFile
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,7 @@ from app.models.hr import (
     HrEmploymentPeriod,
     HrIssuedLetter,
     HrLeaveLedger,
+    HrLeaveRequest,
     HrLeaveType,
     HrOffer,
     HrOnboardingCase,
@@ -53,6 +55,7 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.hr import (
     HrDocumentDecisionRequest,
+    LeaveRouteRefreshRequest,
     OnboardingCaseCreateRequest,
     OnboardingTaskUpdateRequest,
 )
@@ -89,6 +92,378 @@ def hr_fernet_env(monkeypatch):
 async def skip_if_database_unavailable() -> None:
     if not await check_database():
         pytest.skip("database is not available")
+
+
+def test_leave_route_refresh_reason_is_optional_and_nonblank() -> None:
+    assert LeaveRouteRefreshRequest(expected_revision=1).restoration_reason is None
+    with pytest.raises(ValidationError):
+        LeaveRouteRefreshRequest(expected_revision=1, restoration_reason="   ")
+
+
+
+@pytest.mark.asyncio
+async def test_leave_route_refresh_persists_current_routes_and_audit_notifications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from app.services import notification_service
+
+    monkeypatch.setattr(
+        notification_service.send_email_notification,
+        "delay",
+        lambda *_args, **_kwargs: None,
+    )
+    today = business_today()
+    now = datetime.now(UTC)
+
+    def new_user(role: str, label: str) -> User:
+        suffix = uuid4().hex
+        return User(
+            email=f"{label}-{suffix}@example.com",
+            full_name=f"Synthetic {label}",
+            role=role,
+            must_change_password=False,
+        )
+
+    def new_employee(user: User, label: str, manager_id: UUID | None = None) -> HrEmployee:
+        suffix = uuid4().hex[:8]
+        return HrEmployee(
+            user_id=user.id,
+            employee_code=f"SYN-LM01-{suffix}",
+            first_name="Synthetic",
+            last_name=label,
+            full_name=f"Synthetic {label}",
+            work_email=user.email,
+            employment_status="active",
+            manager_employee_id=manager_id,
+        )
+
+    def fallback_request(
+        employee: HrEmployee,
+        *,
+        reason_code: str,
+        reason: str,
+        supervisor_id: UUID | None,
+        until: date | None,
+        submitted_by: UUID,
+        recorded_by: UUID,
+        leave_type_id: UUID,
+    ) -> HrLeaveRequest:
+        return HrLeaveRequest(
+            employee_id=employee.id,
+            leave_type_id=leave_type_id,
+            start_date=today + timedelta(days=10),
+            end_date=today + timedelta(days=10),
+            days_requested=Decimal("1.00"),
+            status="submitted",
+            requested_by_id=submitted_by,
+            record_revision=4,
+            approval_route="hr_fallback",
+            assigned_supervisor_user_id=supervisor_id,
+            fallback_reason_code=reason_code,
+            fallback_reason=reason,
+            fallback_recorded_by_id=recorded_by,
+            fallback_recorded_at=now,
+            fallback_until=until,
+        )
+
+    async with AsyncSessionLocal() as session:
+        subject = new_user("hr_manager", "subject")
+        submitter = new_user("hr_manager", "submitter")
+        reviewer = new_user("hr_manager", "reviewer")
+        fallback_recorder = new_user("hr_manager", "recorder")
+        manager_a = new_user("group_project_manager", "manager-a")
+        manager_b = new_user("group_project_manager", "manager-b")
+        automatic_subject = new_user("quantity_surveyor", "automatic-subject")
+        session.add_all(
+            [
+                subject,
+                submitter,
+                reviewer,
+                fallback_recorder,
+                manager_a,
+                manager_b,
+                automatic_subject,
+            ]
+        )
+        await session.flush()
+
+        manager_a_employee = new_employee(manager_a, "ManagerA")
+        manager_b_employee = new_employee(manager_b, "ManagerB")
+        session.add_all([manager_a_employee, manager_b_employee])
+        await session.flush()
+        employee = new_employee(subject, "Subject", manager_a_employee.id)
+        automatic_employee = new_employee(automatic_subject, "Automatic", manager_a_employee.id)
+        leave_type = HrLeaveType(
+            code=f"LM01-{uuid4().hex[:12]}",
+            name="Synthetic LM-01 leave",
+            is_paid=True,
+            is_active=True,
+            policy_required=False,
+        )
+        session.add_all([employee, automatic_employee, leave_type])
+        await session.flush()
+
+        current_request = fallback_request(
+            employee,
+            reason_code="manager_temporarily_unavailable",
+            reason="Supervisor unavailable during review window",
+            supervisor_id=manager_a.id,
+            until=today,
+            submitted_by=submitter.id,
+            recorded_by=fallback_recorder.id,
+            leave_type_id=leave_type.id,
+        )
+        expired_request = fallback_request(
+            employee,
+            reason_code="manager_temporarily_unavailable",
+            reason="Supervisor unavailable during review window",
+            supervisor_id=manager_a.id,
+            until=today - timedelta(days=1),
+            submitted_by=submitter.id,
+            recorded_by=fallback_recorder.id,
+            leave_type_id=leave_type.id,
+        )
+        reassigned_request = fallback_request(
+            employee,
+            reason_code="manager_temporarily_unavailable",
+            reason="Supervisor unavailable during review window",
+            supervisor_id=manager_a.id,
+            until=today,
+            submitted_by=submitter.id,
+            recorded_by=fallback_recorder.id,
+            leave_type_id=leave_type.id,
+        )
+        session.add_all([current_request, expired_request, reassigned_request])
+        await session.commit()
+
+        service = HrWorkforceService(session)
+        for blocked_actor in (subject, submitter):
+            with pytest.raises(AppException) as rejected:
+                await service.refresh_leave_route(
+                    current_request.id,
+                    LeaveRouteRefreshRequest(
+                        expected_revision=4,
+                        restoration_reason="Restore the current supervisor.",
+                    ),
+                    blocked_actor,
+                )
+            assert rejected.value.status_code == 403
+            assert rejected.value.error_code == "SELF_APPROVAL_BLOCKED"
+
+        with pytest.raises(AppException) as stale:
+            await service.refresh_leave_route(
+                current_request.id,
+                LeaveRouteRefreshRequest(
+                    expected_revision=3,
+                    restoration_reason="Restore the current supervisor.",
+                ),
+                reviewer,
+            )
+        assert stale.value.status_code == 409
+        assert stale.value.error_code == "REVISION_CONFLICT"
+
+        await service.refresh_leave_route(
+            current_request.id, LeaveRouteRefreshRequest(expected_revision=4), reviewer
+        )
+        assert current_request.record_revision == 4
+        assert current_request.approval_route == "hr_fallback"
+        assert not (
+            await session.scalars(
+                select(ActivityLog.id).where(ActivityLog.entity_id == current_request.id)
+            )
+        ).all()
+        assert not (
+            await session.scalars(
+                select(Notification.id).where(Notification.reference_id == current_request.id)
+            )
+        ).all()
+
+        await service.refresh_leave_route(
+            current_request.id,
+            LeaveRouteRefreshRequest(
+                expected_revision=4,
+                restoration_reason="The current supervisor confirmed availability.",
+            ),
+            reviewer,
+        )
+        assert current_request.approval_route == "supervisor"
+        assert current_request.assigned_supervisor_user_id == manager_a.id
+        assert current_request.fallback_reason_code is None
+        assert current_request.fallback_until is None
+        assert current_request.record_revision == 5
+        restoration_audit = await session.scalar(
+            select(ActivityLog).where(
+                ActivityLog.entity_id == current_request.id,
+                ActivityLog.action == "hr.leave_request.rerouted",
+            )
+        )
+        assert restoration_audit is not None
+        assert restoration_audit.user_id == reviewer.id
+        assert restoration_audit.old_values is not None
+        assert restoration_audit.new_values is not None
+        assert restoration_audit.old_values["fallback_recorded_by_id"] == str(fallback_recorder.id)
+        assert restoration_audit.old_values["fallback_reason"] == (
+            "Supervisor unavailable during review window"
+        )
+        assert restoration_audit.new_values["restoration_reason"] == (
+            "The current supervisor confirmed availability."
+        )
+        restored_notification = await session.scalar(
+            select(Notification).where(
+                Notification.reference_id == current_request.id,
+                Notification.event_code == "rerouted",
+                Notification.event_revision == 5,
+                Notification.user_id == manager_a.id,
+            )
+        )
+        assert restored_notification is not None
+
+        with pytest.raises(AppException) as expired_restoration:
+            await service.refresh_leave_route(
+                expired_request.id,
+                LeaveRouteRefreshRequest(
+                    expected_revision=4,
+                    restoration_reason="Restore the current supervisor.",
+                ),
+                reviewer,
+            )
+        assert expired_restoration.value.status_code == 409
+        assert expired_restoration.value.error_code == "LEAVE_ROUTE_CHANGED"
+        assert expired_request.record_revision == 4
+        assert not (
+            await session.scalars(
+                select(ActivityLog.id).where(ActivityLog.entity_id == expired_request.id)
+            )
+        ).all()
+        assert not (
+            await session.scalars(
+                select(Notification.id).where(Notification.reference_id == expired_request.id)
+            )
+        ).all()
+        await service.refresh_leave_route(
+            expired_request.id, LeaveRouteRefreshRequest(expected_revision=4), reviewer
+        )
+        assert expired_request.approval_route == "supervisor"
+        assert expired_request.assigned_supervisor_user_id == manager_a.id
+        assert expired_request.record_revision == 5
+
+        employee.manager_employee_id = manager_b_employee.id
+        await session.commit()
+        with pytest.raises(AppException) as reassigned:
+            await service.refresh_leave_route(
+                reassigned_request.id,
+                LeaveRouteRefreshRequest(
+                    expected_revision=4,
+                    restoration_reason="Restore the current supervisor.",
+                ),
+                reviewer,
+            )
+        assert reassigned.value.status_code == 409
+        assert reassigned.value.error_code == "LEAVE_ROUTE_CHANGED"
+        assert reassigned_request.record_revision == 4
+        await service.refresh_leave_route(
+            reassigned_request.id, LeaveRouteRefreshRequest(expected_revision=4), reviewer
+        )
+        assert reassigned_request.approval_route == "supervisor"
+        assert reassigned_request.assigned_supervisor_user_id == manager_b.id
+        assert reassigned_request.record_revision == 5
+        reassigned_notification = await session.scalar(
+            select(Notification).where(
+                Notification.reference_id == reassigned_request.id,
+                Notification.event_code == "rerouted",
+                Notification.event_revision == 5,
+                Notification.user_id == manager_b.id,
+            )
+        )
+        assert reassigned_notification is not None
+
+        manager_absence = HrLeaveRequest(
+            employee_id=manager_a_employee.id,
+            leave_type_id=leave_type.id,
+            start_date=today,
+            end_date=today,
+            days_requested=Decimal("1.00"),
+            status="approved",
+            requested_by_id=manager_a.id,
+        )
+        changed_reason_request = fallback_request(
+            automatic_employee,
+            reason_code="manager_absent",
+            reason="The assigned direct supervisor is on approved leave.",
+            supervisor_id=None,
+            until=None,
+            submitted_by=submitter.id,
+            recorded_by=fallback_recorder.id,
+            leave_type_id=leave_type.id,
+        )
+        session.add_all([manager_absence, changed_reason_request])
+        await session.commit()
+        assert (await service._resolve_leave_route(automatic_employee, submitter.id))[2] == (
+            "manager_absent"
+        )
+
+        await service.refresh_leave_route(
+            changed_reason_request.id,
+            LeaveRouteRefreshRequest(expected_revision=4),
+            reviewer,
+        )
+        assert changed_reason_request.record_revision == 4
+        assert not (
+            await session.scalars(
+                select(Notification.id).where(
+                    Notification.reference_id == changed_reason_request.id
+                )
+            )
+        ).all()
+
+        manager_a.is_active = False
+        await session.commit()
+        with pytest.raises(AppException) as ineligible_restoration:
+            await service.refresh_leave_route(
+                changed_reason_request.id,
+                LeaveRouteRefreshRequest(
+                    expected_revision=4,
+                    restoration_reason="Restore the current supervisor.",
+                ),
+                reviewer,
+            )
+        assert ineligible_restoration.value.status_code == 409
+        assert ineligible_restoration.value.error_code == "LEAVE_ROUTE_CHANGED"
+        assert changed_reason_request.record_revision == 4
+        assert not (
+            await session.scalars(
+                select(ActivityLog.id).where(
+                    ActivityLog.entity_id == changed_reason_request.id
+                )
+            )
+        ).all()
+        assert not (
+            await session.scalars(
+                select(Notification.id).where(
+                    Notification.reference_id == changed_reason_request.id
+                )
+            )
+        ).all()
+        await service.refresh_leave_route(
+            changed_reason_request.id,
+            LeaveRouteRefreshRequest(expected_revision=4),
+            reviewer,
+        )
+        assert changed_reason_request.fallback_reason_code == "manager_ineligible"
+        assert changed_reason_request.fallback_reason == (
+            "The assigned direct supervisor is unavailable."
+        )
+        assert changed_reason_request.record_revision == 5
+        changed_reason_notification = await session.scalar(
+            select(Notification).where(
+                Notification.reference_id == changed_reason_request.id,
+                Notification.event_code == "rerouted",
+                Notification.event_revision == 5,
+                Notification.user_id == fallback_recorder.id,
+            )
+        )
+        assert changed_reason_notification is not None
 
 
 @pytest.mark.asyncio
@@ -10468,3 +10843,340 @@ async def test_leave_schedule_uses_open_ended_shift_and_rejects_overlaps() -> No
             await service._leave_work_dates(employee, day, 1)
         assert ambiguous.value.error_code == "LEAVE_SCHEDULE_AMBIGUOUS"
         await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_leave_fallback_eligibility_is_request_specific_and_batched() -> None:
+    await skip_if_database_unavailable()
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from sqlalchemy import event
+
+    from app.api.v1.hr import _leave_request_list_response, _leave_request_response
+    from app.database import engine
+    from app.models.hr import HrLeaveType
+    from app.tasks.email import _can_deliver_leave_notification
+    from app.utils.permissions import PERMISSION_HR_LEAVE_APPROVE, roles_with_permission
+
+    today = business_today()
+    now = datetime.now(UTC)
+
+    def new_user(role: str, label: str, *, active: bool = True) -> User:
+        suffix = uuid4().hex
+        return User(
+            email=f"lm03-{label}-{suffix}@example.com",
+            full_name=f"Synthetic {label}",
+            role=role,
+            is_active=active,
+            must_change_password=False,
+        )
+
+    def new_employee(
+        user: User | None, label: str, manager_id: UUID | None = None
+    ) -> HrEmployee:
+        suffix = uuid4().hex[:10]
+        return HrEmployee(
+            user_id=user.id if user is not None else None,
+            employee_code=f"LM03-{suffix}",
+            first_name="Synthetic",
+            last_name=label,
+            full_name=f"Synthetic {label}",
+            work_email=user.email if user is not None else None,
+            employment_status="active",
+            manager_employee_id=manager_id,
+        )
+
+    async with AsyncSessionLocal() as session:
+        existing_approvers = await session.scalars(
+            select(User).where(User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)))
+        )
+        for existing_approver in existing_approvers:
+            existing_approver.is_active = False
+
+        subject_hr = new_user("hr_manager", "subject-hr")
+        maker_hr = new_user("hr_manager", "maker-hr", active=False)
+        second_hr = new_user("hr_manager", "second-hr", active=False)
+        disabled_hr = new_user("hr_manager", "disabled-hr", active=False)
+        manager_user = new_user("group_project_manager", "manager")
+        ordinary_maker = new_user("quantity_surveyor", "maker")
+        worker_user = new_user("quantity_surveyor", "worker")
+        other_worker_user = new_user("quantity_surveyor", "other-worker")
+        session.add_all(
+            [
+                subject_hr,
+                maker_hr,
+                second_hr,
+                disabled_hr,
+                manager_user,
+                ordinary_maker,
+                worker_user,
+                other_worker_user,
+            ]
+        )
+        await session.flush()
+
+        manager_employee = new_employee(manager_user, "Manager")
+        session.add(manager_employee)
+        await session.flush()
+        subject_employee = new_employee(subject_hr, "Subject", manager_employee.id)
+        worker_employee = new_employee(worker_user, "Worker")
+        other_worker_employee = new_employee(other_worker_user, "OtherWorker")
+        leave_type = HrLeaveType(
+            code=f"LM03-{uuid4().hex[:12]}",
+            name="Synthetic fallback eligibility leave",
+            is_paid=True,
+            is_active=True,
+            policy_required=False,
+        )
+        session.add_all([subject_employee, worker_employee, other_worker_employee, leave_type])
+        await session.flush()
+
+        def new_request(employee: HrEmployee, maker: User) -> HrLeaveRequest:
+            return HrLeaveRequest(
+                id=uuid4(),
+                employee_id=employee.id,
+                leave_type_id=leave_type.id,
+                start_date=today + timedelta(days=10),
+                end_date=today + timedelta(days=10),
+                days_requested=Decimal("1.00"),
+                status="submitted",
+                requested_by_id=maker.id,
+                record_revision=1,
+                approval_route="hr_fallback",
+                fallback_reason_code="manager_missing",
+                fallback_reason="No valid direct supervisor is assigned.",
+                fallback_recorded_by_id=maker.id,
+                fallback_recorded_at=now,
+            )
+
+        subject_request = new_request(subject_employee, ordinary_maker)
+        maker_request = new_request(worker_employee, maker_hr)
+        no_hr_request = new_request(worker_employee, ordinary_maker)
+        two_reviewers_request = new_request(other_worker_employee, ordinary_maker)
+        session.add_all([subject_request, maker_request, no_hr_request, two_reviewers_request])
+        await session.flush()
+
+        service = HrWorkforceService(session)
+        assert await service._eligible_hr_leave_approver_ids(subject_request) == []
+        assert await service.hr_leave_approver_configured() is True
+        subject_response = await _leave_request_response(session, subject_request, subject_hr)
+        subject_list = await _leave_request_list_response(
+            session, [subject_request], 1, subject_hr
+        )
+        assert subject_response.setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+        assert subject_response.route_status == "refresh_required"
+        assert subject_list.items[0].setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+        assert subject_list.items[0].route_status == "refresh_required"
+
+        subject_employee.manager_employee_id = None
+        subject_hr_email = Notification(
+            user_id=subject_hr.id,
+            title="Leave request ready for review",
+            body="Synthetic notification",
+            notification_type="hr",
+            reference_type="hr_leave_request",
+            reference_id=subject_request.id,
+            event_code="rerouted",
+            event_revision=subject_request.record_revision,
+        )
+        assert await service._leave_notification_users(subject_request, "rerouted") == []
+        assert (
+            await _can_deliver_leave_notification(session, subject_hr_email, subject_hr) is False
+        )
+
+        subject_hr.is_active = False
+        maker_hr.is_active = True
+        await session.flush()
+        assert await service._eligible_hr_leave_approver_ids(maker_request) == []
+        assert await service.hr_leave_approver_configured() is True
+        maker_hr_email = Notification(
+            user_id=maker_hr.id,
+            title="Leave request ready for review",
+            body="Synthetic notification",
+            notification_type="hr",
+            reference_type="hr_leave_request",
+            reference_id=maker_request.id,
+            event_code="rerouted",
+            event_revision=maker_request.record_revision,
+        )
+        assert await service._leave_notification_users(maker_request, "rerouted") == []
+        assert await _can_deliver_leave_notification(session, maker_hr_email, maker_hr) is False
+
+        maker_hr.is_active = False
+        await session.flush()
+        assert await service._eligible_hr_leave_approver_ids(no_hr_request) == []
+        assert await service.hr_leave_approver_configured() is False
+        assert await service._leave_notification_users(no_hr_request, "submitted") == []
+        no_hr_response = await _leave_request_response(session, no_hr_request)
+        assert no_hr_response.setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+        assert no_hr_request.status == "submitted"
+        assert no_hr_request.assigned_supervisor_user_id is None
+        assert no_hr_request.decided_by_id is None
+        assert disabled_hr.is_active is False
+        assert ordinary_maker.role not in roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)
+
+        subject_hr.is_active = True
+        second_hr.is_active = True
+        await session.flush()
+        eligible_ids = await service._eligible_hr_leave_approver_ids(two_reviewers_request)
+        assert set(eligible_ids) == {subject_hr.id, second_hr.id}
+        assert set(await service._leave_notification_users(two_reviewers_request, "rerouted")) == {
+            subject_hr.id,
+            second_hr.id,
+        }
+        reviewer_email = Notification(
+            user_id=subject_hr.id,
+            title="Leave request ready for review",
+            body="Synthetic notification",
+            notification_type="hr",
+            reference_type="hr_leave_request",
+            reference_id=two_reviewers_request.id,
+            event_code="rerouted",
+            event_revision=two_reviewers_request.record_revision,
+        )
+        assert await _can_deliver_leave_notification(session, reviewer_email, subject_hr) is True
+        assert await _can_deliver_leave_notification(session, reviewer_email, second_hr) is True
+        reviewer_response = await _leave_request_response(
+            session, two_reviewers_request, second_hr
+        )
+        assert {"approve", "reject"}.issubset(reviewer_response.allowed_actions)
+
+        page_employees = [new_employee(None, f"Page{index}") for index in range(50)]
+        session.add_all(page_employees)
+        await session.flush()
+        page_requests = [new_request(employee, ordinary_maker) for employee in page_employees]
+        session.add_all(page_requests)
+        await session.flush()
+
+        def track_query(_connection, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        async def measure_projection(rows: list[HrLeaveRequest]) -> tuple[int, list[str]]:
+            statements.clear()
+            event.listen(engine.sync_engine, "before_cursor_execute", track_query)
+            try:
+                response = await _leave_request_list_response(
+                    session, rows, len(rows), second_hr
+                )
+            finally:
+                event.remove(engine.sync_engine, "before_cursor_execute", track_query)
+            assert len(response.items) == len(rows)
+            return len(statements), list(statements)
+
+        statements: list[str] = []
+        one_request_count, one_request_sql = await measure_projection(page_requests[:1])
+        page_request_count, page_request_sql = await measure_projection(page_requests)
+        assert one_request_count == page_request_count == 3
+        for captured_sql in (one_request_sql, page_request_sql):
+            normalized = [statement.lstrip().lower() for statement in captured_sql]
+            assert sum(statement.startswith("select users.id") for statement in normalized) == 1
+            assert (
+                sum(
+                    statement.startswith("select hr_employees.id, hr_employees.user_id")
+                    for statement in normalized
+                )
+                == 1
+            )
+
+
+@pytest.mark.asyncio
+async def test_leave_fallback_mutation_requires_the_current_eligible_reviewer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from app.models.hr import HrLeaveRequest, HrLeaveType
+    from app.schemas.hr import LeaveRequestDecisionRequest
+    from app.services.hr_workforce_service import HrWorkforceService
+    from app.utils.exceptions import AppException
+    from app.utils.permissions import PERMISSION_HR_LEAVE_APPROVE, roles_with_permission
+
+    today = business_today()
+    now = datetime.now(UTC)
+
+    def new_user(role: str, label: str, *, active: bool = True) -> User:
+        suffix = uuid4().hex
+        return User(
+            email=f"lm03-mutation-{label}-{suffix}@example.com",
+            full_name=f"Synthetic {label}",
+            role=role,
+            is_active=active,
+            must_change_password=False,
+        )
+
+    async with AsyncSessionLocal() as session:
+        existing_approvers = await session.scalars(
+            select(User).where(User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)))
+        )
+        for existing_approver in existing_approvers:
+            existing_approver.is_active = False
+
+        subject = new_user("quantity_surveyor", "subject")
+        maker = new_user("group_project_manager", "maker")
+        reviewer = new_user("hr_manager", "reviewer")
+        disabled_actor = new_user("hr_manager", "disabled-actor", active=False)
+        session.add_all([subject, maker, reviewer, disabled_actor])
+        await session.flush()
+
+        employee = HrEmployee(
+            user_id=subject.id,
+            employee_code=f"LM03-{uuid4().hex[:10]}",
+            first_name="Synthetic",
+            last_name="Mutation",
+            full_name="Synthetic Mutation Subject",
+            work_email=subject.email,
+            employment_status="active",
+        )
+        leave_type = HrLeaveType(
+            code=f"LM03-{uuid4().hex[:12]}",
+            name="Synthetic mutation leave",
+            is_paid=True,
+            is_active=True,
+            policy_required=False,
+        )
+        session.add_all([employee, leave_type])
+        await session.flush()
+        request = HrLeaveRequest(
+            id=uuid4(),
+            employee_id=employee.id,
+            leave_type_id=leave_type.id,
+            start_date=today + timedelta(days=10),
+            end_date=today + timedelta(days=10),
+            days_requested=Decimal("1.00"),
+            status="submitted",
+            requested_by_id=maker.id,
+            record_revision=1,
+            approval_route="hr_fallback",
+            fallback_reason_code="manager_missing",
+            fallback_reason="No valid direct supervisor is assigned.",
+            fallback_recorded_by_id=maker.id,
+            fallback_recorded_at=now,
+        )
+        session.add(request)
+        await session.flush()
+
+        service = HrWorkforceService(session)
+        assert await service._eligible_hr_leave_approver_ids(request) == [reviewer.id]
+        decision = LeaveRequestDecisionRequest(
+            decision="rejected",
+            notes="Synthetic independent review",
+            expected_revision=1,
+        )
+        with pytest.raises(AppException) as ineligible:
+            await service.decide_leave_request(request.id, decision, disabled_actor)
+        assert ineligible.value.status_code == 403
+        assert request.status == "submitted"
+        assert request.decided_by_id is None
+
+        async def flush_without_commit(
+            service_instance: HrWorkforceService, *_instances: object
+        ) -> None:
+            await service_instance.session.flush()
+
+        monkeypatch.setattr(HrWorkforceService, "_commit_and_refresh", flush_without_commit)
+        await service.decide_leave_request(request.id, decision, reviewer)
+        assert request.status == "rejected"
+        assert request.decided_by_id == reviewer.id

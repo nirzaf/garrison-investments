@@ -17082,6 +17082,19 @@
             "minimum": 1.0,
             "title": "Expected Revision",
             "type": "integer"
+          },
+          "restoration_reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restoration Reason"
           }
         },
         "required": [

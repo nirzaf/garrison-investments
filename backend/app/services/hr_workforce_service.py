@@ -5453,12 +5453,15 @@ class HrWorkforceService:
                         status_code=409,
                         error_code="LEAVE_ROUTE_CHANGED",
                     )
-                if not await self._eligible_hr_leave_approver_ids(req):
+                eligible_approver_ids = await self._eligible_hr_leave_approver_ids(req)
+                if not eligible_approver_ids:
                     raise AppException(
                         "No independent active HR leave approver is available for this request.",
                         status_code=409,
                         error_code="LEAVE_APPROVER_NOT_CONFIGURED",
                     )
+                if actor.id not in eligible_approver_ids:
+                    raise PermissionDeniedException(PERMISSION_HR_LEAVE_APPROVE)
         reversed_debit_id = None
         decision_notes = payload.notes
         if payload.decision == "approved":
@@ -5759,23 +5762,68 @@ class HrWorkforceService:
         route, supervisor_id, reason_code, reason = await self._resolve_leave_route(
             employee, request.requested_by_id
         )
-        if (
-            request.approval_route == "hr_fallback"
-            and request.fallback_reason_code == "manager_temporarily_unavailable"
-            and request.fallback_until is not None
-            and request.fallback_until >= business_today()
-            and route == "supervisor"
-            and supervisor_id == request.assigned_supervisor_user_id
-        ):
+        current_route = (route, supervisor_id, reason_code, reason)
+        today = business_today()
+        if payload.restoration_reason is not None:
+            if (
+                request.fallback_reason_code != "manager_temporarily_unavailable"
+                or not self._leave_route_matches(request, current_route, today)
+            ):
+                raise AppException(
+                    "The temporary fallback cannot be restored to the current supervisor.",
+                    status_code=409,
+                    error_code="LEAVE_ROUTE_CHANGED",
+                )
+            previous_revision = request.record_revision
+            previous_route = request.approval_route
+            old_values = {
+                "route": previous_route,
+                "supervisor_user_id": str(request.assigned_supervisor_user_id),
+                "fallback_reason_code": request.fallback_reason_code,
+                "fallback_reason": request.fallback_reason,
+                "fallback_recorded_by_id": (
+                    str(request.fallback_recorded_by_id)
+                    if request.fallback_recorded_by_id is not None
+                    else None
+                ),
+                "fallback_recorded_at": (
+                    request.fallback_recorded_at.isoformat()
+                    if request.fallback_recorded_at is not None
+                    else None
+                ),
+                "fallback_until": (
+                    request.fallback_until.isoformat()
+                    if request.fallback_until is not None
+                    else None
+                ),
+                "revision": previous_revision,
+            }
+            request.approval_route = "supervisor"
+            request.assigned_supervisor_user_id = supervisor_id
+            request.fallback_reason_code = None
+            request.fallback_reason = None
+            request.fallback_recorded_by_id = None
+            request.fallback_recorded_at = None
+            request.fallback_until = None
+            request.record_revision += 1
+            await self.audit.record(
+                action="hr.leave_request.rerouted",
+                user_id=actor.id,
+                entity_type="hr_leave_requests",
+                entity_id=request.id,
+                old_values=old_values,
+                new_values={
+                    "route": "supervisor",
+                    "supervisor_user_id": str(supervisor_id),
+                    "restoration_reason": payload.restoration_reason,
+                    "revision": request.record_revision,
+                    "source": "route_refresh_restoration",
+                },
+            )
+            await self._notify_leave_event(request, "rerouted", actor.id)
+            await self._commit_and_refresh(request)
             return request
-        if (
-            request.approval_route == route
-            and request.assigned_supervisor_user_id == supervisor_id
-            and request.fallback_reason_code == reason_code
-        ):
-            if route == "hr_fallback":
-                await self._notify_leave_event(request, "rerouted", actor.id)
-                await self._commit_and_refresh(request)
+        if self._leave_route_matches(request, current_route, today):
             return request
         previous_route = request.approval_route
         request.approval_route = route
