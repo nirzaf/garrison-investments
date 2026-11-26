@@ -8,7 +8,15 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.hr import HrEmployee, HrLeaveLedger, HrLeaveRequest, HrLeaveRollover, HrLeaveType
+from app.models.hr import (
+    HrEmployee,
+    HrEmploymentHistory,
+    HrLeaveLedger,
+    HrLeavePolicy,
+    HrLeaveRequest,
+    HrLeaveRollover,
+    HrLeaveType,
+)
 from app.models.user import User
 from app.schemas.hr import LeaveRolloverRequest, LeaveRolloverResponse
 from app.services.audit_service import AuditService
@@ -31,6 +39,10 @@ async def process_leave_rollover(
     year = payload.source_year
     target = year + 1
     start, end = date(year, 1, 1), date(year, 12, 31)
+    if expected_digest is not None:
+        from app.services.hr_payroll_snapshot import lock_payroll_periods
+
+        await lock_payroll_periods(session)
     query = select(HrEmployee).where(
         HrEmployee.id == payload.employee_id, HrEmployee.deleted_at.is_(None)
     )
@@ -76,8 +88,43 @@ async def process_leave_rollover(
     if await session.scalar(type_query) is None:
         raise NotFoundException("Active paid leave type")
     category = await _eligible_category(session, employee, end, date(target, 1, 1))
+    categories = {category}
+    categories.update(
+        value
+        for value in await session.scalars(
+            select(HrEmploymentHistory.new_snapshot["employment_category"].as_string()).where(
+                HrEmploymentHistory.employee_id == employee.id,
+                HrEmploymentHistory.effective_date.between(start, end),
+            )
+        )
+        if value is not None
+    )
+    policy_rows = list(
+        await session.scalars(
+            select(HrLeavePolicy).where(
+                HrLeavePolicy.leave_type_id == payload.leave_type_id,
+                HrLeavePolicy.status == "approved",
+                HrLeavePolicy.is_active.is_(True),
+                HrLeavePolicy.approved_at.is_not(None),
+                HrLeavePolicy.effective_from <= end,
+                HrLeavePolicy.effective_to >= start,
+                (HrLeavePolicy.employment_category.is_(None))
+                | (HrLeavePolicy.employment_category.in_(categories)),
+            )
+        )
+    )
+    # JSONB `null` is not SQL NULL. Keep generic approved policies out of the
+    # managed-profile guard while failing closed for actual managed profiles.
+    managed_policies = [policy for policy in policy_rows if policy.entitlement_rules is not None]
+    managed_applicable = bool(managed_policies)
     policy = await _policy_for_period(session, payload.leave_type_id, category, end, end)
     managed_rules = policy.entitlement_rules
+    if managed_applicable and managed_rules is None:
+        raise AppException(
+            "A managed leave policy overlaps this year but the closing policy is unresolved.",
+            status_code=409,
+            error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+        )
     if managed_rules is not None and (
         not isinstance(managed_rules, dict)
         or managed_rules.get("profile")

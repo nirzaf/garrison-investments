@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
+from app.models.document import Document, DocumentVersion
 from app.models.hr import HrAttendanceEntry, HrEmployee
 from app.models.inventory import (
     InventoryItem,
@@ -240,6 +241,55 @@ async def test_legacy_report_flags_unknown_material_valuation_without_mutating_i
         assert stored is not None
         assert stored.total_estimated_cost == Decimal("0")
         assert stored.status == "requested"
+
+
+async def test_legacy_report_flags_unclassified_document_version_under_operational_parent(
+    inventory_ids: tuple[UUID, UUID, UUID], capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_id, _, _ = inventory_ids
+    document_id, version_id = uuid4(), uuid4()
+    async with AsyncSessionLocal.begin() as session:
+        session.add(
+            Document(
+                id=document_id,
+                title="Synthetic operational delivery note",
+                document_type="delivery_note",
+                classification="operational",
+                project_id=project_id,
+                status="active",
+                active_version=1,
+                metadata_json={},
+                versions=[
+                    DocumentVersion(
+                        id=version_id,
+                        version=1,
+                        status="active",
+                        classification="unclassified",
+                        storage_path="synthetic/report-only",
+                        original_name="delivery-note.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=1,
+                    )
+                ],
+            )
+        )
+
+    try:
+        await report_legacy_site_workflows()
+        records = [json.loads(row) for row in capsys.readouterr().out.splitlines()]
+        finding = next(
+            row
+            for row in records
+            if row.get("finding") == "unclassified_evidence"
+            and row.get("evidence_type") == "document_version"
+            and row.get("evidence_id") == str(version_id)
+        )
+        assert finding["entity_id"] == str(document_id)
+        assert finding["project_id"] == str(project_id)
+        assert finding["disposition"] == "manual_classification_review"
+    finally:
+        async with AsyncSessionLocal.begin() as session:
+            await session.execute(delete(Document).where(Document.id == document_id))
 
 
 async def test_legacy_report_flags_unresolved_historical_attendance_evidence(

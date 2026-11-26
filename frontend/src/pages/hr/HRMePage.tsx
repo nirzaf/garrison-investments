@@ -149,7 +149,12 @@ export function HRMePage() {
         case 'leaveTypes':
           return loadRecord('leaveTypes', listMyLeaveTypes, (result) => {
             setLeaveTypes(result.items);
-            setLeaveTypeId((selected) => selected || result.items[0]?.id || '');
+            setLeaveTypeId((selected) => {
+              if (editingLeave?.leave_type_id === selected) return selected;
+              return result.items.some((item) => item.id === selected)
+                ? selected
+                : result.items[0]?.id || '';
+            });
           });
         case 'leaveRequests':
           return loadRecord('leaveRequests', listMyLeaveRequests, (result) =>
@@ -169,7 +174,7 @@ export function HRMePage() {
           );
       }
     },
-    [loadRecord]
+    [editingLeave?.leave_type_id, loadRecord]
   );
 
   const loadAll = useCallback(async () => {
@@ -589,6 +594,12 @@ export function HRMePage() {
                       ? 'No leave types available'
                       : 'Select leave type'}
               </option>
+              {editingLeave &&
+                !leaveTypes.some((item) => item.id === editingLeave.leave_type_id) && (
+                  <option value={editingLeave.leave_type_id}>
+                    Existing leave type (correction review only)
+                  </option>
+                )}
               {leaveTypes.map((lt) => (
                 <option key={lt.id} value={lt.id}>
                   {lt.name} ({lt.code})

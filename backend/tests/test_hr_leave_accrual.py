@@ -229,7 +229,7 @@ async def test_paid_accrual_is_reviewed_idempotent_and_reconciled(
         opening = await client.post(
             f"{base}/leave/ledger", headers=hr, json={**manual, "employee_id": second_employee}
         )
-        assert opening.status_code == 201
+        assert opening.status_code == 201, opening.text
         blocked = await client.post(
             preview, headers=hr, json={**payload, "employee_id": second_employee}
         )
@@ -283,7 +283,14 @@ async def test_paid_accrual_is_reviewed_idempotent_and_reconciled(
         ).status_code == 201
         leave_url = f"{base}/leave/requests/{leave.json()['id']}/decision"
         assert (
-            await client.post(leave_url, headers=reviewer, json={"decision": "approved"})
+            await client.post(
+                leave_url,
+                headers=reviewer,
+                json={
+                    "decision": "approved",
+                    "expected_revision": leave.json()["record_revision"],
+                },
+            )
         ).status_code == 200
         stale = await client.post(rollover_preview, headers=hr, json=rollover)
         assert stale.status_code == 200
@@ -325,7 +332,18 @@ async def test_paid_accrual_is_reviewed_idempotent_and_reconciled(
         assert duplicate_carry.json()["error_code"] == "LEAVE_ROLLOVER_ALREADY_POSTED"
         late_leave = await client.post(f"{base}/leave/requests", headers=hr, json=old_request)
         assert late_leave.json()["error_code"] == "LEAVE_YEAR_CLOSED"
-        late_cancel = await client.post(leave_url, headers=reviewer, json={"decision": "cancelled"})
+        current = await client.get(
+            f"{base}/leave/requests/{leave.json()['id']}/decision", headers=reviewer
+        )
+        assert current.status_code == 200, current.text
+        late_cancel = await client.post(
+            leave_url,
+            headers=reviewer,
+            json={
+                "decision": "cancelled",
+                "expected_revision": current.json()["record_revision"],
+            },
+        )
         assert late_cancel.json()["error_code"] == "LEAVE_YEAR_CLOSED"
         late_accrual = await client.post(preview, headers=hr, json={**payload, "month": 3})
         assert late_accrual.json()["error_code"] == "LEAVE_YEAR_CLOSED"
@@ -607,6 +625,26 @@ async def test_managed_leave_profiles_require_review_and_use_service_year_events
                 "seven_day_block_basis": "calendar_days",
             },
         )
+        managed_ledger_url = f"{base}/leave/ledger"
+        for entry_type, expected_error in (
+            ("carry_forward", "LEAVE_CARRY_FORWARD_FORBIDDEN"),
+            ("adjustment", "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"),
+            ("encashment", "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"),
+        ):
+            blocked_entry = await client.post(
+                managed_ledger_url,
+                headers=hr,
+                json={
+                    "employee_id": first_year,
+                    "leave_type_id": annual_type,
+                    "entry_type": entry_type,
+                    "days_delta": "1.00",
+                    "leave_year": 2026,
+                    "reason": "Synthetic managed leave guard test",
+                },
+            )
+            assert blocked_entry.status_code == 409, blocked_entry.text
+            assert blocked_entry.json()["error_code"] == expected_error
         second_year = await create_employee("2025-06-30")
         third_year = await create_employee("2024-02-01")
         preview = f"{base}/leave/accrual/preview"

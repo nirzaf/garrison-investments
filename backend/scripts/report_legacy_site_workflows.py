@@ -186,6 +186,14 @@ UNCLASSIFIED_EVIDENCE = text("""
     FROM documents d
     WHERE d.classification = 'unclassified'
     UNION ALL
+    SELECT 'document_version' AS evidence_type, v.id AS evidence_id,
+           d.project_id, 'document'::varchar AS entity_type, d.id AS entity_id,
+           v.created_at, 'manual_classification_review' AS disposition
+    FROM document_versions v
+    JOIN documents d ON d.id = v.document_id
+    WHERE v.classification = 'unclassified'
+      AND d.classification != 'unclassified'
+    UNION ALL
     SELECT 'photo' AS evidence_type, p.id AS evidence_id,
            CASE p.entity_type
              WHEN 'daily_report' THEN

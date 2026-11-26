@@ -17,6 +17,7 @@ class NotificationResponse(BaseModel):
     email_status: str | None
     read_at: datetime | None
     created_at: datetime
+    superseded_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

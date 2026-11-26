@@ -434,6 +434,187 @@ def _leave_requests_decide(args: argparse.Namespace, ctx: Context) -> Result:
     )
 
 
+def _leave_baseline_payload(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "employee_id": args.employee_id,
+        "leave_type_id": args.leave_type_id,
+        "year": args.year,
+        "as_of_date": args.as_of_date,
+        "verified_balance": args.verified_balance,
+        "recognized_due_dates": args.recognized_due_date or [],
+        "supporting_reference": args.supporting_reference,
+    }
+
+
+def _preview_leave_baseline(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_LEAVE_APPROVE)
+    return Result(
+        ctx.request(
+            "POST",
+            f"{HR}/leave/entitlement-baseline/preview",
+            json=_leave_baseline_payload(args),
+        )
+    )
+
+
+def _apply_leave_baseline(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_LEAVE_APPROVE)
+    payload = _leave_baseline_payload(args)
+    preview_path = f"{HR}/leave/entitlement-baseline/preview"
+    apply_path = f"{HR}/leave/entitlement-baseline/apply"
+    preview = ctx.request("POST", preview_path, json=payload)
+    digest = preview.get("digest")
+    if not isinstance(digest, str) or not digest:
+        raise CLIError("The current baseline has no actionable review digest.", CONFLICT)
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "selection": {
+                **payload,
+                "supporting_reference_sha256": sha256_json(payload["supporting_reference"]),
+            },
+            "preview": preview,
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request(
+        "POST",
+        apply_path,
+        json={**payload, "expected_digest": digest},
+        write=True,
+    )
+    if saved.get("receipt_id") is None:
+        raise CLIError("The API response did not identify the committed baseline receipt.", FAILED)
+    return verified(
+        ctx,
+        lambda: ctx.request("POST", preview_path, json=payload),
+        lambda row: (
+            row.get("receipt_id") == saved.get("receipt_id")
+            and row.get("employee_id") == args.employee_id
+            and row.get("leave_type_id") == args.leave_type_id
+            and row.get("year") == args.year
+            and row.get("verified_balance") == saved.get("verified_balance")
+        ),
+    )
+
+
+def _leave_review_page(ctx: Context, args: argparse.Namespace) -> dict[str, Any]:
+    return ctx.request(
+        "GET",
+        f"{HR}/me/leave-reviews",
+        params={"limit": 100, "offset": args.offset},
+    )
+
+
+def _decide_supervisor_leave_review(args: argparse.Namespace, ctx: Context) -> Result:
+    page_response = _leave_review_page(ctx, args)
+    target = next(
+        (row for row in page_response.get("items", []) if row.get("id") == args.leave_request_id),
+        None,
+    )
+    if target is None:
+        raise CLIError("The leave request is not in the current supervisor review page.", CONFLICT)
+    if target.get("record_revision") != args.expected_revision:
+        raise CLIError("The leave request changed. Reload the review before deciding.", CONFLICT)
+    payload = {
+        "decision": args.decision,
+        "expected_revision": args.expected_revision,
+        "notes": args.notes,
+    }
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "leave_request_id": args.leave_request_id,
+            "record_revision": args.expected_revision,
+            "status": target.get("status"),
+            "start_date": target.get("start_date"),
+            "end_date": target.get("end_date"),
+            "decision": args.decision,
+            "notes_sha256": sha256_json(args.notes or ""),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    result = ctx.request(
+        "POST",
+        f"{HR}/me/leave-reviews/{args.leave_request_id}/decision",
+        json=payload,
+        write=True,
+    )
+    if not (
+        result.get("id") == args.leave_request_id
+        and result.get("status") == args.decision
+        and result.get("record_revision") == args.expected_revision + 1
+        and result.get("allowed_actions") == []
+        and result.get("route_status") == "final"
+    ):
+        raise CLIError(
+            "The supervisor decision response did not match the reviewed action.", FAILED
+        )
+    return Result(result, changed=True)
+
+
+def _leave_route_action(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_LEAVE_APPROVE)
+    state_path = f"{HR}/leave/requests/{args.leave_request_id}/decision"
+    target = ctx.request("GET", state_path)
+    if target.get("id") != args.leave_request_id:
+        raise CLIError("The response does not match the requested leave record.", CONFLICT)
+    if target.get("record_revision") != args.expected_revision:
+        raise CLIError("The leave request changed. Reload it before routing.", CONFLICT)
+    if args.route_action == "fallback":
+        payload: dict[str, Any] = {
+            "reason_code": args.reason_code,
+            "reason": args.reason,
+            "expected_revision": args.expected_revision,
+            "until": args.until,
+        }
+        endpoint = f"{HR}/leave/requests/{args.leave_request_id}/fallback"
+    else:
+        payload = {"expected_revision": args.expected_revision}
+        endpoint = f"{HR}/leave/requests/{args.leave_request_id}/route-refresh"
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "leave_request_id": args.leave_request_id,
+            "record_revision": args.expected_revision,
+            "route_status": target.get("route_status"),
+            "current_actions": target.get("allowed_actions", []),
+            "reason_code": args.reason_code if args.route_action == "fallback" else None,
+            "until": args.until if args.route_action == "fallback" else None,
+            "reason_sha256": sha256_json(args.reason)
+            if args.route_action == "fallback"
+            else None,
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    updated = ctx.request("POST", endpoint, json=payload, write=True)
+    updated_revision = updated.get("record_revision")
+    if updated.get("id") != args.leave_request_id or not isinstance(updated_revision, int):
+        raise CLIError("The route update response did not identify the current request.", FAILED)
+    return verified(
+        ctx,
+        lambda: ctx.request("GET", state_path),
+        lambda row: (
+            row.get("id") == args.leave_request_id
+            and row.get("status") == "submitted"
+            and row.get("record_revision") == updated_revision
+            and row.get("route_status") == updated.get("route_status")
+        ),
+    )
+
+
 def _offboarding_initiate(args: argparse.Namespace, ctx: Context) -> Result:
     require_preview_permission(ctx, PERM_OFFBOARDING)
     payload: dict[str, Any] = {
@@ -6014,6 +6195,35 @@ def register(registry: Registry) -> None:
     mode(p)
 
     p = registry.add(
+        "hr leave baseline preview",
+        _preview_leave_baseline,
+        permission=PERM_LEAVE_APPROVE,
+    )
+    p.add_argument("--employee-id", type=uuid_arg, required=True)
+    p.add_argument("--leave-type-id", type=uuid_arg, required=True)
+    p.add_argument("--year", type=int, required=True)
+    p.add_argument("--as-of-date", required=True)
+    p.add_argument("--verified-balance", required=True)
+    p.add_argument("--recognized-due-date", action="append", default=[])
+    p.add_argument("--supporting-reference", required=True)
+
+    p = registry.add(
+        "hr leave baseline apply",
+        _apply_leave_baseline,
+        permission=PERM_LEAVE_APPROVE,
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--employee-id", type=uuid_arg, required=True)
+    p.add_argument("--leave-type-id", type=uuid_arg, required=True)
+    p.add_argument("--year", type=int, required=True)
+    p.add_argument("--as-of-date", required=True)
+    p.add_argument("--verified-balance", required=True)
+    p.add_argument("--recognized-due-date", action="append", default=[])
+    p.add_argument("--supporting-reference", required=True)
+    mode(p)
+
+    p = registry.add(
         "hr leave accrual post",
         _post_leave_accrual,
         permission=PERM_LEAVE_APPROVE,
@@ -6077,6 +6287,67 @@ def register(registry: Registry) -> None:
     p.add_argument("--employee-id", type=uuid_arg)
     p.add_argument("--limit", type=int)
     p.add_argument("--offset", type=int)
+
+    p = registry.add(
+        "hr leave reviews list",
+        lambda a, c: c.request(
+            "GET", f"{HR}/me/leave-reviews", params=query(a, "limit", "offset")
+        ),
+        permission="authenticated",
+    )
+    page(p)
+
+    p = registry.add(
+        "hr leave reviews decide",
+        _decide_supervisor_leave_review,
+        permission="authenticated",
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--leave-request-id", type=uuid_arg, required=True)
+    p.add_argument("--expected-revision", type=int, required=True)
+    p.add_argument("--decision", choices=["approved", "rejected"], required=True)
+    p.add_argument("--notes")
+    p.add_argument("--offset", type=int, default=0)
+    mode(p)
+
+    p = registry.add(
+        "hr leave requests fallback",
+        _leave_route_action,
+        permission=PERM_LEAVE_APPROVE,
+        mutates=True,
+        preview=True,
+        approval=True,
+    )
+    p.set_defaults(route_action="fallback")
+    p.add_argument("--leave-request-id", type=uuid_arg, required=True)
+    p.add_argument("--expected-revision", type=int, required=True)
+    p.add_argument(
+        "--reason-code",
+        required=True,
+        choices=[
+            "manager_missing",
+            "manager_ineligible",
+            "manager_absent",
+            "manager_temporarily_unavailable",
+        ],
+    )
+    p.add_argument("--reason", required=True)
+    p.add_argument("--until")
+    mode(p)
+
+    p = registry.add(
+        "hr leave requests refresh-route",
+        _leave_route_action,
+        permission=PERM_LEAVE_APPROVE,
+        mutates=True,
+        preview=True,
+        approval=True,
+    )
+    p.set_defaults(route_action="refresh")
+    p.add_argument("--leave-request-id", type=uuid_arg, required=True)
+    p.add_argument("--expected-revision", type=int, required=True)
+    mode(p)
 
     p = registry.add(
         "hr leave requests decide",

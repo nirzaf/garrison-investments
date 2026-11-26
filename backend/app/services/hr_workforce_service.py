@@ -14,6 +14,7 @@ from fastapi import UploadFile
 from minio import Minio
 from sqlalchemy import (
     Date,
+    and_,
     case,
     false,
     func,
@@ -22,7 +23,9 @@ from sqlalchemy import (
     or_,
     select,
     text,
+    true,
     type_coerce,
+    update,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,6 +89,7 @@ from app.models.hr import (
     HrTrainingEnrollment,
     HrWorkCalendar,
 )
+from app.models.notification import Notification
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.hr import (
@@ -2758,7 +2762,7 @@ class HrWorkforceService:
             HrWorkCalendar.effective_from <= work_date,
             HrWorkCalendar.effective_to >= work_date,
         )
-        assigned = (
+        assigned_shifts = (
             await self.session.execute(
                 select(HrShiftAssignment, HrWorkCalendar)
                 .join(HrWorkCalendar, HrWorkCalendar.id == HrShiftAssignment.calendar_id)
@@ -2766,10 +2770,21 @@ class HrWorkforceService:
                     *applicable,
                     HrShiftAssignment.employee_id == employee.id,
                     HrShiftAssignment.effective_from <= work_date,
-                    HrShiftAssignment.effective_to >= work_date,
+                    or_(
+                        HrShiftAssignment.effective_to.is_(None),
+                        HrShiftAssignment.effective_to >= work_date,
+                    ),
                 )
+                .order_by(HrShiftAssignment.id)
             )
-        ).one_or_none()
+        ).all()
+        if len(assigned_shifts) > 1:
+            raise AppException(
+                "More than one effective shift matches this work date. Resolve the schedule first.",
+                status_code=409,
+                error_code="LEAVE_SCHEDULE_AMBIGUOUS",
+            )
+        assigned = assigned_shifts[0] if assigned_shifts else None
         calendar: HrWorkCalendar | None
         if assigned is not None:
             shift, calendar = assigned
@@ -3611,6 +3626,50 @@ class HrWorkforceService:
         rows = list(await self.session.scalars(select(HrLeaveType).order_by(HrLeaveType.code)))
         return rows, len(rows)
 
+    async def list_requestable_leave_types(
+        self, employee: HrEmployee
+    ) -> tuple[list[HrLeaveType], int]:
+        rows = list(
+            await self.session.scalars(
+                select(HrLeaveType)
+                .where(HrLeaveType.is_active.is_(True))
+                .order_by(HrLeaveType.code)
+            )
+        )
+        required = [row for row in rows if row.policy_required]
+        if not required:
+            return rows, len(rows)
+        today = business_today()
+        category_resolved = True
+        try:
+            category = await _managed_category_at(self.session, employee, today)
+        except AppException:
+            category = None
+            category_resolved = False
+        policies = (
+            list(
+                await self.session.scalars(
+                    select(HrLeavePolicy).where(
+                        HrLeavePolicy.leave_type_id.in_([row.id for row in required]),
+                        HrLeavePolicy.status == "approved",
+                        HrLeavePolicy.is_active.is_(True),
+                        HrLeavePolicy.approved_at.is_not(None),
+                        HrLeavePolicy.effective_from <= today,
+                        HrLeavePolicy.effective_to >= today,
+                        or_(
+                            HrLeavePolicy.employment_category.is_(None),
+                            HrLeavePolicy.employment_category == category,
+                        ),
+                    )
+                )
+            )
+            if category_resolved
+            else []
+        )
+        covered_ids = {policy.leave_type_id for policy in policies}
+        rows = [row for row in rows if not row.policy_required or row.id in covered_ids]
+        return rows, len(rows)
+
     async def create_leave_policy(
         self, payload: LeavePolicyCreateRequest, actor: User
     ) -> HrLeavePolicy:
@@ -3973,6 +4032,12 @@ class HrWorkforceService:
                 HrLeaveEntitlementBaseline.leave_year == payload.year,
             )
         )
+        if lock and payload.as_of_date != business_today() and baseline is None:
+            raise AppException(
+                "Apply a new baseline using today's date so its ledger snapshot is exact.",
+                status_code=409,
+                error_code="LEAVE_BASELINE_DATE_INVALID",
+            )
         adjustment_days = (payload.verified_balance - balance).quantize(Decimal("0.01"))
         ledger_digest = hashlib.sha256(
             json.dumps(
@@ -4196,6 +4261,7 @@ class HrWorkforceService:
     async def adjust_leave_ledger(
         self, payload: LeaveLedgerAdjustRequest, actor: User
     ) -> HrLeaveLedger:
+        await lock_payroll_periods(self.session)
         employee = await self._require_employee(payload.employee_id, for_update=True)
         await ensure_leave_year_open(
             self.session, payload.employee_id, payload.leave_type_id, payload.leave_year
@@ -4204,27 +4270,66 @@ class HrWorkforceService:
         if not leave_type or not leave_type.is_active:
             raise NotFoundException("Leave type")
         year_start, year_end = date(payload.leave_year, 1, 1), date(payload.leave_year, 12, 31)
+        managed_policies: list[HrLeavePolicy] = []
         try:
+            policy_rows = list(
+                await self.session.scalars(
+                    select(HrLeavePolicy).where(
+                        HrLeavePolicy.leave_type_id == payload.leave_type_id,
+                        HrLeavePolicy.status == "approved",
+                        HrLeavePolicy.is_active.is_(True),
+                        HrLeavePolicy.approved_at.is_not(None),
+                        HrLeavePolicy.effective_from <= year_end,
+                        HrLeavePolicy.effective_to >= year_start,
+                    )
+                )
+            )
+            # JSONB `null` is distinct from SQL NULL; filter loaded values so legacy
+            # generic policies remain eligible for the existing manual-ledger path.
+            managed_policies = [
+                policy for policy in policy_rows if policy.entitlement_rules is not None
+            ]
             category = await _managed_category_at(self.session, employee, year_start)
-            applicable_policy = await _policy_for_period(
-                self.session,
-                payload.leave_type_id,
-                category,
-                year_start,
-                year_end,
+            categories = {category}
+            categories.update(
+                value
+                for value in await self.session.scalars(
+                    select(HrEmploymentHistory.new_snapshot["employment_category"].as_string())
+                    .where(
+                        HrEmploymentHistory.employee_id == employee.id,
+                        HrEmploymentHistory.effective_date.between(year_start, year_end),
+                    )
+                )
+                if value is not None
             )
         except AppException:
-            applicable_policy = None
-        if applicable_policy is not None and applicable_policy.entitlement_rules is not None:
+            if managed_policies:
+                raise AppException(
+                    "Managed leave coverage or employment category is unresolved for this year.",
+                    status_code=409,
+                    error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+                ) from None
+            categories = set()
+        applicable_managed = any(
+            policy.employment_category is None or policy.employment_category in categories
+            for policy in managed_policies
+        )
+        if applicable_managed:
             if payload.entry_type == "carry_forward":
                 raise AppException(
                     "Managed leave policies do not permit manual carry-forward.",
                     status_code=409,
                     error_code="LEAVE_CARRY_FORWARD_FORBIDDEN",
                 )
-            if payload.entry_type in {"opening_balance", "accrual", "adjustment"}:
+            if payload.entry_type in {
+                "opening_balance",
+                "accrual",
+                "adjustment",
+                "encashment",
+            }:
                 raise AppException(
-                    "Use the reviewed baseline workflow for managed leave balance corrections.",
+                    "Use a separately reviewed managed leave reconciliation; this ledger path "
+                    "cannot post manual credits or encashment.",
                     status_code=409,
                     error_code="LEAVE_ENTITLEMENT_BASELINE_REQUIRED",
                 )
@@ -4589,6 +4694,21 @@ class HrWorkforceService:
             HrWorkCalendar.effective_to >= work_date,
         )
         scope, priority = self._work_calendar_scope(employee)
+        shift_count = (
+            select(func.count(HrShiftAssignment.id))
+            .join(HrWorkCalendar, HrWorkCalendar.id == HrShiftAssignment.calendar_id)
+            .where(
+                *applicable,
+                HrShiftAssignment.employee_id == employee.id,
+                HrShiftAssignment.effective_from <= work_date,
+                or_(
+                    HrShiftAssignment.effective_to.is_(None),
+                    HrShiftAssignment.effective_to >= work_date,
+                ),
+            )
+            .correlate(offsets)
+            .scalar_subquery()
+        )
         shift_calendar = (
             select(HrShiftAssignment.calendar_id)
             .join(HrWorkCalendar, HrWorkCalendar.id == HrShiftAssignment.calendar_id)
@@ -4596,7 +4716,10 @@ class HrWorkforceService:
                 *applicable,
                 HrShiftAssignment.employee_id == employee.id,
                 HrShiftAssignment.effective_from <= work_date,
-                HrShiftAssignment.effective_to >= work_date,
+                or_(
+                    HrShiftAssignment.effective_to.is_(None),
+                    HrShiftAssignment.effective_to >= work_date,
+                ),
             )
             .order_by(HrShiftAssignment.id)
             .limit(1)
@@ -4615,12 +4738,18 @@ class HrWorkforceService:
             select(
                 work_date.label("work_date"),
                 func.coalesce(shift_calendar, fallback_calendar).label("calendar_id"),
+                shift_count.label("shift_count"),
             )
             .select_from(offsets)
             .cte("leave_schedule")
         )
         rows = await self.session.execute(
-            select(schedule.c.work_date, HrWorkCalendar.work_days_json, HrHoliday.id)
+            select(
+                schedule.c.work_date,
+                HrWorkCalendar.work_days_json,
+                HrHoliday.id,
+                schedule.c.shift_count,
+            )
             .select_from(schedule)
             .outerjoin(HrWorkCalendar, HrWorkCalendar.id == schedule.c.calendar_id)
             .outerjoin(
@@ -4631,7 +4760,14 @@ class HrWorkforceService:
             .order_by(schedule.c.work_date)
         )
         workdays = []
-        for day, work_days, holiday_id in rows:
+        for day, work_days, holiday_id, matched_shift_count in rows:
+            if matched_shift_count > 1:
+                raise AppException(
+                    f"More than one effective shift matches {day.isoformat()}. "
+                    "Resolve the schedule first.",
+                    status_code=409,
+                    error_code="LEAVE_SCHEDULE_AMBIGUOUS",
+                )
             if work_days is None:
                 raise AppException(
                     f"No published work calendar covers {day.isoformat()}. Contact HR.",
@@ -4790,21 +4926,167 @@ class HrWorkforceService:
             is not None
         )
 
+    async def _eligible_hr_leave_approver_ids(
+        self,
+        request: HrLeaveRequest,
+        *,
+        excluded_ids: set[UUID] | None = None,
+    ) -> list[UUID]:
+        employee_user_id = await self.session.scalar(
+            select(HrEmployee.user_id).where(
+                HrEmployee.id == request.employee_id,
+                HrEmployee.deleted_at.is_(None),
+            )
+        )
+        excluded = set(excluded_ids or ())
+        excluded.add(request.requested_by_id) if request.requested_by_id else None
+        excluded.add(employee_user_id) if employee_user_id else None
+        query = select(User.id).where(
+            User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+            User.role.in_(BUSINESS_ROLES),
+        )
+        if excluded:
+            query = query.where(User.id.not_in(excluded))
+        return list(await self.session.scalars(query.order_by(User.id)))
+
+    async def _leave_route_is_current(
+        self, request: HrLeaveRequest, employee: HrEmployee
+    ) -> bool:
+        route = await self._resolve_leave_route(employee, request.requested_by_id)
+        return self._leave_route_matches(request, route, business_today())
+
+    @staticmethod
+    def _leave_route_matches(
+        request: HrLeaveRequest,
+        route: tuple[str, UUID | None, str | None, str | None],
+        today: date,
+    ) -> bool:
+        if request.approval_route == "supervisor":
+            return (
+                route[0] == "supervisor"
+                and request.assigned_supervisor_user_id == route[1]
+                and request.fallback_until is None
+            )
+        if request.approval_route != "hr_fallback":
+            return False
+        if request.fallback_reason_code == "manager_temporarily_unavailable":
+            return (
+                route[0] == "supervisor"
+                and request.assigned_supervisor_user_id == route[1]
+                and request.fallback_until is not None
+                and request.fallback_until >= today
+            )
+        return (
+            route[0] == "hr_fallback"
+            and route[2] == request.fallback_reason_code
+            and route[3] == request.fallback_reason
+            and request.assigned_supervisor_user_id is None
+            and request.fallback_until is None
+        )
+
+    async def _leave_routes_current(self, requests: list[HrLeaveRequest]) -> dict[UUID, bool]:
+        submitted = [request for request in requests if request.status == "submitted"]
+        if not submitted:
+            return {}
+        today = business_today()
+        employee_ids = {request.employee_id for request in submitted}
+        employees = {
+            employee.id: employee
+            for employee in await self.session.scalars(
+                select(HrEmployee).where(
+                    HrEmployee.id.in_(employee_ids), HrEmployee.deleted_at.is_(None)
+                )
+            )
+        }
+        manager_ids = {
+            employee.manager_employee_id
+            for employee in employees.values()
+            if employee.manager_employee_id is not None
+        }
+        managers = {}
+        if manager_ids:
+            manager_rows = await self.session.execute(
+                select(
+                    HrEmployee.id,
+                    HrEmployee.user_id,
+                    HrEmployee.employment_status,
+                    HrEmployee.deleted_at.label("employee_deleted_at"),
+                    User.is_active,
+                    User.deleted_at.label("user_deleted_at"),
+                    User.role,
+                )
+                .select_from(HrEmployee)
+                .outerjoin(User, User.id == HrEmployee.user_id)
+                .where(HrEmployee.id.in_(manager_ids))
+            )
+            managers = {row.id: row for row in manager_rows}
+        absent_manager_ids = set(
+            await self.session.scalars(
+                select(HrLeaveRequest.employee_id).where(
+                    HrLeaveRequest.employee_id.in_(manager_ids),
+                    HrLeaveRequest.status == "approved",
+                    HrLeaveRequest.start_date <= today,
+                    HrLeaveRequest.end_date >= today,
+                )
+            )
+        ) if manager_ids else set()
+        result: dict[UUID, bool] = {}
+        for request in submitted:
+            employee = employees.get(request.employee_id)
+            expected: tuple[str, UUID | None, str | None, str | None] | None = None
+            if employee is not None and employee.employment_status in REVIEW_EMPLOYMENT_STATES:
+                manager_id = employee.manager_employee_id
+                if manager_id is None or manager_id == employee.id:
+                    expected = (
+                        "hr_fallback",
+                        None,
+                        "manager_missing",
+                        "No valid direct supervisor is assigned.",
+                    )
+                else:
+                    manager = managers.get(manager_id)
+                    manager_user_id = manager.user_id if manager is not None else None
+                    manager_is_eligible = (
+                        manager is not None
+                        and manager.employee_deleted_at is None
+                        and manager.employment_status in REVIEW_EMPLOYMENT_STATES
+                        and manager_user_id is not None
+                        and manager_user_id not in {employee.user_id, request.requested_by_id}
+                        and manager.is_active is True
+                        and manager.user_deleted_at is None
+                        and manager.role in BUSINESS_ROLES
+                    )
+                    if not manager_is_eligible:
+                        expected = (
+                            "hr_fallback",
+                            None,
+                            "manager_ineligible",
+                            "The assigned direct supervisor is unavailable.",
+                        )
+                    elif manager_id in absent_manager_ids:
+                        expected = (
+                            "hr_fallback",
+                            None,
+                            "manager_absent",
+                            "The assigned direct supervisor is on approved leave.",
+                        )
+                    else:
+                        expected = ("supervisor", manager_user_id, None, None)
+            result[request.id] = (
+                expected is not None
+                and self._leave_route_matches(request, expected, today)
+            )
+        return result
+
     async def _leave_notification_users(self, request: HrLeaveRequest, event: str) -> list[UUID]:
         recipients: set[UUID] = set()
         if event in {"submitted", "resubmitted", "rerouted"}:
             if request.approval_route == "supervisor" and request.assigned_supervisor_user_id:
                 recipients.add(request.assigned_supervisor_user_id)
             elif request.approval_route == "hr_fallback":
-                recipients.update(
-                    await self.session.scalars(
-                        select(User.id).where(
-                            User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)),
-                            User.is_active.is_(True),
-                            User.deleted_at.is_(None),
-                        )
-                    )
-                )
+                recipients.update(await self._eligible_hr_leave_approver_ids(request))
         else:
             employee_user_id = await self.session.scalar(
                 select(HrEmployee.user_id).where(
@@ -4841,18 +5123,64 @@ class HrWorkforceService:
     async def _notify_leave_event(
         self, request: HrLeaveRequest, event: str, actor_id: UUID | None = None
     ) -> None:
+        recipients = await self._leave_notification_users(request, event)
+        await self.session.execute(
+            update(Notification)
+            .where(
+                Notification.reference_type == "hr_leave_request",
+                Notification.reference_id == request.id,
+                Notification.event_code.in_(("submitted", "resubmitted", "rerouted")),
+                or_(
+                    Notification.event_revision < request.record_revision,
+                    and_(
+                        Notification.event_revision == request.record_revision,
+                        Notification.user_id.not_in(recipients) if recipients else true(),
+                    ),
+                ),
+                Notification.superseded_at.is_(None),
+            )
+            .values(superseded_at=utc_now())
+        )
         title = {
             "submitted": "Leave request submitted",
             "resubmitted": "Leave request resubmitted",
-            "rerouted": "Leave request reassigned",
+            "rerouted": "Leave request ready for review",
             "approved": "Leave request approved",
             "rejected": "Leave request decision",
             "cancelled": "Leave request cancelled",
         }[event]
-        for user_id in await self._leave_notification_users(request, event):
-            if user_id == actor_id:
+        if event in {"submitted", "resubmitted", "rerouted"} and not recipients:
+            await self.audit.record(
+                action="hr.leave_request.approver_unconfigured",
+                user_id=actor_id,
+                entity_type="hr_leave_requests",
+                entity_id=request.id,
+                new_values={
+                    "revision": request.record_revision,
+                    "reason_code": request.fallback_reason_code or "approver_unavailable",
+                },
+            )
+        existing_recipients = set(
+            await self.session.scalars(
+                select(Notification.user_id).where(
+                    Notification.reference_type == "hr_leave_request",
+                    Notification.reference_id == request.id,
+                    Notification.event_revision == request.record_revision,
+                    Notification.event_code == event,
+                    Notification.user_id.in_(recipients),
+                )
+            )
+        ) if recipients else set()
+        recipient_roles = dict(
+            (
+                await self.session.execute(
+                select(User.id, User.role).where(User.id.in_(recipients))
+                )
+            ).all()
+        ) if recipients else {}
+        for user_id, recipient_role in recipient_roles.items():
+            if user_id == actor_id or user_id in existing_recipients:
                 continue
-            recipient_role = await self.session.scalar(select(User.role).where(User.id == user_id))
             route = (
                 "/hr"
                 if recipient_role in roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)
@@ -4878,6 +5206,8 @@ class HrWorkforceService:
     async def create_leave_request(
         self, payload: LeaveRequestCreateRequest, actor: User, *, own_request: bool = False
     ) -> HrLeaveRequest:
+        if payload.submit_immediately:
+            await lock_payroll_periods(self.session)
         employee_id = payload.employee_id or (await self._employee_for_user(actor)).id
         target_emp = await self._require_employee(employee_id, for_update=True)
         if own_request:
@@ -4925,6 +5255,7 @@ class HrWorkforceService:
     async def resubmit_own_leave_request(
         self, request_id: UUID, payload: LeaveRequestResubmitRequest, actor: User
     ) -> HrLeaveRequest:
+        await lock_payroll_periods(self.session)
         employee = await self._employee_for_user(actor)
         req = await self.session.scalar(
             select(HrLeaveRequest)
@@ -5017,9 +5348,9 @@ class HrWorkforceService:
         own_request: bool = False,
         supervisor_decision: bool = False,
     ) -> HrLeaveRequest:
-        if not own_request and payload.decision in {"approved", "cancelled"}:
-            # Payroll approval and leave evidence take the same lock before employee rows.
-            await lock_payroll_periods(self.session)
+        # Keep every leave decision on the same side of the payroll lock as manager
+        # changes, baseline reconciliation, accrual, rollover and correction writers.
+        await lock_payroll_periods(self.session)
         req = await self.session.scalar(
             select(HrLeaveRequest).where(HrLeaveRequest.id == leave_request_id).with_for_update()
         )
@@ -5044,6 +5375,15 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="INVALID_STATE",
             )
+        if payload.decision in {"approved", "rejected"} or (
+            payload.decision == "cancelled" and prev_status == "approved"
+        ):
+            if payload.expected_revision is None:
+                raise AppException(
+                    "Reload the leave request and include its current revision.",
+                    status_code=409,
+                    error_code="REVISION_REQUIRED",
+                )
         reversal = payload.decision == "cancelled" and prev_status == "approved"
         if payload.decision == "approved" or reversal:
             await ensure_leave_year_open(
@@ -5107,11 +5447,17 @@ class HrWorkforceService:
                         status_code=403,
                         error_code="LEAVE_SUPERVISOR_DECISION_REQUIRED",
                     )
-                if req.fallback_until is not None and req.fallback_until < business_today():
+                if not await self._leave_route_is_current(req, emp):
                     raise AppException(
-                        "The HR fallback assignment expired. Refresh the route before deciding.",
+                        "The HR fallback route changed. Refresh it before deciding.",
                         status_code=409,
                         error_code="LEAVE_ROUTE_CHANGED",
+                    )
+                if not await self._eligible_hr_leave_approver_ids(req):
+                    raise AppException(
+                        "No independent active HR leave approver is available for this request.",
+                        status_code=409,
+                        error_code="LEAVE_APPROVER_NOT_CONFIGURED",
                     )
         reversed_debit_id = None
         decision_notes = payload.notes
@@ -5191,7 +5537,7 @@ class HrWorkforceService:
             entity_id=req.id,
             new_values={"reversed_debit_id": str(reversed_debit_id)} if reversed_debit_id else None,
         )
-        if payload.decision in {"approved", "rejected", "cancelled"}:
+        if payload.decision in {"submitted", "approved", "rejected", "cancelled"}:
             await self._notify_leave_event(req, payload.decision, actor.id)
         await self._commit_and_refresh(req)
         return req
@@ -5200,6 +5546,13 @@ class HrWorkforceService:
         self, actor: User, *, offset: int, limit: int
     ) -> SupervisorLeaveReviewListResponse:
         manager = await self._employee_for_user(actor)
+        today = business_today()
+        manager_absent = select(HrLeaveRequest.id).where(
+            HrLeaveRequest.employee_id == manager.id,
+            HrLeaveRequest.status == "approved",
+            HrLeaveRequest.start_date <= today,
+            HrLeaveRequest.end_date >= today,
+        )
         base = (
             select(
                 HrLeaveRequest.id,
@@ -5222,6 +5575,7 @@ class HrWorkforceService:
                 HrLeaveRequest.approval_route == "supervisor",
                 HrLeaveRequest.assigned_supervisor_user_id == actor.id,
                 HrLeaveRequest.requested_by_id.is_distinct_from(actor.id),
+                ~manager_absent.exists(),
             )
         )
         total = int(
@@ -5235,7 +5589,15 @@ class HrWorkforceService:
             )
         ).mappings().all()
         return SupervisorLeaveReviewListResponse(
-            items=[SupervisorLeaveReviewItem.model_validate(row) for row in rows],
+            items=[
+                SupervisorLeaveReviewItem.model_validate(row).model_copy(
+                    update={
+                        "allowed_actions": ["approve", "reject"],
+                        "route_status": "pending_supervisor",
+                    }
+                )
+                for row in rows
+            ],
             total=total,
             offset=offset,
             limit=limit,
@@ -5283,6 +5645,8 @@ class HrWorkforceService:
             is_half_day=request.is_half_day,
             status=cast(Literal["submitted", "approved", "rejected"], request.status),
             record_revision=request.record_revision,
+            allowed_actions=[],
+            route_status="final",
         )
 
     async def set_leave_hr_fallback(
@@ -5292,6 +5656,7 @@ class HrWorkforceService:
         actor: User,
     ) -> HrLeaveRequest:
         ensure_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
+        await lock_payroll_periods(self.session)
         request = await self.session.scalar(
             select(HrLeaveRequest)
             .where(HrLeaveRequest.id == request_id)
@@ -5341,6 +5706,9 @@ class HrWorkforceService:
                 error_code="INVALID_STATE",
             )
         request.approval_route = "hr_fallback"
+        request.assigned_supervisor_user_id = (
+            current[1] if payload.reason_code == "manager_temporarily_unavailable" else None
+        )
         request.fallback_reason_code = payload.reason_code
         request.fallback_reason = payload.reason
         request.fallback_recorded_by_id = actor.id
@@ -5392,10 +5760,22 @@ class HrWorkforceService:
             employee, request.requested_by_id
         )
         if (
+            request.approval_route == "hr_fallback"
+            and request.fallback_reason_code == "manager_temporarily_unavailable"
+            and request.fallback_until is not None
+            and request.fallback_until >= business_today()
+            and route == "supervisor"
+            and supervisor_id == request.assigned_supervisor_user_id
+        ):
+            return request
+        if (
             request.approval_route == route
             and request.assigned_supervisor_user_id == supervisor_id
             and request.fallback_reason_code == reason_code
         ):
+            if route == "hr_fallback":
+                await self._notify_leave_event(request, "rerouted", actor.id)
+                await self._commit_and_refresh(request)
             return request
         previous_route = request.approval_route
         request.approval_route = route

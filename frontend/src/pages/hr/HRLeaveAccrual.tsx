@@ -136,16 +136,36 @@ export function HRLeaveAccrual({
             {preview.plan.periods.map((period) => (
               <li key={period.period_start}>
                 {period.period_start} through {period.period_end} · {period.days} days
+                {period.due_date ? ` · Due ${period.due_date}` : ''}
+                {period.service_year_band ? ` · Service year ${period.service_year_band}` : ''}
                 {period.eligible_from && period.eligible_through
                   ? ` · Prorated for ${period.eligible_from} through ${period.eligible_through}`
                   : ''}
                 {period.ledger_entry_id
-                  ? ` · Accrual posted. Ledger reference ${period.ledger_entry_id}`
-                  : ' · Pending'}
+                  ? ` · Posted. Ledger reference ${period.ledger_entry_id}`
+                  : period.outcome === 'not_due'
+                    ? ' · Not due'
+                    : period.outcome === 'baseline_recognized'
+                      ? ' · Recognized in reviewed baseline'
+                      : period.outcome === 'already_posted'
+                        ? ' · Already posted'
+                        : period.outcome === 'reconciliation_required'
+                          ? ' · Reconciliation required'
+                          : period.outcome === 'preview' && period.digest
+                            ? ' · Ready for confirmation'
+                            : period.outcome == null
+                              ? ' · Legacy preview'
+                              : ' · Not actionable'}
               </li>
             ))}
           </ul>
-          {preview.plan.digest && (
+          {preview.plan.digest &&
+            Number(preview.plan.pending_days) > 0 &&
+            preview.plan.periods.some(
+              (period) =>
+                Number(period.days) > 0 &&
+                (period.outcome === 'preview' || period.outcome == null)
+            ) && (
             <>
               <p>Days to credit: {preview.plan.pending_days}</p>
               <button

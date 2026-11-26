@@ -2453,14 +2453,14 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     await expect(managerPage.getByText('Days to credit: 0.50')).toBeVisible();
     await expect(managerPage.getByText(/Prorated for 2025-02-15 through 2025-02-28/)).toBeVisible();
     await managerPage.getByRole('button', { name: 'Confirm and post accrual' }).click();
-    await expect(managerPage.getByText(/Accrual posted. Ledger reference/)).toHaveCount(1);
+    await expect(managerPage.getByText(/Posted. Ledger reference/)).toHaveCount(1);
     await accrualEmployee.selectOption(employeeId);
     await accrualMonth.fill('1');
     await managerPage.getByRole('spinbutton', { name: 'Catch-up end month (optional)' }).fill('12');
     await managerPage.getByRole('button', { name: 'Preview accrual' }).click();
     await expect(managerPage.getByText('Days to credit: 12.00')).toBeVisible();
     await managerPage.getByRole('button', { name: 'Confirm and post accrual' }).click();
-    await expect(managerPage.getByText(/Accrual posted. Ledger reference/)).toHaveCount(12);
+    await expect(managerPage.getByText(/Posted. Ledger reference/)).toHaveCount(12);
     const cliAccrual = JSON.parse(
       execFileSync(
         PYTHON_BIN,

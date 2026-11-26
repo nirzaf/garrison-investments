@@ -9,6 +9,21 @@ two-role proposal is superseded by the single HR Manager decision.
 
 ## Baseline
 
+### Current 60-finding implementation candidate (2026-11-26)
+
+- Preflight started from local `main` at
+  `7203f00f0bf504d563d63b6090c848b8da51a5e0`; `origin/main` matched this SHA at
+  preflight and still matched at final review. The initial single Alembic head
+  was `202605310114`.
+- The pre-existing local changes were the user's `docker-compose.yml` edit and
+  Celery schedule `-shm`/`-wal` sidecar files. They were preserved. The feature
+  candidate is also uncommitted; its additive schema change is revision
+  `202605310115`. No production account, data or host was accessed from this
+  implementation task.
+- The Slice 102 paragraphs below are historical evidence for their stated
+  revision and test environment. They are not exact-candidate or live
+  production verification for this work.
+
 - Historical baseline for Slices 1–101: clean main worktree at
   `ec298833ccffccabf65916202894736f494a72a4`, matching
   the local `origin/main` reference and the supplied GitHub baseline. No staged,
@@ -2077,12 +2092,16 @@ birthdays expose only name and day/month for seven days; anniversaries expose
 name, day/month and completed years for thirty days. These cards do not expand
 the HR directory or dashboard summary.
 
-### Slice 102 verification
+### Slice 102 verification (historical record)
 
-The source baseline was `60836daac4b77fe8cf6ba7fff206bfcc6bb343a0` on local
-`main`; implementation remains uncommitted. All test data used disposable
-loopback PostgreSQL databases. No production database, accounts, mail delivery
-or deployment was accessed.
+At the time of that verification, the source baseline was
+`60836daac4b77fe8cf6ba7fff206bfcc6bb343a0` on local `main`; the implementation
+overlay was uncommitted. All test data used disposable loopback PostgreSQL
+databases. No production database, accounts, mail delivery or deployment was
+accessed. The later main revision `7203f00f0bf504d563d63b6090c848b8da51a5e0`
+contains the managed leave and employee milestone baseline. The historical
+counts below remain tied to the Slice 102 test run and are not tests executed
+on that later SHA.
 
 - Fresh schema upgrade to Alembic head `202605310114` passed. A populated
   forward-upgrade rehearsal from `202605310112` to `202605310114` retained the
@@ -2116,7 +2135,114 @@ second-year annual bracket values; select the seven-day-block basis; approve
 effective dates, policy source references and sick/maternity/unpaid eligibility,
 pay, evidence and expiry rules; reconcile actual opening balances and direct
 supervisor assignments; and publish the relevant work-calendar coverage. No
-employee entitlements or manager assignments were fabricated. The exact
-worktree has no commit SHA, hosted CI result, production migration/readback or
-business acceptance; those remain unverified. No push or release was requested
-or performed.
+employee entitlements or manager assignments were fabricated. The earlier
+worktree had no commit SHA or hosted evidence. For revision
+`7203f00f0bf504d563d63b6090c848b8da51a5e0`, the supplied hosted evidence is
+[push CI run 45749108343](https://github.com/nirzaf/garrison-investments/actions/runs/45749108343)
+and [deployment workflow 45749874396](https://github.com/nirzaf/garrison-investments/actions/runs/45749874396).
+Both workflows were read back as successful for that SHA during this task;
+the CI browser steps were skipped, and workflow success is not independent
+live image/schema/readiness verification. No production readback or business
+acceptance is claimed. No push or release was requested for the new local
+candidate.
+
+## 60-finding implementation closure register · local candidate
+
+This register records the implementation contract against the actual local
+worktree based on `7203f00f0bf504d563d63b6090c848b8da51a5e0` (`main`), with
+`origin/main` matching that baseline when fetched. The candidate is uncommitted;
+its Alembic head is `202605310115`. The current working tree also contains
+pre-existing user changes in `docker-compose.yml` and two Celery beat sidecar
+files. They are excluded from the implementation fingerprint and were not
+edited. `COMPLETED` means the scoped code and focused evidence passed locally;
+it does not imply business activation, hosted checks, production readback or
+UAT. `BLOCKED_POLICY` and `BLOCKED_AUTHORIZATION` identify external gates, not
+reasons to weaken the existing role or policy controls.
+
+| Finding | Status | Local implementation / verification evidence | Remaining dependency |
+| --- | --- | --- | --- |
+| LM-01 | PARTIAL | `hr_workforce_service.py` route resolver and fallback binding; `test_hr.py`; full backend suite | Expand route-change/expiry and sole-eligible-reviewer edge matrix; no production roster readback. |
+| LM-02 | COMPLETED | Revision-required final mutations in `schemas/hr.py` and `hr_workforce_service.py`; focused HR tests and full backend suite | None for local contract; production remains unverified. |
+| LM-03 | PARTIAL | Request-specific independent HR eligibility and batched list projection in `hr_workforce_service.py` / `api/v1/hr.py`; HR tests | Complete all subject/maker/disabled/no-HR permutations and verify current operator assignments. |
+| LM-04 | PARTIAL | Managed baseline/accrual reconciliation guards in `hr_leave_accrual.py` and `hr_workforce_service.py`; accrual/HR tests | Approved roster balances and policy inputs are unavailable; complete all concurrent and stale-receipt cases. |
+| LM-05 | PARTIAL | Managed carry/credit guard in `hr_leave_rollover.py` and `hr_workforce_service.py`; leave tests | Complete category-window and concurrent credit/debit matrix; approved live inputs remain absent. |
+| LM-06 | PARTIAL | Direct/reviewed manager updates reroute pending leave in `hr_service.py`; HR tests | Full writer/concurrency matrix and authorized manager/account roster readback. |
+| LM-07 | COMPLETED | Open-ended shift and ambiguous schedule handling; `test_site_attendance.py` / `test_hr.py`; backend suite | No local dependency; real calendar coverage still requires approved data. |
+| LM-08 | PARTIAL | Existing date-evidence assessment retained; rollover guards unchanged and tested | Closure waiver stays disabled until an approved source policy and independent authority exist. |
+| LM-09 | BLOCKED_POLICY | Existing inactive, policy-required leave type behavior retained; HR tests pass | Approved sick, maternity and unpaid rules, source references and effective policies are missing. |
+| LM-10 | PARTIAL | Self-service requestable leave type filtering and empty/stale selection handling; HR UI/API changes and suite | Add direct inactive-ID and historical-label acceptance coverage. |
+| LM-11 | PARTIAL | Explicit accrual outcome labels in `HRLeaveAccrual.tsx`; frontend tests/build pass | Add all mixed catch-up/stale digest visual cases. |
+| LM-12 | PARTIAL | Server-derived leave action/route projections and scoped UI; API contracts regenerated; HR suite passes | Complete actor-name/time projection and former-reviewer/stale-route acceptance matrix. |
+| NT-01 | ALREADY_SATISFIED | Existing submit/resubmit event path and revision-key uniqueness retained; `test_hr.py`, `test_notifications.py`, full backend suite | Production email delivery is not established. |
+| NT-02 | PARTIAL | `tasks/email.py` revalidates leave route/revision/recipient; notifications and HR tests pass | Real transport, retry race and every terminal-recipient case remain unverified. |
+| NT-03 | COMPLETED | Additive notification supersession migration 115, unread projection and neutral UI state; notification tests, full backend and browser shards pass | None for local implementation; old signed-in users still need deployed rollout. |
+| NT-04 | PARTIAL | Request-specific missing-reviewer setup projection and route refresh retained; API/notification tests pass | Verify configured/unconfigured transition and actual mail queue/worker status with approved test accounts. |
+| CE-01 | PARTIAL | Minimal birthday/anniversary eligibility and stable service-date logic in `dashboard_service.py`; dashboard tests pass | Complete termination/rehire boundary matrix and authorized directory data-quality follow-up. |
+| CE-02 | PARTIAL | Synthetic date/window/pagination service tests; full frontend and both Chrome shards pass | Mobile/identity-switch cache and full leap-year browser scenarios remain. |
+| CE-03 | PARTIAL | Paginated HR-only data-quality projection and authorization tests; no guessed corrections | No live data-quality counts or HR-owned source corrections authorized; a dedicated HR issue UI remains. |
+| CFG-01 | BLOCKED_POLICY | Existing exact bracket contract preserved; synthetic rules remain test-only | HR-approved complete 366-day 4–14 bracket table and source/version are absent. |
+| CFG-02 | BLOCKED_POLICY | Calendar-join-year convention preserved and synthetic tests retained | HR confirmation of calendar-year versus anniversary-year basis is absent. |
+| CFG-03 | BLOCKED_POLICY | Existing employment-period/service-month conventions preserved | HR approval and verified continuous-service/rehire source records are absent. |
+| CFG-04 | BLOCKED_POLICY | Existing seven-day assessment retained | HR-approved calendar-day/workday basis and any explicit closure exception are absent. |
+| CFG-05 | BLOCKED_POLICY | Additional types remain inactive unless explicitly configured | Approved sick/maternity/unpaid eligibility, pay, evidence and expiry rules are absent. |
+| CFG-06 | BLOCKED_AUTHORIZATION | Actor-bound preview/apply and ledger reconciliation mechanisms retained | Authoritative private balance roster and permission to reconcile actual employees are unavailable. |
+| CFG-07 | BLOCKED_AUTHORIZATION | Current manager/account eligibility and cycle checks retained | HR-approved manager-to-account roster and application authority are unavailable. |
+| CFG-08 | BLOCKED_POLICY | Published calendar/holiday lookup and fail-closed missing schedule retained | Approved calendar, holiday and assignment coverage is unavailable. |
+| CFG-09 | BLOCKED_POLICY | Scheduler allowlist remains disabled unless explicitly selected | Approved policy IDs, completed CFG-01–08, and activation authorization are absent. |
+| CFG-10 | BLOCKED_POLICY | Existing reviewed payroll policy and Decimal calculation gates retained | Approved jurisdiction, rules, worked examples and named independent operators are absent. |
+| CFG-11 | BLOCKED_POLICY | Unknown valuation and frozen material stages retained; no thresholds enabled | Approved thresholds and historical request dispositions are absent. |
+| CFG-12 | BLOCKED_POLICY | Entity-backed approval restrictions retained; no new category enabled | Signed category-specific approval and fulfillment matrix is absent. |
+| CFG-13 | BLOCKED_POLICY | HR Executive least-privilege grants and report denial retained | Owner acceptance and verified account mapping are absent. |
+| CFG-14 | BLOCKED_POLICY | Financial/unclassified evidence remains fail-closed; audit retention preserved | Approved classification reviewer/retention responsibility is absent; no live reclassification authorized. |
+| CFG-15 | BLOCKED_POLICY | Restricted cases remain deny-by-default beyond current opener scope | Approved investigator, reviewer, appeal and evidence assignments are absent. |
+| CFG-16 | BLOCKED_AUTHORIZATION | No role/account/project mappings were inferred or granted | Approved UUID-level operator and account mapping/readback is unavailable. |
+| SO-01 | PARTIAL | Payroll assignment conflict detection and export refusal; `test_site_attendance.py` and HR suite pass | Complete duplicate/roster override/stale digest cases and live review dispositions. |
+| SO-02 | BLOCKED_POLICY | Existing historical owner and MEP/HR checks preserved; no alternate actor bypass | Approved historical reassignment policy and eligible substitute assignments are absent. |
+| SO-03 | BLOCKED_POLICY | Locked/closed payroll protections retained; original records are not edited | Approved evidence-linked correction lifecycle and payroll rules are absent. |
+| SO-04 | PARTIAL | Existing report includes version-only unclassified evidence; reservation/report tests pass | Independent live classification review and CFG-14 governance are unavailable. |
+| SO-05 | BLOCKED_POLICY | Generic category creation remains prohibited; current categories unchanged | Approved category matrix is absent. |
+| SO-06 | PARTIAL | Existing incomplete valuation/stock reconciliation retained; synthetic report run returned 7 incomplete valuations and 3 stock-activity rows | Counts are synthetic test-database output only; production dispositions and threshold authorization are unavailable. |
+| HR-01 | BLOCKED_AUTHORIZATION | No business-role grants were widened; authorization suite passes | Named least-privilege operator duty assignments are absent. |
+| HR-02 | BLOCKED_POLICY | Current versioned payroll rules and validation retained | Approved worked examples and policy inputs are absent. |
+| HR-03 | BLOCKED_POLICY | Original closed payroll evidence and correction guards retained | Approved payment/recovery execution policy and independent Finance authority are absent. |
+| HR-04 | PARTIAL | Existing closed-run original payslip read regression is covered by HR tests; original publication remains immutable | Replacement statement publication depends on approved correction/settlement policy. |
+| HR-05 | BLOCKED_AUTHORIZATION | Existing compensation/payment authorization gates retained | Named Finance/HR capability assignments and duty matrix are absent. |
+| HR-06 | BLOCKED_POLICY | Existing restricted case scope and encrypted evidence retained | Approved case investigator/decision/appeal process is absent. |
+| HR-07 | BLOCKED_AUTHORIZATION | Reviewed manual employment-change application and reroute retained; no automatic actor introduced | Approved scheduled execution identity and authorization are absent. |
+| HR-08 | BLOCKED_POLICY | Current recruitment transitions preserved; no maker identity fabricated | Management decision on recruitment independence is absent. |
+| HR-09 | PARTIAL | API-bound leave baseline/review/fallback/route-refresh CLI actions and regressions in `test_garrisonctl_hr_leave.py` | Complete live actor/readback and stale/replay API matrix. |
+| HR-10 | PARTIAL | CLI lifecycle inventory and accepted leave actions documented; CLI tests pass | Full accepted admin-operation coverage and policy-gated workflows remain. |
+| OPS-01 | UNVERIFIED | Public readiness endpoint returned HTTP 200 with database connected | Deployed SHA, release receipt, schema/image IDs and worker/beat readback were not independently available. |
+| OPS-02 | PARTIAL | Clean disposable PostgreSQL full backend: 1,466 passed/6 skipped; frontend 14 files/66 tests; Chrome shards 39 passed and 50 passed/1 skipped; Alembic fresh and populated upgrades to 115 passed | No hosted exact-candidate CI: worktree is uncommitted and no release was authorized. |
+| OPS-03 | PARTIAL | Existing report executed read-only against synthetic DB; six categories ran, aggregate synthetic rows: 28 legacy material, 7 incomplete valuation, 3 stock activity, 1 legacy attendance, 2 attendance eligibility, 19 unclassified evidence | Production report execution and protected ledger require separate authorization. |
+| OPS-04 | BLOCKED_AUTHORIZATION | No live findings were accessed or altered | Assigning owners and applying live disposition requires approved production read access and task-specific authority. |
+| OPS-05 | PARTIAL | Isolated mocked notification/mail tests and both browser shards pass | Approved live recipient/provider and worker/beat readback are unavailable. |
+| OPS-06 | BLOCKED_POLICY | No managed leave policy or scheduler was activated | CFG-01–09 approvals, balances, calendar coverage and live reviewer roster are missing. |
+| OPS-07 | BLOCKED_AUTHORIZATION | No backup or production data was restored | Approved backup destination, key custody, RPO/RTO and restore authorization are unavailable. |
+| OPS-08 | BLOCKED_AUTHORIZATION | Synthetic role/browser regression runs completed | Named UAT owner and authorized representative accounts/acceptance are unavailable. |
+| OPS-09 | COMPLETED | Slice 102 historical results are explicitly tied to their earlier local run; this register separates baseline CI/workflow evidence from this candidate | No hosted or live claims are made for the uncommitted candidate. |
+
+### Candidate verification snapshot
+
+- Local baseline and remote `main`: `7203f00f0bf504d563d63b6090c848b8da51a5e0`; branch `main`.
+- Local candidate: uncommitted working tree based on that SHA; Alembic has one head,
+  `202605310115`.
+- Fresh disposable PostgreSQL full backend suite: **1,466 passed, 6 skipped**,
+  18 warnings. The six skips are five Docker-opt-in forward-stack tests and one
+  Docker-ingress test.
+- Frontend: `npm ci`, lint, API type check, Vitest (**14 files / 66 tests**) and
+  production build passed. Build retains the existing large-chunk advisory.
+- Chrome: shard 1 **39 passed**; shard 2 **50 passed, 1 skipped** (the dedicated
+  support-custody mode test). A focused leave lifecycle scenario also passed.
+- Backend Ruff, Mypy (465 source files), OpenAPI check, Alembic heads, 279 release
+  safety tests, production Compose validation, release shell syntax and
+  `git diff --check` passed. Graphify updated successfully.
+- The six-category read-only report was run only on synthetic disposable data.
+  No live database, private employee data, live mail, hosted candidate CI or
+  production release/readback was used for this candidate.
+- The implementation fingerprint reported at delivery excludes this ledger
+  file itself, the pre-existing `docker-compose.yml` user change, and the
+  pre-existing Celery beat `-shm`/`-wal` user files. On 2026-11-26, the
+  implementation-scope SHA-256 was
+  `8895d16a17bb318a151e38953cd1ed8009265da7cf18c7209bc769bb24782474`
+  over 34 changed/new feature files.

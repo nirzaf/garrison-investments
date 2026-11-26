@@ -1503,6 +1503,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/employee-data-quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Employee Data Quality Issues */
+        get: operations["list_employee_data_quality_issues_api_v1_hr_employee_data_quality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/employees": {
         parameters: {
             query?: never;
@@ -11303,6 +11320,33 @@ export interface components {
             /** Version Number */
             version_number: number;
         };
+        /** HrEmployeeDataQualityIssue */
+        HrEmployeeDataQualityIssue: {
+            /** Employee Code */
+            employee_code: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Full Name */
+            full_name: string;
+            /** Issue Codes */
+            issue_codes: ("missing_birth_date" | "future_birth_date" | "employment_start_unverified")[];
+            /** Required Correction */
+            required_correction: string;
+        };
+        /** HrEmployeeDataQualityPage */
+        HrEmployeeDataQualityPage: {
+            /** Items */
+            items: components["schemas"]["HrEmployeeDataQualityIssue"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** HrProjectAssignmentCreateRequest */
         HrProjectAssignmentCreateRequest: {
             /**
@@ -12905,6 +12949,8 @@ export interface components {
         };
         /** LeaveRequestDecisionState */
         LeaveRequestDecisionState: {
+            /** Allowed Actions */
+            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route")[];
             /** Decided By Id */
             decided_by_id: string | null;
             /**
@@ -12916,6 +12962,8 @@ export interface components {
             manager_recommendation: string | null;
             /** Record Revision */
             record_revision: number;
+            /** Route Status */
+            route_status?: ("draft" | "pending_supervisor" | "pending_hr" | "approver_not_configured" | "refresh_required" | "final") | null;
             /** Status */
             status: string;
         };
@@ -12928,6 +12976,8 @@ export interface components {
         };
         /** LeaveRequestResponse */
         LeaveRequestResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route")[];
             /** Approval Route */
             approval_route?: ("supervisor" | "hr_fallback") | null;
             /** Assigned Supervisor User Id */
@@ -12987,6 +13037,8 @@ export interface components {
             requested_by_id: string | null;
             /** Requires Manager Recommendation */
             requires_manager_recommendation: boolean;
+            /** Route Status */
+            route_status?: ("draft" | "pending_supervisor" | "pending_hr" | "approver_not_configured" | "refresh_required" | "final") | null;
             /** Setup Error Code */
             setup_error_code?: "LEAVE_APPROVER_NOT_CONFIGURED" | null;
             /**
@@ -14035,6 +14087,8 @@ export interface components {
             reference_id: string | null;
             /** Reference Type */
             reference_type: string | null;
+            /** Superseded At */
+            superseded_at?: string | null;
             /** Title */
             title: string;
             /**
@@ -15598,11 +15652,13 @@ export interface components {
         };
         /** PayrollTimeInputIssue */
         PayrollTimeInputIssue: {
+            /** Candidate Count */
+            candidate_count?: number | null;
             /**
              * Code
              * @enum {string}
              */
-            code: "missing_locked_timesheet" | "timesheet_crosses_period" | "timesheet_not_locked" | "overlapping_timesheets" | "pending_attendance" | "missing_site_attendance" | "site_employment_eligibility_unresolved" | "site_overtime_mismatch" | "attendance_without_schedule" | "attendance_without_timesheet" | "pending_attendance_correction" | "pending_overtime" | "overtime_without_timesheet" | "duplicate_approved_overtime" | "overtime_hours_mismatch";
+            code: "missing_locked_timesheet" | "timesheet_crosses_period" | "timesheet_not_locked" | "overlapping_timesheets" | "pending_attendance" | "missing_site_attendance" | "site_assignment_conflict" | "site_employment_eligibility_unresolved" | "site_overtime_mismatch" | "attendance_without_schedule" | "attendance_without_timesheet" | "pending_attendance_correction" | "pending_overtime" | "overtime_without_timesheet" | "duplicate_approved_overtime" | "overtime_hours_mismatch";
             /**
              * Employee Id
              * Format: uuid
@@ -18140,6 +18196,8 @@ export interface components {
         };
         /** SupervisorLeaveReviewItem */
         SupervisorLeaveReviewItem: {
+            /** Allowed Actions */
+            allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route")[];
             /** Chargeable Units */
             chargeable_units: string;
             /** Employee Name */
@@ -18158,6 +18216,8 @@ export interface components {
             is_half_day: boolean;
             /** Record Revision */
             record_revision: number;
+            /** Route Status */
+            route_status?: ("draft" | "pending_supervisor" | "pending_hr" | "approver_not_configured" | "refresh_required" | "final") | null;
             /**
              * Start Date
              * Format: date
@@ -25320,6 +25380,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HrDocumentResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_employee_data_quality_issues_api_v1_hr_employee_data_quality_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrEmployeeDataQualityPage"];
                 };
             };
             /** @description Invalid request */

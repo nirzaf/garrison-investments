@@ -1,7 +1,8 @@
 from datetime import date, timedelta
+from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +49,8 @@ from app.schemas.hr import (
     EmploymentChangeResponse,
     EmploymentPeriodMissingStart,
     EmploymentPeriodMissingStartPage,
+    HrEmployeeDataQualityIssue,
+    HrEmployeeDataQualityPage,
     OnboardingCaseResponse,
     OrgChartNode,
     OrgChartResponse,
@@ -800,6 +803,101 @@ class HrService(HrWorkforceService):
             total=total or 0,
         )
 
+    async def list_employee_data_quality_issues(
+        self, limit: int, offset: int
+    ) -> HrEmployeeDataQualityPage:
+        period_summary = (
+            select(
+                HrEmploymentPeriod.employee_id.label("employee_id"),
+                func.count(HrEmploymentPeriod.id).label("period_count"),
+                func.sum(
+                    case((HrEmploymentPeriod.ended_on.is_(None), 1), else_=0)
+                ).label("open_period_count"),
+                func.max(
+                    case(
+                        (HrEmploymentPeriod.ended_on.is_(None), HrEmploymentPeriod.started_on),
+                        else_=None,
+                    )
+                ).label("open_period_start"),
+            )
+            .group_by(HrEmploymentPeriod.employee_id)
+            .subquery()
+        )
+        period_count = func.coalesce(period_summary.c.period_count, 0)
+        open_period_count = func.coalesce(period_summary.c.open_period_count, 0)
+        employment_unverified = or_(
+            (period_count > 0)
+            & or_(
+                open_period_count != 1,
+                period_summary.c.open_period_start.is_(None),
+                period_summary.c.open_period_start > business_today(),
+            ),
+            (period_count == 0)
+            & or_(HrEmployee.join_date.is_(None), HrEmployee.join_date > business_today()),
+        )
+        query = (
+            select(
+                HrEmployee.id,
+                HrEmployee.employee_code,
+                HrEmployee.full_name,
+                HrEmployeePrivate.date_of_birth,
+                employment_unverified.label("employment_unverified"),
+            )
+            .select_from(HrEmployee)
+            .outerjoin(HrEmployeePrivate, HrEmployeePrivate.employee_id == HrEmployee.id)
+            .outerjoin(period_summary, period_summary.c.employee_id == HrEmployee.id)
+            .where(
+                HrEmployee.deleted_at.is_(None),
+                or_(
+                    HrEmployeePrivate.date_of_birth.is_(None),
+                    HrEmployeePrivate.date_of_birth > business_today(),
+                    employment_unverified,
+                ),
+            )
+        )
+        total = int(
+            await self.session.scalar(
+                select(func.count()).select_from(query.subquery())
+            )
+            or 0
+        )
+        rows = (
+            await self.session.execute(
+                query.order_by(HrEmployee.employee_code, HrEmployee.id)
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+        items = []
+        for employee_id, employee_code, full_name, dob, employment_issue in rows:
+            codes: list[
+                Literal[
+                    "missing_birth_date",
+                    "future_birth_date",
+                    "employment_start_unverified",
+                ]
+            ] = []
+            if dob is None:
+                codes.append("missing_birth_date")
+            elif dob > business_today():
+                codes.append("future_birth_date")
+            if employment_issue:
+                codes.append("employment_start_unverified")
+            items.append(
+                HrEmployeeDataQualityIssue(
+                    employee_id=employee_id,
+                    employee_code=employee_code,
+                    full_name=full_name,
+                    issue_codes=codes,
+                    required_correction=(
+                        "Verify the private HR source record and reconcile employment history."
+                    ),
+                )
+            )
+        return HrEmployeeDataQualityPage(
+            items=items, total=total, offset=offset, limit=limit
+        )
+
     async def _check_rehire(
         self,
         emp: HrEmployee,
@@ -1204,11 +1302,25 @@ class HrService(HrWorkforceService):
         self, employee_id: UUID, change_id: UUID, actor: User
     ) -> HrEmploymentChange:
         ensure_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
-        # Match the lock order used by live reporting-line edits.
+        # Match manager edits and leave decisions: payroll guard, reporting-line
+        # guard, submitted requests in stable order, then employee/change rows.
+        await lock_payroll_periods(self.session)
         await self.session.execute(
             text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_reporting_lines'))")
         )
+        pending_leave = list(
+            await self.session.scalars(
+                select(HrLeaveRequest)
+                .where(
+                    HrLeaveRequest.employee_id == employee_id,
+                    HrLeaveRequest.status == "submitted",
+                )
+                .order_by(HrLeaveRequest.id)
+                .with_for_update()
+            )
+        )
         emp = await self._require_employee(employee_id, for_update=True)
+        previous_manager_id = emp.manager_employee_id
         row = await self.get_employment_change(employee_id, change_id, lock=True)
         if row.status == "applied":
             return row
@@ -1241,6 +1353,9 @@ class HrService(HrWorkforceService):
                 row.effective_date,
                 contract_history=contract_history,
             )
+        if previous_manager_id != emp.manager_employee_id:
+            for leave_request in pending_leave:
+                await self._reroute_pending_leave_request(leave_request, emp, actor)
         row.status = "applied"
         row.applied_by = actor.id
         row.applied_at = utc_now()

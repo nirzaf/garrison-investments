@@ -78,6 +78,39 @@ class DashboardService:
         today = business_today()
         offsets = func.generate_series(0, 6).table_valued("day_offset").render_derived()
         occurrence = cast(literal(today) + offsets.c.day_offset, Date)
+        active_period_count = (
+            select(func.count(HrEmploymentPeriod.id))
+            .where(
+                HrEmploymentPeriod.employee_id == HrEmployee.id,
+                HrEmploymentPeriod.ended_on.is_(None),
+            )
+            .correlate(HrEmployee)
+            .scalar_subquery()
+        )
+        any_period_count = (
+            select(func.count(HrEmploymentPeriod.id))
+            .where(HrEmploymentPeriod.employee_id == HrEmployee.id)
+            .correlate(HrEmployee)
+            .scalar_subquery()
+        )
+        active_service_start = (
+            select(HrEmploymentPeriod.started_on)
+            .where(
+                HrEmploymentPeriod.employee_id == HrEmployee.id,
+                HrEmploymentPeriod.ended_on.is_(None),
+            )
+            .limit(1)
+            .correlate(HrEmployee)
+            .scalar_subquery()
+        )
+        service_start = cast(
+            case(
+                (any_period_count == 0, HrEmployee.join_date),
+                (active_period_count == 1, active_service_start),
+                else_=None,
+            ),
+            Date,
+        )
         source_month = cast(func.extract("month", HrEmployeePrivate.date_of_birth), Integer)
         source_day = cast(func.extract("day", HrEmployeePrivate.date_of_birth), Integer)
         occurrence_month = cast(func.extract("month", occurrence), Integer)
@@ -111,8 +144,15 @@ class DashboardService:
             .where(
                 HrEmployee.deleted_at.is_(None),
                 HrEmployee.employment_status.in_(ACTIVE_EMPLOYMENT_STATUSES),
-                or_(HrEmployee.termination_date.is_(None), HrEmployee.termination_date >= today),
+                or_(
+                    HrEmployee.termination_date.is_(None),
+                    HrEmployee.termination_date >= occurrence,
+                ),
                 HrEmployeePrivate.date_of_birth.is_not(None),
+                HrEmployeePrivate.date_of_birth <= today,
+                service_start.is_not(None),
+                service_start <= today,
+                service_start <= occurrence,
                 birthday_match,
             )
             .subquery()
@@ -206,7 +246,10 @@ class DashboardService:
             .where(
                 HrEmployee.deleted_at.is_(None),
                 HrEmployee.employment_status.in_(ACTIVE_EMPLOYMENT_STATUSES),
-                or_(HrEmployee.termination_date.is_(None), HrEmployee.termination_date >= today),
+                or_(
+                    HrEmployee.termination_date.is_(None),
+                    HrEmployee.termination_date >= occurrence,
+                ),
                 service_start.is_not(None),
                 service_start <= today,
                 service_start <= occurrence,

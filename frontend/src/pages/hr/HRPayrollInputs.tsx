@@ -152,9 +152,12 @@ export function PayrollInputResult({ data, title, disabled, onDownload }: {
         <ul className="space-y-1 break-all text-sm">
           {data.issues.map((item, index) => {
             const record = 'record_id' in item ? item.record_id : 'request_id' in item ? item.request_id : undefined;
+            const description = item.code === 'site_assignment_conflict'
+              ? `Conflicting site assignments${item.candidate_count ? ` (${item.candidate_count} candidates)` : ''}`
+              : item.code.replace(/_/g, ' ');
             return (
               <li key={`${item.employee_id}:${item.code}:${record ?? index}`}>
-                {item.code.replace(/_/g, ' ')} · Employee <code>{item.employee_id}</code>
+                {description} · Employee <code>{item.employee_id}</code>
                 {'work_date' in item && item.work_date && <> · Date {item.work_date}</>}
                 {'project_id' in item && item.project_id && <> · Project <code>{item.project_id}</code></>}
                 {record && <> · Record <code>{record}</code></>}

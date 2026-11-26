@@ -2611,6 +2611,53 @@ async def test_work_calendar_requires_independent_review_and_preserves_published
         assert (await schedule("2027-01-05", executive)).json()["shift"][
             "shift_name"
         ] == "Test shift"
+        open_ended_calendar = await client.post(
+            calendars,
+            headers=preparer,
+            json={
+                **calendar_data,
+                "code": f"CAL-{uuid4().hex[:8]}",
+                "name": "Open-ended shift calendar",
+                "work_days_json": ["SAT"],
+                "effective_from": "2027-03-01",
+                "effective_to": "2027-03-31",
+            },
+        )
+        assert open_ended_calendar.status_code == 201, open_ended_calendar.text
+        open_calendar = open_ended_calendar.json()
+        for action, actor in (("submit", preparer), ("approve", reviewer), ("publish", reviewer)):
+            response = await client.post(
+                f"{calendars}/{open_calendar['id']}/decision",
+                headers=actor,
+                json={"action": action, "expected_revision": open_calendar["revision"]},
+            )
+            assert response.status_code == 200, response.text
+            open_calendar = response.json()
+        open_shift = await client.post(
+            shifts,
+            headers=reviewer,
+            json={
+                "employee_id": employee_id,
+                "calendar_id": open_calendar["id"],
+                "shift_name": "Open-ended Saturday shift",
+                "effective_from": "2027-03-01",
+                "effective_to": None,
+                "start_time": "07:00",
+                "end_time": "15:00",
+            },
+        )
+        assert open_shift.status_code == 201, open_shift.text
+        open_shift_quote = await client.get(
+            quote_path,
+            params={
+                "leave_type_id": legacy_leave_type_id,
+                "start_date": "2027-03-06",
+                "end_date": "2027-03-06",
+            },
+            headers=reviewer,
+        )
+        assert open_shift_quote.status_code == 200, open_shift_quote.text
+        assert open_shift_quote.json()["days_requested"] == "1"
 
         attendance_path = "/api/v1/hr/attendance"
         site_path = "/api/v1/hr/site-attendance"
@@ -2781,6 +2828,18 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
         final_leave = f"{base}/leave/requests/{leave_id}/decision"
         decision = {"decision": "approved", "expected_revision": 1}
         assert (await client.post(final_leave, headers=manager, json=decision)).status_code == 403
+        missing_revision = await client.post(
+            final_leave, headers=hr, json={"decision": "approved"}
+        )
+        assert missing_revision.status_code == 409
+        assert missing_revision.json()["error_code"] == "REVISION_REQUIRED"
+        stale_revision = await client.post(
+            final_leave,
+            headers=hr,
+            json={"decision": "approved", "expected_revision": 2},
+        )
+        assert stale_revision.status_code == 409
+        assert stale_revision.json()["error_code"] == "REVISION_CONFLICT"
         too_early = await client.post(final_leave, headers=hr, json=decision)
         assert too_early.status_code == 403
         assert too_early.json()["error_code"] == "LEAVE_SUPERVISOR_DECISION_REQUIRED"
@@ -2810,6 +2869,18 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
             json={"decision": "rejected", "expected_revision": 1, "notes": "Correct date"},
         )
         assert rejected.status_code == 200, rejected.text
+        async with AsyncSessionLocal() as session:
+            pending_action = await session.scalar(
+                select(Notification).where(
+                    Notification.reference_type == "hr_leave_request",
+                    Notification.reference_id == UUID(leave_id),
+                    Notification.event_code == "submitted",
+                    Notification.event_revision == 1,
+                )
+            )
+            assert pending_action is not None
+            assert pending_action.superseded_at is not None
+            assert pending_action.email_status in {"queued", "skipped", "failed", "sent"}
         submission = f"{base}/me/leave-requests/{leave_id}/submission"
         correction = {
             "leave_type_id": leave_type_id,
@@ -2845,6 +2916,13 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
             )
         )
         assert sorted(response.status_code for response in finals) == [200, 409]
+        missing_reversal_revision = await client.post(
+            final_leave,
+            headers=hr,
+            json={"decision": "cancelled", "notes": "Synthetic reversal"},
+        )
+        assert missing_reversal_revision.status_code == 409
+        assert missing_reversal_revision.json()["error_code"] == "REVISION_REQUIRED"
         assert (
             await client.post(
                 final_leave,
@@ -2881,12 +2959,16 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
         fallback_id = fallback_leave.json()["id"]
         from app.services.hr_workforce_service import HrWorkforceService
 
-        async def no_leave_approver(self: HrWorkforceService) -> bool:
-            return False
+        async def no_leave_approver(
+            self: HrWorkforceService, request, *, excluded_ids=None
+        ) -> list[UUID]:
+            return []
 
         with monkeypatch.context() as unavailable:
             unavailable.setattr(
-                HrWorkforceService, "hr_leave_approver_configured", no_leave_approver
+                HrWorkforceService,
+                "_eligible_hr_leave_approver_ids",
+                no_leave_approver,
             )
             routed = await client.post(
                 f"{base}/leave/requests/{fallback_id}/fallback",
@@ -3166,7 +3248,10 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         assert (
             await client.post(
                 f"/api/v1/hr/leave/requests/{self_req.json()['id']}/decision",
-                json={"decision": "approved"},
+                json={
+                    "decision": "approved",
+                    "expected_revision": self_req.json()["record_revision"],
+                },
                 headers=_auth(hrm_tok),
             )
         ).status_code == 403
@@ -3175,7 +3260,7 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         async def approve():
             return await client.post(
                 f"/api/v1/hr/leave/requests/{lr_id}/decision",
-                json={"decision": "approved"},
+                json={"decision": "approved", "expected_revision": req.json()["record_revision"]},
                 headers=_auth(hrm_tok),
             )
 
@@ -3190,6 +3275,7 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         assert float(bal1_item["balance_days"]) == pytest.approx(12.0)
 
         decision_path = f"/api/v1/hr/leave/requests/{lr_id}/decision"
+        approved_revision = req.json()["record_revision"] + 1
         assert (await client.get(decision_path, headers=staff)).status_code == 403
         decision_state = await client.get(decision_path, headers=_auth(hrm_tok))
         assert decision_state.status_code == 200
@@ -3200,6 +3286,8 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
             "record_revision": req.json()["record_revision"] + 1,
             "manager_recommendation": None,
             "decided_by_id": str(hrm_uid),
+            "allowed_actions": [],
+            "route_status": "final",
         }
         queue = "/api/v1/hr/leave/requests"
         page_params = {"employee_id": emp_id, "limit": 1}
@@ -3217,9 +3305,17 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         assert approved.json()["total"] == 1 and approved.json()["items"][0]["id"] == lr_id
         assert (await client.get(queue, headers=staff, params=page_params)).status_code == 403
         assert (
-            await client.post(decision_path, json={"decision": "cancelled"}, headers=_auth(hrm_tok))
+            await client.post(
+                decision_path,
+                json={"decision": "cancelled", "expected_revision": approved_revision},
+                headers=_auth(hrm_tok),
+            )
         ).status_code == 422
-        reversal = {"decision": "cancelled", "notes": "Verified schedule change"}
+        reversal = {
+            "decision": "cancelled",
+            "expected_revision": approved_revision,
+            "notes": "Verified schedule change",
+        }
         assert (await client.post(decision_path, json=reversal, headers=staff)).status_code == 403
         assert (await client.post(
             f"/api/v1/hr/me/leave-requests/{lr_id}/cancel", headers=staff
@@ -3264,7 +3360,10 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
             await client.post(
                 f"/api/v1/hr/leave/requests/{self_req.json()['id']}/decision",
                 headers=preparer,
-                json={"decision": "cancelled"},
+                json={
+                    "decision": "cancelled",
+                    "expected_revision": self_req.json()["record_revision"],
+                },
             )
         ).status_code == 200
         paid_type = await client.post(
@@ -3341,7 +3440,12 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         assert spans_boundary.status_code == 201, spans_boundary.text
         boundary_id = spans_boundary.json()["id"]
         blocked = await client.post(
-            f"/api/v1/hr/leave/requests/{boundary_id}/decision", headers=reviewer, json=approval
+            f"/api/v1/hr/leave/requests/{boundary_id}/decision",
+            headers=reviewer,
+            json={
+                **approval,
+                "expected_revision": spans_boundary.json()["record_revision"],
+            },
         )
         assert blocked.status_code == 409
         assert blocked.json()["error_code"] == "INSUFFICIENT_LEAVE_BALANCE"
@@ -3361,7 +3465,7 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         approved = await client.post(
             f"/api/v1/hr/leave/requests/{within.json()['id']}/decision",
             headers=reviewer,
-            json=approval,
+            json={**approval, "expected_revision": within.json()["record_revision"]},
         )
         assert approved.status_code == 200, approved.text
 
@@ -5697,7 +5801,12 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
         assert leave_request.status_code == 201
         leave_decision = f"{base}/leave/requests/{leave_request.json()['id']}/decision"
         approved_leave = await client.post(
-            leave_decision, headers=reviewer, json={"decision": "approved"}
+            leave_decision,
+            headers=reviewer,
+            json={
+                "decision": "approved",
+                "expected_revision": leave_request.json()["record_revision"],
+            },
         )
         assert approved_leave.status_code == 200
 
@@ -8087,10 +8196,18 @@ async def test_payroll_leave_inputs_reconcile_ledger_and_deny_stale_download(mon
             )
 
         async def decide(request_id, decision):
+            current = await client.get(
+                f"{root}/leave/requests/{request_id}/decision", headers=reviewer
+            )
+            assert current.status_code == 200, current.text
             response = await client.post(
                 f"{root}/leave/requests/{request_id}/decision",
                 headers=reviewer,
-                json={"decision": decision, "notes": "Synthetic change"},
+                json={
+                    "decision": decision,
+                    "expected_revision": current.json()["record_revision"],
+                    "notes": "Synthetic change",
+                },
             )
             assert response.status_code == 200, response.text
 
@@ -8157,7 +8274,7 @@ async def test_payroll_leave_inputs_reconcile_ledger_and_deny_stale_download(mon
         changed = await client.post(
             f"{root}/leave/requests/{crossing_id}/decision",
             headers=reviewer,
-            json={"decision": "approved"},
+            json={"decision": "approved", "expected_revision": 1},
         )
         assert changed.status_code == 409
         assert changed.json()["error_code"] == "LEAVE_SCHEDULE_CHANGED"
@@ -8276,16 +8393,24 @@ async def test_payroll_leave_inputs_reconcile_ledger_and_deny_stale_download(mon
             await session.commit()
         while_locked = await client.post(decision_url, headers=reviewer, json=decision)
         assert while_locked.status_code == 409 and "locked payroll" in while_locked.json()["detail"]
+        crossing_state = await client.get(
+            f"{root}/leave/requests/{crossing_id}/decision", headers=reviewer
+        )
+        assert crossing_state.status_code == 200
         locked_cancel = await client.post(
             f"{root}/leave/requests/{crossing_id}/decision", headers=reviewer,
-            json={"decision": "cancelled", "notes": "Synthetic locked reversal"},
+            json={
+                "decision": "cancelled",
+                "expected_revision": crossing_state.json()["record_revision"],
+                "notes": "Synthetic locked reversal",
+            },
         )
         assert locked_cancel.status_code == 409
         assert locked_cancel.json()["error_code"] == "LEAVE_PAYROLL_LOCKED"
         new_request = await request(unpaid, "2039-01-17", "2039-01-17")
         locked_approval = await client.post(
             f"{root}/leave/requests/{new_request}/decision", headers=reviewer,
-            json={"decision": "approved"},
+            json={"decision": "approved", "expected_revision": 1},
         )
         assert locked_approval.status_code == 409
         assert locked_approval.json()["error_code"] == "LEAVE_PAYROLL_LOCKED"
@@ -10264,3 +10389,82 @@ async def test_policy_editions_keep_exact_versions_and_employee_receipts(monkeyp
             )
         )
         assert len(receipts) == 2
+
+
+@pytest.mark.asyncio
+async def test_leave_schedule_uses_open_ended_shift_and_rejects_overlaps() -> None:
+    await skip_if_database_unavailable()
+    day = date(2026, 11, 26)
+    employee_id = uuid4()
+    default_calendar_id, shift_calendar_id = uuid4(), uuid4()
+    async with AsyncSessionLocal() as session:
+        default_calendar = HrWorkCalendar(
+            id=default_calendar_id,
+            code=f"LV-DEFAULT-{uuid4().hex[:8]}",
+            name="Synthetic default leave calendar",
+            work_days_json=["MON"],
+            is_default=True,
+            effective_from=date(2026, 1, 1),
+            effective_to=date(2026, 12, 31),
+            timezone="UTC",
+            status="published",
+            published_at=datetime.now(UTC),
+        )
+        shift_calendar = HrWorkCalendar(
+            id=shift_calendar_id,
+            code=f"LV-SHIFT-{uuid4().hex[:8]}",
+            name="Synthetic shift leave calendar",
+            work_days_json=["THU"],
+            effective_from=date(2026, 1, 1),
+            effective_to=date(2026, 12, 31),
+            timezone="UTC",
+            status="published",
+            published_at=datetime.now(UTC),
+        )
+        employee = HrEmployee(
+            id=employee_id,
+            employee_code=f"LV-SHIFT-{uuid4().hex[:8]}",
+            first_name="Synthetic",
+            last_name="Shift",
+            full_name="Synthetic Open Shift",
+            employment_status="active",
+            join_date=date(2020, 1, 1),
+            work_calendar_id=default_calendar_id,
+        )
+        session.add_all([default_calendar, shift_calendar])
+        await session.flush()
+        session.add(employee)
+        await session.flush()
+        session.add(
+            HrShiftAssignment(
+                id=uuid4(),
+                employee_id=employee_id,
+                calendar_id=shift_calendar_id,
+                shift_name="Open-ended synthetic shift",
+                effective_from=day,
+                effective_to=None,
+                start_time=time(8),
+                end_time=time(17),
+            )
+        )
+        await session.flush()
+        service = HrWorkforceService(session)
+        assert await service._leave_work_dates(employee, day, 1) == [day]
+
+        session.add(
+            HrShiftAssignment(
+                id=uuid4(),
+                employee_id=employee_id,
+                calendar_id=shift_calendar_id,
+                shift_name="Overlapping synthetic shift",
+                effective_from=day,
+                effective_to=None,
+                start_time=time(9),
+                end_time=time(18),
+            )
+        )
+        await session.flush()
+        with pytest.raises(AppException) as ambiguous:
+            await service._leave_work_dates(employee, day, 1)
+        assert ambiguous.value.error_code == "LEAVE_SCHEDULE_AMBIGUOUS"
+        await session.rollback()

@@ -107,7 +107,7 @@ export function NotificationsPage() {
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => {
-            const link = workflowLink(notification.body);
+            const link = notification.superseded_at ? null : workflowLink(notification.body);
             return (
               <article
                 className="w-full rounded-lg border border-theme-border bg-theme-card p-4 text-left shadow-xs hover:bg-theme-card-elevated"
@@ -121,6 +121,9 @@ export function NotificationsPage() {
                     <p className="mt-1 whitespace-pre-line break-words text-sm text-theme-text-secondary">
                       {link?.message ?? notification.body}
                     </p>
+                    {notification.superseded_at && (
+                      <p className="mt-2 text-xs text-theme-text-muted">No longer actionable</p>
+                    )}
                     {link && (
                       <Link
                         className="mt-2 inline-block text-sm font-semibold text-brand-600 underline"
@@ -139,7 +142,13 @@ export function NotificationsPage() {
                         notification.muted ? 'warning' : notification.is_read ? 'neutral' : 'info'
                       }
                     >
-                      {notification.muted ? 'muted' : notification.is_read ? 'read' : 'unread'}
+                      {notification.superseded_at
+                        ? 'superseded'
+                        : notification.muted
+                          ? 'muted'
+                          : notification.is_read
+                            ? 'read'
+                            : 'unread'}
                     </StatusBadge>
                     {!notification.is_read ? (
                       <button

@@ -57,6 +57,11 @@ class NotificationRepository:
                 Notification.is_read.is_(False),
                 Notification.muted.is_(False),
                 Notification.deleted_at.is_(None),
+                ~(
+                    (Notification.reference_type == "hr_leave_request")
+                    & Notification.event_code.in_(("submitted", "resubmitted", "rerouted"))
+                    & Notification.superseded_at.is_not(None)
+                ),
             )
         )
         return int(total or 0)

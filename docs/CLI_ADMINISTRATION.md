@@ -68,7 +68,7 @@ subcommand's `--help`.
 | `hr documents` | `list`, `status`, `upload`, `upload-version`, `decide`, `download` | Manage HR vault files, including independently reviewed candidate CVs and offer PDFs. |
 | `hr company-policy` | `list`, `publish` | Publish an edition and pin the current approved company policy file when applicable. |
 | `hr my-policy` | `list`, `show`, `download`, `acknowledge` | Read and acknowledge editions visible to the linked employee. |
-| `hr leave` | `policy show`, `policy propose`, `policy decide`, `requests list`, `requests submit`, `requests decide`, `balances` | Leave management, leave approval or policy management, depending on the command. |
+| `hr leave` | `policy show`, `policy propose`, `policy decide`, `requests list`, `requests submit`, `requests decide`, `requests fallback`, `requests refresh-route`, `reviews list`, `reviews decide`, `baseline preview`, `baseline apply`, `accrual post`, `rollover post`, `balances` | Leave management, current supervisor scope, leave approval or policy management, depending on the command. |
 | `hr requests` | `list`, `show`, `assignees`, `assign`, `resolve` | HR service request processing. Approval and rejection also require sensitive employee access. |
 | `hr offers` | `list`, `status`, `draft`, `decide`, `reissue`, `convert` | Follow offer status and version history. Conversion requires an accepted offer and an open requisition with capacity. |
 | `hr requisitions` | `list`, `status`, `create`, `decide` | Find requisitions, record requested headcount, and move a requisition through its approval and hiring states. |
@@ -263,6 +263,34 @@ the selected request's decision state before and after applying. Its
 preview and receipt omit the leave reason, attachments and decision notes.
 `hr leave requests list --status submitted --limit 25 --offset 0` lists
 the first page of the review queue and reports the total matching count.
+
+Direct supervisors use `hr leave reviews list --limit 20 --offset 0` to see only
+their current direct-report queue. Decide an item with
+`hr leave reviews decide --leave-request-id ID --expected-revision REVISION
+--decision approved --dry-run`, then apply the reviewed plan with
+`--apply --expect PLAN_SHA256`. The command uses the current-user review API;
+it does not require or grant the HR leave-approval permission. Use `rejected`
+and add `--notes REASON` when rejecting a request.
+
+HR fallback routing is available only to an authorized leave approver. Preview
+`hr leave requests fallback --leave-request-id ID --expected-revision REVISION
+--reason-code CODE --reason REASON --dry-run`; add `--until YYYY-MM-DD` for an
+explicit temporary fallback. Apply with the same arguments and
+`--apply --expect PLAN_SHA256`. Use
+`hr leave requests refresh-route --leave-request-id ID
+--expected-revision REVISION --dry-run` to review a stale route, then apply the
+same plan. Both commands read back the committed request revision and route;
+they do not retry against a newer revision automatically.
+
+For managed balance reconciliation, use
+`hr leave baseline preview --employee-id ID --leave-type-id ID --year YEAR
+--as-of-date YYYY-MM-DD --verified-balance DAYS --supporting-reference REF`
+to inspect the server-computed plan. Apply it with the same arguments through
+`hr leave baseline apply ... --dry-run`, then repeat with
+`--apply --expect PLAN_SHA256`. The CLI binds apply to the signed-in actor and
+the reviewed preview digest and reads back the committed receipt. Keep source
+documents and private roster values in their approved restricted storage; pass
+only the approved reference required by the endpoint.
 
 Use `hr leave policy propose --file POLICY.json --dry-run` to preview a
 dated proposal. The JSON uses the leave policy creation contract, including

@@ -60,6 +60,13 @@ def _period(payload: LeaveAccrualRequest) -> tuple[date, date]:
     return date(payload.year, payload.month, 1), date(payload.year, payload.month, last_day)
 
 
+async def _lock_leave_payroll_periods(session: AsyncSession) -> None:
+    # Deferred to avoid the payroll snapshot module's shared eligibility import.
+    from app.services.hr_payroll_snapshot import lock_payroll_periods
+
+    await lock_payroll_periods(session)
+
+
 def _credit(annual_days: Decimal, month: int | None) -> Decimal:
     if month is None:
         return annual_days
@@ -629,6 +636,8 @@ async def process_leave_accrual(
     *,
     expected_digest: str | None = None,
 ) -> LeaveAccrualResponse:
+    if expected_digest is not None:
+        await _lock_leave_payroll_periods(session)
     quote, digest, posted_by = await _plan_leave_accrual(
         session, payload, actor, lock=expected_digest is not None
     )
@@ -654,6 +663,7 @@ async def process_leave_accrual(
 async def post_scheduled_leave_accrual(
     session: AsyncSession, payload: LeaveAccrualRequest, approved_policy_ids: set[UUID]
 ) -> Literal["posted", "already_posted", "outside_schedule", "not_due"]:
+    await _lock_leave_payroll_periods(session)
     quote, digest, _ = await _plan_leave_accrual(session, payload, None, lock=True)
     if quote.ledger_entry_id:
         return "already_posted"
@@ -675,6 +685,9 @@ async def process_leave_accrual_catch_up(
 ) -> LeaveAccrualCatchUpResponse:
     if payload.start_month > payload.end_month:
         raise AppException("The first month must precede or equal the last month.", status_code=422)
+
+    if expected_digest is not None:
+        await _lock_leave_payroll_periods(session)
 
     plans = []
     for month in range(payload.start_month, payload.end_month + 1):

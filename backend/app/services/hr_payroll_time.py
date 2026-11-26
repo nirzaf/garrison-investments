@@ -161,26 +161,71 @@ async def reconcile_payroll_time_inputs(
         )
         .cte("payroll_allocations")
     )
-    obligations = (
-        select(allocations)
-        .union(
-            select(HrShiftAssignment.employee_id, HrShiftAssignment.project_id, day)
-            .join(days, text("true"))
+    shift_obligations = (
+        select(HrShiftAssignment.employee_id, HrShiftAssignment.project_id, day.label("work_date"))
+        .join(days, text("true"))
+        .where(
+            HrShiftAssignment.employee_id.in_(roster),
+            HrShiftAssignment.project_id.is_not(None),
+            HrShiftAssignment.effective_from <= day,
+            or_(
+                HrShiftAssignment.effective_to.is_(None), HrShiftAssignment.effective_to >= day
+            ),
+            ~select(allocations.c.employee_id)
             .where(
-                HrShiftAssignment.employee_id.in_(roster),
-                HrShiftAssignment.project_id.is_not(None),
-                HrShiftAssignment.effective_from <= day,
-                or_(
-                    HrShiftAssignment.effective_to.is_(None), HrShiftAssignment.effective_to >= day
-                ),
-                ~select(allocations.c.employee_id)
-                .where(
-                    allocations.c.employee_id == HrShiftAssignment.employee_id,
-                    allocations.c.work_date == day,
-                )
-                .exists(),
+                allocations.c.employee_id == HrShiftAssignment.employee_id,
+                allocations.c.work_date == day,
             )
+            .exists(),
         )
+    )
+    candidates = select(allocations).union_all(shift_obligations).subquery()
+    conflict_days = (
+        select(
+            candidates.c.employee_id,
+            candidates.c.work_date,
+            func.count().label("candidate_count"),
+        )
+        .group_by(candidates.c.employee_id, candidates.c.work_date)
+        .having(func.count() > 1)
+        .subquery()
+    )
+    conflict_rows = (
+        await session.execute(
+            select(
+                candidates.c.employee_id,
+                candidates.c.project_id,
+                candidates.c.work_date,
+                conflict_days.c.candidate_count,
+            )
+            .join(
+                conflict_days,
+                (conflict_days.c.employee_id == candidates.c.employee_id)
+                & (conflict_days.c.work_date == candidates.c.work_date),
+            )
+            .group_by(
+                candidates.c.employee_id,
+                candidates.c.project_id,
+                candidates.c.work_date,
+                conflict_days.c.candidate_count,
+            )
+            .order_by(candidates.c.employee_id, candidates.c.work_date, candidates.c.project_id)
+        )
+    ).all()
+    conflict_keys = {(employee_id, work_date) for employee_id, _, work_date, _ in conflict_rows}
+    issues.extend(
+        PayrollTimeInputIssue(
+            employee_id=employee_id,
+            project_id=project_id,
+            work_date=work_date,
+            candidate_count=candidate_count,
+            code="site_assignment_conflict",
+        )
+        for employee_id, project_id, work_date, candidate_count in conflict_rows
+    )
+    obligations = (
+        select(candidates.c.employee_id, candidates.c.project_id, candidates.c.work_date)
+        .distinct()
         .subquery()
     )
     work_date = obligations.c.work_date
@@ -202,15 +247,21 @@ async def reconcile_payroll_time_inputs(
         .where(unresolved | (eligible & ~recorded))
         .order_by(obligations.c.employee_id, work_date, obligations.c.project_id)
     )
-    issues.extend(
-        PayrollTimeInputIssue(
-            employee_id=employee_id,
-            project_id=project_id,
-            work_date=on_date,
-            code="site_employment_eligibility_unresolved" if unknown else "missing_site_attendance",
+    for employee_id, project_id, on_date, unknown in affected:
+        if not unknown and (employee_id, on_date) in conflict_keys:
+            continue
+        issues.append(
+            PayrollTimeInputIssue(
+                employee_id=employee_id,
+                project_id=project_id,
+                work_date=on_date,
+                code=(
+                    "site_employment_eligibility_unresolved"
+                    if unknown
+                    else "missing_site_attendance"
+                ),
+            )
         )
-        for employee_id, project_id, on_date, unknown in affected
-    )
     site_overtime: dict[tuple[UUID, date, UUID | None], tuple[UUID, Decimal]] = {}
     attendance = await session.execute(
         select(HrAttendanceEntry, HrSiteAttendanceSubmission)

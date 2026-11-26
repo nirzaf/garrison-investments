@@ -436,6 +436,23 @@ class EmploymentPeriodMissingStartPage(BaseModel):
     total: int
 
 
+class HrEmployeeDataQualityIssue(BaseModel):
+    employee_id: UUID
+    employee_code: str
+    full_name: str
+    issue_codes: list[Literal[
+        "missing_birth_date", "future_birth_date", "employment_start_unverified"
+    ]]
+    required_correction: str
+
+
+class HrEmployeeDataQualityPage(BaseModel):
+    items: list[HrEmployeeDataQualityIssue]
+    total: int
+    offset: int
+    limit: int
+
+
 class EmployeeStatusTransitionRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     status: EmploymentStatus
@@ -1960,12 +1977,27 @@ class LeaveRequestDecisionRequest(BaseModel):
     expected_revision: int | None = Field(default=None, ge=1)
 
 
+LeaveRequestAllowedAction = Literal[
+    "approve", "reject", "cancel", "route_to_hr_fallback", "refresh_route"
+]
+LeaveRequestRouteStatus = Literal[
+    "draft",
+    "pending_supervisor",
+    "pending_hr",
+    "approver_not_configured",
+    "refresh_required",
+    "final",
+]
+
+
 class LeaveRequestDecisionState(BaseModel):
     id: UUID
     status: str
     record_revision: int
     manager_recommendation: str | None
     decided_by_id: UUID | None
+    allowed_actions: list[LeaveRequestAllowedAction] = Field(default_factory=list)
+    route_status: LeaveRequestRouteStatus | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1991,6 +2023,8 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
     fallback_reason_code: str | None = None
     fallback_until: date | None = None
     setup_error_code: Literal["LEAVE_APPROVER_NOT_CONFIGURED"] | None = None
+    allowed_actions: list[LeaveRequestAllowedAction] = Field(default_factory=list)
+    route_status: LeaveRequestRouteStatus | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -2011,6 +2045,8 @@ class SupervisorLeaveReviewItem(BaseModel):
     is_half_day: bool
     status: Literal["submitted", "approved", "rejected"]
     record_revision: int
+    allowed_actions: list[LeaveRequestAllowedAction] = Field(default_factory=list)
+    route_status: LeaveRequestRouteStatus | None = None
 
 
 class SupervisorLeaveReviewListResponse(BaseModel):
@@ -3241,6 +3277,7 @@ PayrollTimeIssueCode = Literal[
     "overlapping_timesheets",
     "pending_attendance",
     "missing_site_attendance",
+    "site_assignment_conflict",
     "site_employment_eligibility_unresolved",
     "site_overtime_mismatch",
     "attendance_without_schedule",
@@ -3258,6 +3295,7 @@ class PayrollTimeInputIssue(BaseModel):
     project_id: UUID | None = None
     work_date: date | None = None
     record_id: UUID | None = None
+    candidate_count: int | None = Field(default=None, ge=2)
     code: PayrollTimeIssueCode
 
 

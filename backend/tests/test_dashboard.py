@@ -60,6 +60,7 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
     birthday_in_window = today + timedelta(days=6)
     birthday_outside = today + timedelta(days=7)
     anniversary_outside = today + timedelta(days=30)
+    birthday_after_termination = today + timedelta(days=2)
 
     async with AsyncSessionLocal() as session:
         birthday_employee = HrEmployee(
@@ -98,12 +99,54 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
                 anniversary_outside.day,
             ),
         )
+        future_dob_employee = HrEmployee(
+            employee_code=f"CE-{uuid4().hex[:10]}",
+            first_name="Future",
+            last_name="DOB",
+            full_name="Future DOB Synthetic",
+            employment_status="active",
+            join_date=today - timedelta(days=365),
+        )
+        future_join_employee = HrEmployee(
+            employee_code=f"CE-{uuid4().hex[:10]}",
+            first_name="Future",
+            last_name="Join",
+            full_name="Future Join Synthetic",
+            employment_status="active",
+            join_date=today + timedelta(days=1),
+        )
+        departed_before_birthday = HrEmployee(
+            employee_code=f"CE-{uuid4().hex[:10]}",
+            first_name="Departed",
+            last_name="Birthday",
+            full_name="Departed Before Birthday Synthetic",
+            employment_status="active",
+            join_date=today - timedelta(days=365),
+            termination_date=birthday_after_termination - timedelta(days=1),
+        )
+        departed_before_anniversary = HrEmployee(
+            employee_code=f"CE-{uuid4().hex[:10]}",
+            first_name="Departed",
+            last_name="Anniversary",
+            full_name="Departed Before Anniversary Synthetic",
+            employment_status="active",
+            join_date=date(
+                birthday_after_termination.year - 2,
+                birthday_after_termination.month,
+                birthday_after_termination.day,
+            ),
+            termination_date=birthday_after_termination - timedelta(days=1),
+        )
         session.add_all(
             [
                 birthday_employee,
                 birthday_outside_employee,
                 anniversary_employee,
                 anniversary_outside_employee,
+                future_dob_employee,
+                future_join_employee,
+                departed_before_birthday,
+                departed_before_anniversary,
             ]
         )
         await session.flush()
@@ -116,6 +159,22 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
                 HrEmployeePrivate(
                     employee_id=birthday_outside_employee.id,
                     date_of_birth=date(1980, birthday_outside.month, birthday_outside.day),
+                ),
+                HrEmployeePrivate(
+                    employee_id=future_dob_employee.id,
+                    date_of_birth=date(
+                        today.year + 1, birthday_in_window.month, birthday_in_window.day
+                    ),
+                ),
+                HrEmployeePrivate(
+                    employee_id=future_join_employee.id,
+                    date_of_birth=date(1980, birthday_in_window.month, birthday_in_window.day),
+                ),
+                HrEmployeePrivate(
+                    employee_id=departed_before_birthday.id,
+                    date_of_birth=date(
+                        1980, birthday_after_termination.month, birthday_after_termination.day
+                    ),
                 ),
             ]
         )
@@ -134,6 +193,9 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
             birthday_names = {item["name"] for item in birthdays.json()["items"]}
             assert "Upcoming Birthday Synthetic" in birthday_names
             assert "Outside Birthday Synthetic" not in birthday_names
+            assert "Future DOB Synthetic" not in birthday_names
+            assert "Future Join Synthetic" not in birthday_names
+            assert "Departed Before Birthday Synthetic" not in birthday_names
             birthday_item = next(
                 item for item in birthdays.json()["items"]
                 if item["name"] == "Upcoming Birthday Synthetic"
@@ -142,6 +204,7 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
             anniversary_names = {item["name"] for item in anniversaries.json()["items"]}
             assert "Upcoming Anniversary Synthetic" in anniversary_names
             assert "Outside Anniversary Synthetic" not in anniversary_names
+            assert "Departed Before Anniversary Synthetic" not in anniversary_names
             anniversary_item = next(
                 item for item in anniversaries.json()["items"]
                 if item["name"] == "Upcoming Anniversary Synthetic"
@@ -155,3 +218,59 @@ async def test_celebration_cards_are_minimal_paginated_and_business_role_scoped(
             assert page.json()["limit"] == 1 and page.json()["offset"] == 0
         assert (await client.get("/api/v1/dashboard/birthdays")).status_code == 401
         assert (await client.get("/api/v1/dashboard/anniversaries")).status_code == 401
+
+
+async def test_employee_data_quality_review_is_private_and_does_not_return_source_dates() -> None:
+    await skip_if_database_unavailable()
+    today = business_today()
+    async with AsyncSessionLocal() as session:
+        missing = HrEmployee(
+            employee_code=f"DQ-{uuid4().hex[:10]}",
+            first_name="Missing",
+            last_name="Birthdate",
+            full_name="Missing Birthdate Synthetic",
+            employment_status="active",
+            join_date=today - timedelta(days=90),
+        )
+        future = HrEmployee(
+            employee_code=f"DQ-{uuid4().hex[:10]}",
+            first_name="Future",
+            last_name="Source",
+            full_name="Future Source Synthetic",
+            employment_status="active",
+            join_date=today + timedelta(days=1),
+        )
+        session.add_all([missing, future])
+        await session.flush()
+        session.add(
+            HrEmployeePrivate(
+                employee_id=future.id,
+                date_of_birth=today + timedelta(days=1),
+            )
+        )
+        await session.commit()
+
+    async with create_test_client() as client:
+        hr_email, hr_password = await create_user("hr_manager")
+        supervisor_email, supervisor_password = await create_user("site_supervisor")
+        hr_headers = {
+            "Authorization": f"Bearer {await login_for_token(client, hr_email, hr_password)}"
+        }
+        supervisor_headers = {
+            "Authorization": (
+                f"Bearer {await login_for_token(client, supervisor_email, supervisor_password)}"
+            )
+        }
+        path = "/api/v1/hr/employee-data-quality"
+        response = await client.get(path, params={"limit": 100}, headers=hr_headers)
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == "no-store"
+        by_name = {item["full_name"]: item for item in response.json()["items"]}
+        assert "missing_birth_date" in by_name["Missing Birthdate Synthetic"]["issue_codes"]
+        assert "employment_start_unverified" in by_name["Future Source Synthetic"]["issue_codes"]
+        assert "future_birth_date" in by_name["Future Source Synthetic"]["issue_codes"]
+        assert not (
+            {"date_of_birth", "join_date", "birth_year"}
+            & set(by_name["Future Source Synthetic"])
+        )
+        assert (await client.get(path, headers=supervisor_headers)).status_code == 403

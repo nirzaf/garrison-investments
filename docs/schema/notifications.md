@@ -1,6 +1,6 @@
 # notifications
 
-User notifications with read, mute, and email delivery state.
+User notifications with read, mute, email delivery state, and retained supersession history for obsolete leave actions.
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/notification.py)
 
@@ -19,6 +19,9 @@ User notifications with read, mute, and email delivery state.
 | `muted` | `boolean` | No | `false` |
 | `email_status` | `varchar(20)` | Yes | — |
 | `read_at` | `timestamptz` | Yes | — |
+| `event_code` | `varchar(30)` | Yes | — |
+| `event_revision` | `integer` | Yes | — |
+| `superseded_at` | `timestamptz` | Yes | — |
 | `created_at` | `timestamptz` | No | `now()` |
 | `updated_at` | `timestamptz` | No | `now()` |
 | `deleted_at` | `timestamptz` | Yes | — |

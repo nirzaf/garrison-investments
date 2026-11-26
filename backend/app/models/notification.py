@@ -32,3 +32,4 @@ class Notification(TimestampMixin, SoftDeleteMixin, Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     event_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     event_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

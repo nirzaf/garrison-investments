@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -611,6 +611,107 @@ async def test_historical_payroll_obligations_match_project_and_work_date() -> N
             if issue.code == "site_employment_eligibility_unresolved"
         ]
         assert {issue.work_date for issue in unresolved} == {day, second_day}
+
+
+async def test_payroll_time_preview_blocks_duplicate_and_cross_project_roster_obligations() -> None:
+    await skip_if_database_unavailable()
+
+    manager, _ = await create_user("group_project_manager")
+    engineer, _ = await create_user("mep_project_manager")
+    first = await create_project(manager, engineer)
+    second = await create_project(manager, engineer)
+    day = business_today() - timedelta(days=12)
+    period = HrPayrollPeriod(
+        id=uuid4(),
+        period_code=f"roster-conflict-{uuid4().hex[:8]}",
+        period_start=day,
+        period_end=day,
+        pay_date=day,
+    )
+    async with AsyncSessionLocal() as session:
+        calendar = HrWorkCalendar(
+            code=f"CONFLICT-{uuid4().hex[:8]}",
+            name="Synthetic conflict calendar",
+            timezone="Asia/Qatar",
+            status="published",
+            published_at=utc_now(),
+            effective_from=day,
+            effective_to=day,
+            work_days_json=[("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")[day.weekday()]],
+        )
+        employee = HrEmployee(
+            employee_code=f"ROSTER-{uuid4().hex[:8]}",
+            first_name="Synthetic",
+            last_name="Roster",
+            full_name="Synthetic Roster Conflict",
+            employment_status="active",
+            join_date=day - timedelta(days=30),
+        )
+        session.add_all([calendar, employee])
+        await session.flush()
+        session.add_all(
+            [
+                HrRosterAllocation(
+                    id=uuid4(),
+                    employee_id=employee.id,
+                    project_id=first.id,
+                    calendar_id=calendar.id,
+                    employee_name=employee.full_name,
+                    project_name="First project",
+                    work_date=day,
+                    timezone="Asia/Qatar",
+                    starts_at=datetime.combine(day, time(7), tzinfo=UTC),
+                    ends_at=datetime.combine(day, time(15), tzinfo=UTC),
+                    planned_hours=Decimal("8.00"),
+                ),
+                HrRosterAllocation(
+                    id=uuid4(),
+                    employee_id=employee.id,
+                    project_id=first.id,
+                    calendar_id=calendar.id,
+                    employee_name=employee.full_name,
+                    project_name="First project",
+                    work_date=day,
+                    timezone="Asia/Qatar",
+                    starts_at=datetime.combine(day, time(7), tzinfo=UTC),
+                    ends_at=datetime.combine(day, time(15), tzinfo=UTC),
+                    planned_hours=Decimal("8.00"),
+                ),
+                HrRosterAllocation(
+                    id=uuid4(),
+                    employee_id=employee.id,
+                    project_id=second.id,
+                    calendar_id=calendar.id,
+                    employee_name=employee.full_name,
+                    project_name="Second project",
+                    work_date=day,
+                    timezone="Asia/Qatar",
+                    starts_at=datetime.combine(day, time(7), tzinfo=UTC),
+                    ends_at=datetime.combine(day, time(15), tzinfo=UTC),
+                    planned_hours=Decimal("8.00"),
+                ),
+                HrTimesheet(
+                    employee_id=employee.id,
+                    project_id=first.id,
+                    period_start=day,
+                    period_end=day,
+                    status="locked",
+                    regular_hours=Decimal("8.00"),
+                    approved_at=utc_now(),
+                ),
+            ]
+        )
+        await session.flush()
+        result, csv_content = await reconcile_payroll_time_inputs(
+            session, period, {employee.id}
+        )
+        conflicts = [issue for issue in result.issues if issue.code == "site_assignment_conflict"]
+        assert {(issue.project_id, issue.candidate_count) for issue in conflicts} == {
+            (first.id, 3),
+            (second.id, 3),
+        }
+        assert not any(issue.code == "missing_site_attendance" for issue in result.issues)
+        assert csv_content is None
 
 
 async def test_historical_site_attendance_uses_evidence_and_preserves_period_locks() -> None:

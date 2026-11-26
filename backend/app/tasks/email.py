@@ -16,7 +16,6 @@ from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import BUSINESS_ROLES, PERMISSION_HR_LEAVE_APPROVE, has_permission
 from app.utils.security import utc_now
-from app.utils.time import business_today
 
 logger = structlog.get_logger("celery.task")
 
@@ -120,6 +119,17 @@ async def _can_deliver_leave_notification(session, notification: Notification, u
     if request is None or request.record_revision != notification.event_revision:
         return False
     event = notification.event_code
+    from app.services.hr_workforce_service import HrWorkforceService
+
+    workflow = HrWorkforceService(session)
+    employee = await session.scalar(
+        select(HrEmployee).where(
+            HrEmployee.id == request.employee_id,
+            HrEmployee.deleted_at.is_(None),
+        )
+    )
+    if employee is None:
+        return False
     manager_employee_id = await session.scalar(
         select(HrEmployee.manager_employee_id).where(
             HrEmployee.id == request.employee_id,
@@ -138,7 +148,11 @@ async def _can_deliver_leave_notification(session, notification: Notification, u
             )
         )
     if event in {"submitted", "resubmitted", "rerouted"}:
-        if request.status != "submitted":
+        if (
+            request.status != "submitted"
+            or user.id in {employee.user_id, request.requested_by_id}
+            or not await workflow._leave_route_is_current(request, employee)
+        ):
             return False
         if request.approval_route == "supervisor":
             return (
@@ -146,11 +160,12 @@ async def _can_deliver_leave_notification(session, notification: Notification, u
                 and request.requested_by_id != user.id
                 and request.assigned_supervisor_user_id == current_manager_user
             )
-        return (
-            request.approval_route == "hr_fallback"
-            and has_permission(user, PERMISSION_HR_LEAVE_APPROVE)
-            and (request.fallback_until is None or request.fallback_until >= business_today())
-        )
+        if request.approval_route != "hr_fallback" or not has_permission(
+            user, PERMISSION_HR_LEAVE_APPROVE
+        ):
+            return False
+        eligible = await workflow._eligible_hr_leave_approver_ids(request)
+        return user.id in eligible
     if request.status != event:
         return False
     if has_permission(user, PERMISSION_HR_LEAVE_APPROVE):

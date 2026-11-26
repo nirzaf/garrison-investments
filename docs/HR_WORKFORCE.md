@@ -312,6 +312,12 @@ roster and evidence.
   Leave request updates are delivered through the portal and email where the
   recipient has an eligible active account and email delivery is configured.
   Notification delivery does not change the request decision.
+  Final approve, reject and approved-leave reversal actions require the revision
+  displayed with the request. A stale decision must be reloaded and reviewed;
+  it is never retried against a freshly fetched revision automatically. Route
+  changes are explicit and audited. A leave action alert for an earlier route or
+  revision stays in notification history with a neutral no-longer-actionable
+  state and is excluded from the actionable unread count.
 
   **Company leave rules and activation.** The managed annual profile implements
   zero annual entitlement in the first calendar year of service, a second-year

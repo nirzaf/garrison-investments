@@ -11844,6 +11844,79 @@
         "title": "HrDocumentVersionResponse",
         "type": "object"
       },
+      "HrEmployeeDataQualityIssue": {
+        "properties": {
+          "employee_code": {
+            "title": "Employee Code",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "issue_codes": {
+            "items": {
+              "enum": [
+                "missing_birth_date",
+                "future_birth_date",
+                "employment_start_unverified"
+              ],
+              "type": "string"
+            },
+            "title": "Issue Codes",
+            "type": "array"
+          },
+          "required_correction": {
+            "title": "Required Correction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "employee_code",
+          "full_name",
+          "issue_codes",
+          "required_correction"
+        ],
+        "title": "HrEmployeeDataQualityIssue",
+        "type": "object"
+      },
+      "HrEmployeeDataQualityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HrEmployeeDataQualityIssue"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "HrEmployeeDataQualityPage",
+        "type": "object"
+      },
       "HrProjectAssignmentCreateRequest": {
         "properties": {
           "action": {
@@ -16387,6 +16460,20 @@
       },
       "LeaveRequestDecisionState": {
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "approve",
+                "reject",
+                "cancel",
+                "route_to_hr_fallback",
+                "refresh_route"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "decided_by_id": {
             "anyOf": [
               {
@@ -16418,6 +16505,25 @@
           "record_revision": {
             "title": "Record Revision",
             "type": "integer"
+          },
+          "route_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "pending_supervisor",
+                  "pending_hr",
+                  "approver_not_configured",
+                  "refresh_required",
+                  "final"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Status"
           },
           "status": {
             "title": "Status",
@@ -16457,6 +16563,20 @@
       },
       "LeaveRequestResponse": {
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "approve",
+                "reject",
+                "cancel",
+                "route_to_hr_fallback",
+                "refresh_route"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "approval_route": {
             "anyOf": [
               {
@@ -16655,6 +16775,25 @@
           "requires_manager_recommendation": {
             "title": "Requires Manager Recommendation",
             "type": "boolean"
+          },
+          "route_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "pending_supervisor",
+                  "pending_hr",
+                  "approver_not_configured",
+                  "refresh_required",
+                  "final"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Status"
           },
           "setup_error_code": {
             "anyOf": [
@@ -19474,6 +19613,18 @@
               }
             ],
             "title": "Reference Type"
+          },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
           },
           "title": {
             "title": "Title",
@@ -23921,6 +24072,18 @@
       },
       "PayrollTimeInputIssue": {
         "properties": {
+          "candidate_count": {
+            "anyOf": [
+              {
+                "minimum": 2.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Count"
+          },
           "code": {
             "enum": [
               "missing_locked_timesheet",
@@ -23929,6 +24092,7 @@
               "overlapping_timesheets",
               "pending_attendance",
               "missing_site_attendance",
+              "site_assignment_conflict",
               "site_employment_eligibility_unresolved",
               "site_overtime_mismatch",
               "attendance_without_schedule",
@@ -31054,6 +31218,20 @@
       },
       "SupervisorLeaveReviewItem": {
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "approve",
+                "reject",
+                "cancel",
+                "route_to_hr_fallback",
+                "refresh_route"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "chargeable_units": {
             "title": "Chargeable Units",
             "type": "string"
@@ -31079,6 +31257,25 @@
           "record_revision": {
             "title": "Record Revision",
             "type": "integer"
+          },
+          "route_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "pending_supervisor",
+                  "pending_hr",
+                  "approver_not_configured",
+                  "refresh_required",
+                  "final"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Status"
           },
           "start_date": {
             "format": "date",
@@ -47465,6 +47662,75 @@
           }
         ],
         "summary": "Decide Hr Document Version",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/employee-data-quality": {
+      "get": {
+        "operationId": "list_employee_data_quality_issues_api_v1_hr_employee_data_quality_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HrEmployeeDataQualityPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Employee Data Quality Issues Api V1 Hr Employee Data Quality Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Employee Data Quality Issues",
         "tags": [
           "HR & Workforce"
         ]

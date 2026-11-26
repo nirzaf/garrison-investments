@@ -108,6 +108,7 @@ function SupervisorLeaveQueue({ userId }: { userId: string }) {
               {item.end_date !== item.start_date ? ` to ${item.end_date}` : ''} ·{' '}
               {item.chargeable_units} days
             </p>
+            {item.allowed_actions?.length ? <>
             <label className="block text-sm">
               Decision note (required for rejection)
               <input
@@ -120,23 +121,24 @@ function SupervisorLeaveQueue({ userId }: { userId: string }) {
               />
             </label>
             <div className="flex gap-2">
-              <button
+              {item.allowed_actions?.includes('approve') && <button
                 type="button"
                 className={hrButtonClass}
                 disabled={pending || item.status !== 'submitted'}
                 onClick={() => void decide(item, 'approved')}
               >
                 Approve
-              </button>
-              <button
+              </button>}
+              {item.allowed_actions?.includes('reject') && <button
                 type="button"
                 className={hrButtonClass}
                 disabled={pending || item.status !== 'submitted' || !notes[item.id]?.trim()}
                 onClick={() => void decide(item, 'rejected')}
               >
                 Reject
-              </button>
+              </button>}
             </div>
+            </> : <p className="text-sm text-theme-text-muted">This review assignment is no longer actionable. Refresh the queue.</p>}
           </li>
         ))}
       </ul>

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy import select
 
 from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.config import get_settings
@@ -99,6 +100,7 @@ from app.schemas.hr import (
     HrDocumentDownloadResponse,
     HrDocumentListResponse,
     HrDocumentResponse,
+    HrEmployeeDataQualityPage,
     HrProjectAssignmentCreateRequest,
     HrProjectAssignmentListResponse,
     HrProjectAssignmentResponse,
@@ -140,6 +142,7 @@ from app.schemas.hr import (
     LeavePolicyDecisionRequest,
     LeavePolicyListResponse,
     LeavePolicyResponse,
+    LeaveRequestAllowedAction,
     LeaveRequestCreateRequest,
     LeaveRequestDecisionRequest,
     LeaveRequestDecisionState,
@@ -398,6 +401,7 @@ from app.utils.exceptions import (
     PermissionDeniedException,
 )
 from app.utils.permissions import (
+    BUSINESS_ROLES,
     PERMISSION_HR_ATTENDANCE_APPROVE,
     PERMISSION_HR_ATTENDANCE_RECORD,
     PERMISSION_HR_CASES_RESTRICTED,
@@ -422,47 +426,180 @@ from app.utils.permissions import (
     PERMISSION_INVENTORY_MANAGE,
     PERMISSION_USERS_MANAGE,
     has_permission,
+    roles_with_permission,
 )
 
 router = APIRouter(prefix="/hr", tags=["HR & Workforce"])
 
 
 async def _leave_request_response(
-    session: DbSession, row: HrLeaveRequest
+    session: DbSession, row: HrLeaveRequest, actor: User | None = None
 ) -> LeaveRequestResponse:
-    approver_configured = True
+    eligible_approver_count = 1
     if row.approval_route == "hr_fallback":
         from app.services.hr_workforce_service import HrWorkforceService
 
-        approver_configured = await HrWorkforceService(session).hr_leave_approver_configured()
+        eligible_approver_count = len(
+            await HrWorkforceService(session)._eligible_hr_leave_approver_ids(row)
+        )
     result = LeaveRequestResponse.model_validate(row)
     result.setup_error_code = (
-        None if approver_configured else "LEAVE_APPROVER_NOT_CONFIGURED"
+        "LEAVE_APPROVER_NOT_CONFIGURED"
+        if row.status == "submitted"
+        and row.approval_route == "hr_fallback"
+        and eligible_approver_count == 0
+        else None
     )
+    if actor is not None:
+        from app.services.hr_workforce_service import HrWorkforceService
+
+        service = HrWorkforceService(session)
+        employee = await session.get(HrEmployee, row.employee_id)
+        route_current = bool(employee)
+        if employee is not None and row.status == "submitted":
+            try:
+                route_current = await service._leave_route_is_current(row, employee)
+            except AppException:
+                route_current = False
+        actions: list[LeaveRequestAllowedAction] = []
+        if row.status in {"draft", "submitted"} and employee is not None and (
+            employee.user_id == actor.id and row.requested_by_id == actor.id
+        ):
+            actions.append("cancel")
+        if row.status == "submitted":
+            from app.utils.permissions import PERMISSION_HR_LEAVE_APPROVE
+
+            actor_can_approve = has_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
+            if actor_can_approve:
+                actions.append("refresh_route")
+            if route_current and row.approval_route == "supervisor":
+                if row.assigned_supervisor_user_id == actor.id and actor.id not in {
+                    employee.user_id if employee else None,
+                    row.requested_by_id,
+                }:
+                    actions.extend(("approve", "reject"))
+                elif actor_can_approve:
+                    actions.append("route_to_hr_fallback")
+            elif (
+                route_current
+                and actor_can_approve
+                and row.approval_route == "hr_fallback"
+                and result.setup_error_code is None
+                and actor.id in await service._eligible_hr_leave_approver_ids(row)
+            ):
+                actions.extend(("approve", "reject"))
+        result.allowed_actions = list(dict.fromkeys(actions))
+        result.route_status = (
+            "draft"
+            if row.status == "draft"
+            else "final"
+            if row.status != "submitted"
+            else "refresh_required"
+            if not route_current
+            else "approver_not_configured"
+            if result.setup_error_code
+            else "pending_supervisor"
+            if row.approval_route == "supervisor"
+            else "pending_hr"
+        )
     return result
 
 
 async def _leave_request_list_response(
-    session: DbSession, rows: list[HrLeaveRequest], total: int
+    session: DbSession, rows: list[HrLeaveRequest], total: int, actor: User | None = None
 ) -> LeaveRequestListResponse:
-    approver_configured = True
-    if any(row.approval_route == "hr_fallback" for row in rows):
+    fallback_employee_ids = {
+        row.employee_id
+        for row in rows
+        if row.status == "submitted" and row.approval_route == "hr_fallback"
+    }
+    employee_ids = {row.employee_id for row in rows}
+    employee_users = dict(
+        (
+            await session.execute(
+            select(HrEmployee.id, HrEmployee.user_id).where(
+                HrEmployee.id.in_(employee_ids), HrEmployee.deleted_at.is_(None)
+            )
+            )
+        ).all()
+    ) if employee_ids else {}
+    setup_errors: set[UUID] = set()
+    eligible_ids: set[UUID] = set()
+    if fallback_employee_ids:
+        eligible_ids = set(
+            await session.scalars(
+                select(User.id).where(
+                    User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)),
+                    User.role.in_(BUSINESS_ROLES),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+            )
+        )
+        for row in rows:
+            if row.employee_id not in fallback_employee_ids:
+                continue
+            excluded = {row.requested_by_id, employee_users.get(row.employee_id)} - {None}
+            if not eligible_ids.difference(excluded):
+                setup_errors.add(row.id)
+    route_current: dict[UUID, bool] = {}
+    if actor is not None and any(row.status == "submitted" for row in rows):
         from app.services.hr_workforce_service import HrWorkforceService
 
-        approver_configured = await HrWorkforceService(session).hr_leave_approver_configured()
-    return LeaveRequestListResponse(
-        items=[
-            LeaveRequestResponse.model_validate(row).model_copy(
-                update={
-                    "setup_error_code": None
-                    if approver_configured or row.approval_route != "hr_fallback"
-                    else "LEAVE_APPROVER_NOT_CONFIGURED"
-                }
-            )
-            for row in rows
-        ],
-        total=total,
-    )
+        route_current = await HrWorkforceService(session)._leave_routes_current(rows)
+    items: list[LeaveRequestResponse] = []
+    for row in rows:
+        response = LeaveRequestResponse.model_validate(row)
+        is_route_current = route_current.get(row.id, False)
+        if row.id in setup_errors and is_route_current:
+            response.setup_error_code = "LEAVE_APPROVER_NOT_CONFIGURED"
+        if actor is not None:
+            actions: list[LeaveRequestAllowedAction] = []
+            if (
+                row.status in {"draft", "submitted"}
+                and employee_users.get(row.employee_id) == actor.id
+                and row.requested_by_id == actor.id
+            ):
+                actions.append("cancel")
+            if row.status == "submitted":
+                actor_can_approve = has_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
+                if actor_can_approve:
+                    actions.append("refresh_route")
+                if is_route_current and row.approval_route == "supervisor":
+                    if (
+                        row.assigned_supervisor_user_id == actor.id
+                        and actor.id
+                        not in {employee_users.get(row.employee_id), row.requested_by_id}
+                    ):
+                        actions.extend(("approve", "reject"))
+                    elif actor_can_approve:
+                        actions.append("route_to_hr_fallback")
+                elif (
+                    is_route_current
+                    and actor_can_approve
+                    and row.approval_route == "hr_fallback"
+                    and row.id not in setup_errors
+                    and actor.id in eligible_ids.difference(
+                        {employee_users.get(row.employee_id), row.requested_by_id} - {None}
+                    )
+                ):
+                    actions.extend(("approve", "reject"))
+            response.allowed_actions = list(dict.fromkeys(actions))
+        response.route_status = (
+            "draft"
+            if row.status == "draft"
+            else "final"
+            if row.status != "submitted"
+            else "refresh_required"
+            if not is_route_current
+            else "approver_not_configured"
+            if response.setup_error_code is not None
+            else "pending_supervisor"
+            if row.approval_route == "supervisor"
+            else "pending_hr"
+        )
+        items.append(response)
+    return LeaveRequestListResponse(items=items, total=total)
 
 
 def require_any_permission(*permissions: str) -> Callable[[User], User]:
@@ -595,8 +732,8 @@ async def list_my_leave_types(
     current_user: CurrentUser, session: DbSession
 ) -> LeaveTypeListResponse:
     svc = HrService(session)
-    await svc.require_self_employee(current_user)
-    rows, total = await svc.list_leave_types()
+    employee = await svc.require_self_employee(current_user)
+    rows, total = await svc.list_requestable_leave_types(employee)
     return LeaveTypeListResponse(
         items=[LeaveTypeResponse.model_validate(r) for r in rows], total=total
     )
@@ -784,12 +921,13 @@ async def quote_my_leave_units(
 
 @router.get("/me/leave-requests", response_model=LeaveRequestListResponse)
 async def list_my_leave_requests(
-    current_user: CurrentUser, session: DbSession
+    current_user: CurrentUser, session: DbSession, response: Response
 ) -> LeaveRequestListResponse:
+    response.headers["Cache-Control"] = "private, no-store"
     svc = HrService(session)
     emp = await svc.require_self_employee(current_user)
     rows, total = await svc.list_leave_requests(employee_id=emp.id)
-    return await _leave_request_list_response(session, rows, total)
+    return await _leave_request_list_response(session, rows, total, current_user)
 
 
 @router.post("/me/leave-requests", response_model=LeaveRequestResponse, status_code=201)
@@ -802,7 +940,7 @@ async def submit_my_leave_request(
     emp = await svc.require_self_employee(current_user)
     scoped = payload.model_copy(update={"employee_id": emp.id})
     req = await svc.create_leave_request(scoped, current_user, own_request=True)
-    return await _leave_request_response(session, req)
+    return await _leave_request_response(session, req, current_user)
 
 
 @router.put("/me/leave-requests/{request_id}/submission", response_model=LeaveRequestResponse)
@@ -813,7 +951,7 @@ async def resubmit_my_leave_request(
     session: DbSession,
 ) -> LeaveRequestResponse:
     req = await HrService(session).resubmit_own_leave_request(request_id, payload, current_user)
-    return await _leave_request_response(session, req)
+    return await _leave_request_response(session, req, current_user)
 
 
 @router.post("/me/leave-requests/{request_id}/cancel", response_model=LeaveRequestResponse)
@@ -828,7 +966,7 @@ async def cancel_my_leave_request(
         current_user,
         own_request=True,
     )
-    return await _leave_request_response(session, req)
+    return await _leave_request_response(session, req, current_user)
 
 
 @router.get("/me/attendance", response_model=AttendanceEntryListResponse)
@@ -1231,6 +1369,18 @@ async def list_employment_periods_missing_start(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> EmploymentPeriodMissingStartPage:
     return await HrService(session).list_employment_periods_missing_start(limit, offset)
+
+
+@router.get("/employee-data-quality", response_model=HrEmployeeDataQualityPage)
+async def list_employee_data_quality_issues(
+    _: CanAccessSensitive,
+    session: DbSession,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> HrEmployeeDataQualityPage:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).list_employee_data_quality_issues(limit, offset)
 
 
 @router.get(
@@ -2418,17 +2568,19 @@ async def quote_employee_leave_units(
 
 @router.get("/leave/requests", response_model=LeaveRequestListResponse)
 async def list_leave_requests(
-    _: CanManageLeave,
+    actor: CanManageLeave,
     session: DbSession,
+    response: Response,
     employee_id: Annotated[UUID | None, Query()] = None,
     req_status: Annotated[str | None, Query()] = None,
     limit: Annotated[int | None, Query(ge=1, le=100)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> LeaveRequestListResponse:
+    response.headers["Cache-Control"] = "no-store"
     rows, total = await HrService(session).list_leave_requests(
         employee_id=employee_id, status=req_status, limit=limit, offset=offset
     )
-    return await _leave_request_list_response(session, rows, total)
+    return await _leave_request_list_response(session, rows, total, actor)
 
 
 @router.post(
@@ -2438,14 +2590,25 @@ async def create_leave_request(
     payload: LeaveRequestCreateRequest, actor: CanManageLeave, session: DbSession
 ) -> LeaveRequestResponse:
     row = await HrService(session).create_leave_request(payload, actor)
-    return await _leave_request_response(session, row)
+    return await _leave_request_response(session, row, actor)
 
 
 @router.get("/leave/requests/{leave_request_id}/decision", response_model=LeaveRequestDecisionState)
 async def get_leave_decision_state(
-    leave_request_id: UUID, _: CanApproveLeave, session: DbSession
+    leave_request_id: UUID, actor: CanApproveLeave, session: DbSession, response: Response
 ) -> LeaveRequestDecisionState:
-    return await HrService(session).get_leave_decision_state(leave_request_id)
+    response.headers["Cache-Control"] = "no-store"
+    state = await HrService(session).get_leave_decision_state(leave_request_id)
+    request = await session.get(HrLeaveRequest, leave_request_id)
+    if request is None:
+        raise NotFoundException("Leave request")
+    projection = await _leave_request_response(session, request, actor)
+    return state.model_copy(
+        update={
+            "allowed_actions": projection.allowed_actions,
+            "route_status": projection.route_status,
+        }
+    )
 
 
 @router.post("/leave/requests/{leave_request_id}/decision", response_model=LeaveRequestResponse)
@@ -2456,7 +2619,7 @@ async def decide_leave_request(
     session: DbSession,
 ) -> LeaveRequestResponse:
     row = await HrService(session).decide_leave_request(leave_request_id, payload, actor)
-    return await _leave_request_response(session, row)
+    return await _leave_request_response(session, row, actor)
 
 
 @router.post(
@@ -2470,7 +2633,7 @@ async def route_leave_request_to_hr_fallback(
     session: DbSession,
 ) -> LeaveRequestResponse:
     row = await HrService(session).set_leave_hr_fallback(leave_request_id, payload, actor)
-    return await _leave_request_response(session, row)
+    return await _leave_request_response(session, row, actor)
 
 
 @router.post(
@@ -2484,7 +2647,7 @@ async def refresh_leave_request_route(
     session: DbSession,
 ) -> LeaveRequestResponse:
     row = await HrService(session).refresh_leave_route(leave_request_id, payload, actor)
-    return await _leave_request_response(session, row)
+    return await _leave_request_response(session, row, actor)
 
 
 @router.get("/leave/date-evidence/candidates", response_model=LeaveDateEvidenceCandidates)

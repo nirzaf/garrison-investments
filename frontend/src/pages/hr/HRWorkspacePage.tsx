@@ -1874,15 +1874,14 @@ export function HRWorkspacePage() {
                     ` · Final decision: ${lr.approval_route === 'supervisor' ? 'direct supervisor' : 'HR fallback'}`}
                   {lr.setup_error_code === 'LEAVE_APPROVER_NOT_CONFIGURED' &&
                     ' · HR fallback is not staffed; the request remains submitted.'}
-                  {lr.manager_recommendation &&
+                  {lr.manager_recommendation && lr.approval_route !== 'supervisor' &&
                     ` · Manager recommendation: ${lr.manager_recommendation}`}
-                  {!lr.manager_recommendation &&
+                  {!lr.manager_recommendation && lr.approval_route !== 'supervisor' &&
                     lr.requires_manager_recommendation &&
                     lr.status === 'submitted' &&
                     ' · Pending manager recommendation'}
                 </span>
-                {hasPerm('hr:leave:approve') &&
-                  lr.status === 'submitted' &&
+                {lr.allowed_actions?.includes('approve') &&
                   lr.approval_route === 'hr_fallback' && (
                   <div className="flex flex-wrap gap-2">
                     <label>
@@ -1932,8 +1931,7 @@ export function HRWorkspacePage() {
                     </button>
                   </div>
                 )}
-                {hasPerm('hr:leave:approve') &&
-                  lr.status === 'submitted' &&
+                {lr.allowed_actions?.includes('route_to_hr_fallback') &&
                   lr.approval_route !== 'hr_fallback' && (
                     <details>
                       <summary className="cursor-pointer">Record HR fallback</summary>
@@ -1984,7 +1982,7 @@ export function HRWorkspacePage() {
                       </form>
                     </details>
                   )}
-                {hasPerm('hr:leave:approve') && lr.status === 'submitted' && (
+                {lr.allowed_actions?.includes('refresh_route') && (
                   <button
                     className="rounded border border-theme-border px-2 py-1"
                     disabled={pending}
