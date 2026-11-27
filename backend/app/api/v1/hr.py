@@ -442,12 +442,30 @@ async def _leave_request_response(
         eligible_approver_count = len(
             await HrWorkforceService(session)._eligible_hr_leave_approver_ids(row)
         )
+    from app.services.hr_workforce_service import HrWorkforceService
+
+    service = HrWorkforceService(session)
+    employee = None
+    route_current = False
+    if actor is not None or (
+        row.status == "submitted"
+        and row.approval_route == "hr_fallback"
+        and eligible_approver_count == 0
+    ):
+        employee = await session.get(HrEmployee, row.employee_id)
+        route_current = bool(employee)
+        if employee is not None and row.status == "submitted":
+            try:
+                route_current = await service._leave_route_is_current(row, employee)
+            except AppException:
+                route_current = False
     result = LeaveRequestResponse.model_validate(row)
     result.setup_error_code = (
         "LEAVE_APPROVER_NOT_CONFIGURED"
         if row.status == "submitted"
         and row.approval_route == "hr_fallback"
         and eligible_approver_count == 0
+        and route_current
         else None
     )
     if (
@@ -459,16 +477,6 @@ async def _leave_request_response(
             select(User.full_name).where(User.id == row.decided_by_id)
         )
     if actor is not None:
-        from app.services.hr_workforce_service import HrWorkforceService
-
-        service = HrWorkforceService(session)
-        employee = await session.get(HrEmployee, row.employee_id)
-        route_current = bool(employee)
-        if employee is not None and row.status == "submitted":
-            try:
-                route_current = await service._leave_route_is_current(row, employee)
-            except AppException:
-                route_current = False
         actions: list[LeaveRequestAllowedAction] = []
         actor_is_subject_or_submitter = actor.id in {
             employee.user_id if employee else None,
@@ -539,7 +547,6 @@ async def _leave_request_list_response(
             )
         ).all()
     ) if employee_ids else {}
-    setup_errors: set[UUID] = set()
     eligible_ids: set[UUID] = set()
     if fallback_employee_ids:
         eligible_ids = set(
@@ -552,17 +559,21 @@ async def _leave_request_list_response(
                 )
             )
         )
-        for row in rows:
-            if row.employee_id not in fallback_employee_ids:
-                continue
-            excluded = {row.requested_by_id, employee_users.get(row.employee_id)} - {None}
-            if not eligible_ids.difference(excluded):
-                setup_errors.add(row.id)
     route_current: dict[UUID, bool] = {}
-    if actor is not None and any(row.status == "submitted" for row in rows):
+    if any(row.status == "submitted" for row in rows):
         from app.services.hr_workforce_service import HrWorkforceService
 
         route_current = await HrWorkforceService(session)._leave_routes_current(rows)
+    setup_errors: set[UUID] = set()
+    for row in rows:
+        if (
+            row.employee_id not in fallback_employee_ids
+            or not route_current.get(row.id, False)
+        ):
+            continue
+        excluded = {row.requested_by_id, employee_users.get(row.employee_id)} - {None}
+        if not eligible_ids.difference(excluded):
+            setup_errors.add(row.id)
     decider_names: dict[UUID, str] = {}
     if actor is not None and has_permission(actor, PERMISSION_HR_LEAVE_APPROVE):
         decided_by_ids = {row.decided_by_id for row in rows if row.decided_by_id is not None}

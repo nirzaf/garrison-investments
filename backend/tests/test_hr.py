@@ -11489,7 +11489,7 @@ async def test_leave_fallback_eligibility_is_request_specific_and_batched() -> N
 
         subject_request = new_request(subject_employee, ordinary_maker)
         maker_request = new_request(worker_employee, maker_hr)
-        no_hr_request = new_request(worker_employee, ordinary_maker)
+        no_hr_request = new_request(worker_employee, subject_hr)
         two_reviewers_request = new_request(other_worker_employee, ordinary_maker)
         session.add_all([subject_request, maker_request, no_hr_request, two_reviewers_request])
         await session.flush()
@@ -11501,9 +11501,9 @@ async def test_leave_fallback_eligibility_is_request_specific_and_batched() -> N
         subject_list = await _leave_request_list_response(
             session, [subject_request], 1, subject_hr
         )
-        assert subject_response.setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+        assert subject_response.setup_error_code is None
         assert subject_response.route_status == "refresh_required"
-        assert subject_list.items[0].setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+        assert subject_list.items[0].setup_error_code is None
         assert subject_list.items[0].route_status == "refresh_required"
 
         subject_employee.manager_employee_id = None
@@ -11541,12 +11541,19 @@ async def test_leave_fallback_eligibility_is_request_specific_and_batched() -> N
         assert await _can_deliver_leave_notification(session, maker_hr_email, maker_hr) is False
 
         maker_hr.is_active = False
+        subject_hr.is_active = True
         await session.flush()
         assert await service._eligible_hr_leave_approver_ids(no_hr_request) == []
-        assert await service.hr_leave_approver_configured() is False
+        assert await service.hr_leave_approver_configured() is True
         assert await service._leave_notification_users(no_hr_request, "submitted") == []
-        no_hr_response = await _leave_request_response(session, no_hr_request)
+        no_hr_response = await _leave_request_response(session, no_hr_request, subject_hr)
+        no_hr_list = await _leave_request_list_response(
+            session, [no_hr_request], 1, subject_hr
+        )
         assert no_hr_response.setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+        assert no_hr_response.route_status == "approver_not_configured"
+        assert no_hr_list.items[0].setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+        assert no_hr_list.items[0].route_status == "approver_not_configured"
         assert no_hr_request.status == "submitted"
         assert no_hr_request.assigned_supervisor_user_id is None
         assert no_hr_request.decided_by_id is None
@@ -11615,6 +11622,183 @@ async def test_leave_fallback_eligibility_is_request_specific_and_batched() -> N
                 )
                 == 1
             )
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_leave_audit_and_refresh_notification_are_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from app.api.v1.hr import _leave_request_list_response, _leave_request_response
+    from app.models.hr import HrLeaveType
+    from app.models.task_outbox import TaskOutbox, notification_email_outbox_dedupe_key
+    from app.schemas.notifications import NotificationResponse
+    from app.utils.permissions import PERMISSION_HR_LEAVE_APPROVE, roles_with_permission
+
+    today = business_today()
+
+    def new_user(role: str, label: str, *, active: bool = True) -> User:
+        suffix = uuid4().hex
+        return User(
+            email=f"nt04-{label}-{suffix}@example.com",
+            full_name=f"Synthetic {label}",
+            role=role,
+            is_active=active,
+            must_change_password=False,
+        )
+
+    async with AsyncSessionLocal() as session:
+        existing_approvers = list(
+            await session.scalars(
+                select(User).where(
+                    User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE))
+                )
+            )
+        )
+        original_active_states = {user.id: user.is_active for user in existing_approvers}
+        for user in existing_approvers:
+            user.is_active = False
+
+        subject = new_user("hr_manager", "subject")
+        returning_approver = new_user("hr_manager", "returning", active=False)
+        second_approver = new_user("hr_manager", "second", active=False)
+        session.add_all([subject, returning_approver, second_approver])
+        await session.flush()
+
+        employee = HrEmployee(
+            user_id=subject.id,
+            employee_code=f"NT04-{uuid4().hex[:10]}",
+            first_name="Synthetic",
+            last_name="Subject",
+            full_name="Synthetic Subject",
+            work_email=subject.email,
+            employment_status="active",
+        )
+        leave_type = HrLeaveType(
+            code=f"NT04-{uuid4().hex[:12]}",
+            name="Synthetic NT-04 leave",
+            is_paid=True,
+            is_active=True,
+            policy_required=False,
+        )
+        session.add_all([employee, leave_type])
+        await session.flush()
+        request = HrLeaveRequest(
+            employee_id=employee.id,
+            leave_type_id=leave_type.id,
+            start_date=today + timedelta(days=10),
+            end_date=today + timedelta(days=10),
+            days_requested=Decimal("1.00"),
+            reason="Synthetic private reason must not enter the setup audit",
+            status="submitted",
+            requested_by_id=subject.id,
+            record_revision=1,
+            approval_route="hr_fallback",
+            fallback_reason_code="manager_missing",
+            fallback_reason="No valid direct supervisor is assigned.",
+            fallback_recorded_by_id=subject.id,
+            fallback_recorded_at=datetime.now(UTC),
+        )
+        session.add(request)
+        await session.flush()
+
+        async def flush_without_commit(
+            service: HrWorkforceService, *instances: object
+        ) -> None:
+            await service.session.flush()
+            for instance in instances:
+                await service.session.refresh(instance)
+
+        monkeypatch.setattr(HrWorkforceService, "_commit_and_refresh", flush_without_commit)
+        service = HrWorkforceService(session)
+        await service._notify_leave_event(request, "submitted", subject.id)
+        await service._notify_leave_event(request, "submitted", subject.id)
+
+        setup_audits = list(
+            await session.scalars(
+                select(ActivityLog).where(
+                    ActivityLog.action == "hr.leave_request.approver_unconfigured",
+                    ActivityLog.entity_id == request.id,
+                )
+            )
+        )
+        assert len(setup_audits) == 1
+        assert setup_audits[0].new_values == {
+            "revision": 1,
+            "reason_code": "manager_missing",
+        }
+        assert request.reason not in str(setup_audits[0].new_values)
+        assert request.status == "submitted"
+        assert not (
+            await session.scalars(
+                select(Notification.id).where(Notification.reference_id == request.id)
+            )
+        ).all()
+
+        requester_status = await _leave_request_response(session, request, subject)
+        hr_queue = await _leave_request_list_response(session, [request], 1, subject)
+        for projection in (requester_status, hr_queue.items[0]):
+            assert projection.status == "submitted"
+            assert projection.setup_error_code == "LEAVE_APPROVER_NOT_CONFIGURED"
+            assert projection.route_status == "approver_not_configured"
+
+        returning_approver.is_active = True
+        second_approver.is_active = True
+        await session.flush()
+        await service.refresh_leave_route(
+            request.id,
+            LeaveRouteRefreshRequest(expected_revision=request.record_revision),
+            returning_approver,
+        )
+
+        notification = await session.scalar(
+            select(Notification).where(
+                Notification.reference_id == request.id,
+                Notification.event_code == "rerouted",
+                Notification.event_revision == request.record_revision,
+                Notification.user_id == second_approver.id,
+            )
+        )
+        assert notification is not None
+        assert NotificationResponse.model_validate(notification).email_status == "queued"
+        outbox = await session.scalar(
+            select(TaskOutbox).where(
+                TaskOutbox.dedupe_key == notification_email_outbox_dedupe_key(notification.id)
+            )
+        )
+        assert outbox is not None and outbox.status == "pending"
+
+        await service.refresh_leave_route(
+            request.id,
+            LeaveRouteRefreshRequest(expected_revision=request.record_revision),
+            returning_approver,
+        )
+        event_notifications = list(
+            await session.scalars(
+                select(Notification).where(
+                    Notification.reference_id == request.id,
+                    Notification.event_code == "rerouted",
+                    Notification.event_revision == request.record_revision,
+                )
+            )
+        )
+        assert [item.id for item in event_notifications] == [notification.id]
+        assert request.record_revision == 1
+        setup_audits = list(
+            await session.scalars(
+                select(ActivityLog).where(
+                    ActivityLog.action == "hr.leave_request.approver_unconfigured",
+                    ActivityLog.entity_id == request.id,
+                )
+            )
+        )
+        assert len(setup_audits) == 1
+
+        for user in existing_approvers:
+            user.is_active = original_active_states[user.id]
 
 
 @pytest.mark.asyncio

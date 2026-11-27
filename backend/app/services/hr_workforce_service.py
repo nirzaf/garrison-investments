@@ -5382,7 +5382,12 @@ class HrWorkforceService:
             "rejected": "Leave request decision",
             "cancelled": "Leave request cancelled",
         }[event]
-        if pending_event and not recipients and route_is_current is True:
+        if (
+            pending_event
+            and not recipients
+            and route_is_current is True
+            and not await self._leave_approver_setup_exception_recorded(request)
+        ):
             await self.audit.record(
                 action="hr.leave_request.approver_unconfigured",
                 user_id=actor_id,
@@ -5435,6 +5440,21 @@ class HrWorkforceService:
                 event_revision=request.record_revision,
                 send_email=True,
             )
+
+    async def _leave_approver_setup_exception_recorded(
+        self, request: HrLeaveRequest
+    ) -> bool:
+        audit_id = await self.session.scalar(
+            select(ActivityLog.id)
+            .where(
+                ActivityLog.action == "hr.leave_request.approver_unconfigured",
+                ActivityLog.entity_type == "hr_leave_requests",
+                ActivityLog.entity_id == request.id,
+                ActivityLog.new_values["revision"].as_integer() == request.record_revision,
+            )
+            .limit(1)
+        )
+        return audit_id is not None
 
     async def create_leave_request(
         self, payload: LeaveRequestCreateRequest, actor: User, *, own_request: bool = False
@@ -6080,6 +6100,18 @@ class HrWorkforceService:
             await self._commit_and_refresh(request)
             return request
         if self._leave_route_matches(request, current_route, today):
+            if request.approval_route == "hr_fallback":
+                setup_exception_recorded = (
+                    await self._leave_approver_setup_exception_recorded(request)
+                )
+                eligible_approvers = await self._eligible_hr_leave_approver_ids(request)
+                if not eligible_approvers and not setup_exception_recorded:
+                    await self._notify_leave_event(request, "rerouted", actor.id)
+                    await self._commit_and_refresh(request)
+                    return request
+                if eligible_approvers and setup_exception_recorded:
+                    await self._notify_leave_event(request, "rerouted", actor.id)
+                    await self._commit_and_refresh(request)
             return request
         previous_route = request.approval_route
         request.approval_route = route
