@@ -11730,6 +11730,7 @@ async def test_unconfigured_leave_audit_and_refresh_notification_are_idempotent(
             "revision": 1,
             "reason_code": "manager_missing",
         }
+        assert request.reason is not None
         assert request.reason not in str(setup_audits[0].new_values)
         assert request.status == "submitted"
         assert not (

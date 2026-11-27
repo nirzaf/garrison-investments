@@ -797,6 +797,53 @@ async def test_notification_email_outbox_is_transactional_and_retries_broker_out
 
 
 @pytest.mark.asyncio
+async def test_notification_email_dispatch_exhaustion_exposes_failed_status(
+    monkeypatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from app.schemas.notifications import NotificationResponse
+    from app.tasks.outbox import MAX_NOTIFICATION_EMAIL_ATTEMPTS
+
+    user_email, _ = await create_user("group_project_manager")
+    async with AsyncSessionLocal() as session:
+        user = await UserRepository(session).get_by_email(user_email)
+        assert user is not None
+        notification = await NotificationService(session).create(
+            user_id=user.id,
+            title="Synthetic delivery status",
+            body="No transport should be dispatched after exhaustion.",
+            notification_type="approval",
+        )
+        outbox = await session.scalar(
+            select(TaskOutbox).where(
+                TaskOutbox.dedupe_key == notification_email_outbox_dedupe_key(notification.id)
+            )
+        )
+        assert outbox is not None
+        outbox.attempts = MAX_NOTIFICATION_EMAIL_ATTEMPTS
+        await session.commit()
+
+    await prioritize_notification_outbox(notification.id)
+    monkeypatch.setattr(
+        "app.tasks.outbox.celery_app.send_task",
+        lambda *_args, **_kwargs: pytest.fail("exhausted dispatch must not contact the broker"),
+    )
+    assert await _dispatch_notification_email_outbox() == 0
+
+    async with AsyncSessionLocal() as session:
+        refreshed = await session.get(Notification, notification.id)
+        entry = await session.scalar(
+            select(TaskOutbox).where(
+                TaskOutbox.dedupe_key == notification_email_outbox_dedupe_key(notification.id)
+            )
+        )
+        assert refreshed is not None and entry is not None
+        assert refreshed.email_status == "failed"
+        assert NotificationResponse.model_validate(refreshed).email_status == "failed"
+        assert entry.status == "failed"
+
+
+@pytest.mark.asyncio
 async def test_concurrent_notification_email_delivery_is_single_claim(monkeypatch) -> None:
     await skip_if_database_unavailable()
     user_email, _ = await create_user("group_project_manager")
