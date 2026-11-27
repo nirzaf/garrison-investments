@@ -1720,6 +1720,17 @@ class LeaveTypeListResponse(BaseModel):
     total: int
 
 
+class SelfServiceLeaveTypeResponse(LeaveTypeResponse):
+    availability_state: Literal[
+        "requestable_for_selected_dates", "requestable_for_current_business_date"
+    ] = "requestable_for_current_business_date"
+
+
+class SelfServiceLeaveTypeListResponse(BaseModel):
+    items: list[SelfServiceLeaveTypeResponse]
+    total: int
+
+
 class LeavePolicyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1979,6 +1990,12 @@ class LeaveRequestDecisionRequest(BaseModel):
     expected_revision: int | None = Field(default=None, ge=1)
 
 
+class LeaveRequestCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+
+
 LeaveRequestAllowedAction = Literal[
     "approve",
     "reject",
@@ -2005,6 +2022,14 @@ class LeaveRequestDecisionState(BaseModel):
     decided_by_id: UUID | None
     allowed_actions: list[LeaveRequestAllowedAction] = Field(default_factory=list)
     route_status: LeaveRequestRouteStatus | None = None
+    decided_at: datetime | None = None
+    decided_by_name: str | None = None
+    current_reviewer_name: str | None = None
+    approval_route: Literal["supervisor", "hr_fallback"] | None = None
+    fallback_reason_code: str | None = None
+    fallback_until: date | None = None
+    setup_error_code: Literal["LEAVE_APPROVER_NOT_CONFIGURED"] | None = None
+    reconciliation_status: Literal["not_required", "required"] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2013,6 +2038,7 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
     id: UUID
     employee_id: UUID
     leave_type_id: UUID
+    leave_type_name: str | None = None
     start_date: date
     end_date: date
     days_requested: Decimal
@@ -2024,6 +2050,7 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
     requested_by_id: UUID | None
     decided_by_id: UUID | None
     decided_by_name: str | None = None
+    current_reviewer_name: str | None = None
     decided_at: datetime | None
     decision_notes: str | None
     approval_route: Literal["supervisor", "hr_fallback"] | None = None
@@ -2033,6 +2060,7 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
     setup_error_code: Literal["LEAVE_APPROVER_NOT_CONFIGURED"] | None = None
     allowed_actions: list[LeaveRequestAllowedAction] = Field(default_factory=list)
     route_status: LeaveRequestRouteStatus | None = None
+    reconciliation_status: Literal["not_required", "required"] | None = None
     created_at: datetime
     updated_at: datetime
 

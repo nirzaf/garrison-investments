@@ -3677,15 +3677,13 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
         fallback_id = fallback_leave.json()["id"]
         from app.services.hr_workforce_service import HrWorkforceService
 
-        async def no_leave_approver(
-            self: HrWorkforceService, request, *, excluded_ids=None
-        ) -> list[UUID]:
-            return []
+        async def no_leave_approver(self: HrWorkforceService) -> set[UUID]:
+            return set()
 
         with monkeypatch.context() as unavailable:
             unavailable.setattr(
                 HrWorkforceService,
-                "_eligible_hr_leave_approver_ids",
+                "_active_hr_leave_approver_ids",
                 no_leave_approver,
             )
             routed = await client.post(
@@ -3916,6 +3914,61 @@ async def test_leave_unit_quote_requires_effective_policy_for_every_request_date
 
 
 @pytest.mark.asyncio
+async def test_requestable_leave_types_follow_selected_date_policy_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from typing import Any, cast
+
+    generic_type = SimpleNamespace(id=uuid4(), policy_required=False)
+    managed_type = SimpleNamespace(id=uuid4(), policy_required=True)
+    types = [generic_type, managed_type]
+    policies = [
+        SimpleNamespace(
+            id=uuid4(),
+            leave_type_id=managed_type.id,
+            employment_category="permanent",
+            effective_from=date(2026, 7, 1),
+            effective_to=date(2026, 7, 2),
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            leave_type_id=managed_type.id,
+            employment_category="permanent",
+            effective_from=date(2026, 7, 3),
+            effective_to=date(2026, 7, 4),
+        ),
+    ]
+    service = HrWorkforceService(Mock(spec=AsyncSession))
+    employee = cast(HrEmployee, SimpleNamespace(id=uuid4()))
+    scalar_call = 0
+
+    async def scalars(_statement):
+        nonlocal scalar_call
+        result = types if scalar_call % 2 == 0 else policies
+        scalar_call += 1
+        return iter(result)
+
+    async def eligible_category(*_args, **_kwargs):
+        return "permanent"
+
+    cast(Any, service).session.scalars = scalars
+    monkeypatch.setattr(
+        "app.services.hr_workforce_service._eligible_category", eligible_category
+    )
+
+    covered, _ = await service.list_requestable_leave_types(
+        employee, date(2026, 7, 1), date(2026, 7, 4)
+    )
+    assert {row.id for row in covered} == {generic_type.id, managed_type.id}
+
+    uncovered, _ = await service.list_requestable_leave_types(
+        employee, date(2026, 7, 1), date(2026, 7, 5)
+    )
+    assert [row.id for row in uncovered] == [generic_type.id]
+
+
+@pytest.mark.asyncio
 async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
     await skip_if_database_unavailable()
     hrm_uid, hrm_email, pw = await _create_portal_user("hr_manager")
@@ -4071,15 +4124,21 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         decision_state = await client.get(decision_path, headers=_auth(hrm_tok))
         assert decision_state.status_code == 200
         assert decision_state.headers["cache-control"] == "no-store"
-        assert decision_state.json() == {
+        decision_projection = decision_state.json()
+        assert {key: decision_projection[key] for key in (
+            "id", "status", "record_revision", "manager_recommendation",
+            "decided_by_id", "allowed_actions", "route_status",
+        )} == {
             "id": lr_id,
             "status": "approved",
             "record_revision": req.json()["record_revision"] + 1,
             "manager_recommendation": None,
             "decided_by_id": str(hrm_uid),
-            "allowed_actions": [],
+            "allowed_actions": ["cancel"],
             "route_status": "final",
         }
+        assert decision_projection["decided_at"]
+        assert decision_projection["decided_by_name"]
         queue = "/api/v1/hr/leave/requests"
         page_params = {"employee_id": emp_id, "limit": 1}
         first = await client.get(queue, headers=_auth(hrm_tok), params=page_params)
@@ -4241,7 +4300,10 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         assert blocked.status_code == 409
         assert blocked.json()["error_code"] == "INSUFFICIENT_LEAVE_BALANCE"
         assert (
-            await client.post(f"{req_path}/{boundary_id}/cancel", headers=staff)
+            await client.post(
+                f"{req_path}/{boundary_id}/cancel", headers=staff,
+                json={"expected_revision": spans_boundary.json()["record_revision"]},
+            )
         ).status_code == 200
         within = await client.post(
             req_path,
@@ -4259,6 +4321,48 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
             json={**approval, "expected_revision": within.json()["record_revision"]},
         )
         assert approved.status_code == 200, approved.text
+
+        # Archived types stay visible on historical requests and in the HR catalog,
+        # but self-service cannot quote or submit them again.
+        async with AsyncSessionLocal() as session:
+            archived_type = await session.get(HrLeaveType, UUID(lt_id))
+            assert archived_type is not None
+            archived_type.is_active = False
+            await session.commit()
+        generic_type_id = await _create_legacy_leave_type("Synthetic generic requestable leave")
+        self_types = await client.get("/api/v1/hr/me/leave-types", headers=staff)
+        assert self_types.status_code == 200, self_types.text
+        self_type_items = self_types.json()["items"]
+        assert all(item["id"] != lt_id for item in self_type_items)
+        assert any(
+            item["id"] == generic_type_id
+            and item["availability_state"] == "requestable_for_current_business_date"
+            for item in self_type_items
+        )
+        admin_types = await client.get("/api/v1/hr/leave/types", headers=preparer)
+        assert admin_types.status_code == 200, admin_types.text
+        assert any(
+            item["id"] == lt_id and item["is_active"] is False
+            for item in admin_types.json()["items"]
+        )
+        inactive_quote = await client.get(
+            "/api/v1/hr/me/leave-units",
+            headers=staff,
+            params={**period, "leave_type_id": lt_id},
+        )
+        assert inactive_quote.status_code == 404
+        inactive_submission = await client.post(
+            "/api/v1/hr/me/leave-requests",
+            headers=staff,
+            json={**period, "leave_type_id": lt_id, "submit_immediately": True},
+        )
+        assert inactive_submission.status_code == 404
+        historical_requests = await client.get("/api/v1/hr/me/leave-requests", headers=staff)
+        assert historical_requests.status_code == 200, historical_requests.text
+        historical = next(
+            item for item in historical_requests.json()["items"] if item["id"] == lr_id
+        )
+        assert historical["leave_type_name"] == "Synthetic legacy annual leave"
 
 
 @pytest.mark.asyncio
@@ -11611,7 +11715,7 @@ async def test_leave_fallback_eligibility_is_request_specific_and_batched() -> N
         statements: list[str] = []
         one_request_count, one_request_sql = await measure_projection(page_requests[:1])
         page_request_count, page_request_sql = await measure_projection(page_requests)
-        assert one_request_count == page_request_count == 3
+        assert one_request_count == page_request_count == 4
         for captured_sql in (one_request_sql, page_request_sql):
             normalized = [statement.lstrip().lower() for statement in captured_sql]
             assert sum(statement.startswith("select users.id") for statement in normalized) == 1

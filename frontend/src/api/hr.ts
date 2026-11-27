@@ -106,6 +106,7 @@ export type AttendanceCorrectionRecord = HrSchemas['AttendanceCorrectionResponse
 export type TimesheetRecord = HrSchemas['TimesheetResponse'];
 export type OvertimeRequestRecord = HrSchemas['OvertimeRequestResponse'];
 export type LeaveTypeRecord = HrSchemas['LeaveTypeResponse'];
+export type SelfServiceLeaveTypeRecord = HrSchemas['SelfServiceLeaveTypeResponse'];
 export type LeavePolicyRecord = HrSchemas['LeavePolicyResponse'];
 export type LeaveBalanceItem = HrSchemas['LeaveBalanceItem'];
 export type LeaveRequestRecord = HrSchemas['LeaveRequestResponse'];
@@ -963,7 +964,7 @@ export async function decideLeaveDateEvidence(
 }
 
 export async function listLeaveRequests(
-  params: { limit: number; offset: number; req_status?: string },
+  params: { limit: number; offset: number; req_status?: string; needs_attention?: boolean },
   signal?: AbortSignal
 ) {
   const { data } = await apiClient.get<HrSchemas['LeaveRequestListResponse']>('/hr/leave/requests', {
@@ -1446,8 +1447,11 @@ export async function updateMyHrProfile(payload: HrSchemas['EmployeeSelfUpdateRe
   return data;
 }
 
-export async function listMyLeaveTypes() {
-  const { data } = await apiClient.get<HrSchemas['LeaveTypeListResponse']>('/hr/me/leave-types');
+export async function listMyLeaveTypes(startDate?: string, endDate?: string) {
+  const { data } = await apiClient.get<HrSchemas['SelfServiceLeaveTypeListResponse']>(
+    '/hr/me/leave-types',
+    { params: { start_date: startDate, end_date: endDate } }
+  );
   return data;
 }
 
@@ -1570,8 +1574,10 @@ export async function submitMyLeaveRequest(payload: HrSchemas['LeaveRequestCreat
   return data;
 }
 
-export async function cancelMyLeaveRequest(id: string) {
-  const { data } = await apiClient.post<LeaveRequestRecord>(`/hr/me/leave-requests/${id}/cancel`);
+export async function cancelMyLeaveRequest(id: string, expectedRevision: number) {
+  const { data } = await apiClient.post<LeaveRequestRecord>(`/hr/me/leave-requests/${id}/cancel`, {
+    expected_revision: expectedRevision
+  });
   return data;
 }
 

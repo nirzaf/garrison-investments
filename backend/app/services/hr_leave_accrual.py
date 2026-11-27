@@ -961,6 +961,14 @@ async def _record_accrual(
     return quote.model_copy(update={"ledger_entry_id": entry.id, "outcome": "posted"})
 
 
+def _is_actionable_accrual(quote: LeaveAccrualResponse) -> bool:
+    return (
+        quote.ledger_entry_id is None
+        and quote.days > Decimal("0.00")
+        and quote.outcome in {None, "preview"}
+    )
+
+
 async def process_leave_accrual(
     session: AsyncSession,
     payload: LeaveAccrualRequest,
@@ -974,12 +982,16 @@ async def process_leave_accrual(
         session, payload, actor, lock=expected_digest is not None
     )
     if expected_digest is None:
-        if quote.ledger_entry_id or quote.outcome in {"not_due", "baseline_recognized"}:
+        if not _is_actionable_accrual(quote):
             return quote
         return quote.model_copy(update={"digest": digest})
     if quote.outcome in {"not_due", "baseline_recognized"}:
         raise AppException(
             "This managed entitlement does not need another credit.", status_code=409
+        )
+    if quote.outcome == "reconciliation_required":
+        raise AppException(
+            "Reconcile this leave entitlement before posting another credit.", status_code=409
         )
     if quote.ledger_entry_id:
         if digest != expected_digest or posted_by != actor.id:
@@ -987,6 +999,8 @@ async def process_leave_accrual(
         return quote
     if digest != expected_digest:
         raise AppException("The accrual preview changed. Review it again.", status_code=409)
+    if not _is_actionable_accrual(quote):
+        raise AppException("This accrual plan has no actionable credit to post.", status_code=409)
     saved = await _record_accrual(session, quote, digest, actor)
     await session.commit()
     return saved
@@ -1001,6 +1015,11 @@ async def post_scheduled_leave_accrual(
         return "already_posted"
     if quote.outcome in {"not_due", "baseline_recognized"}:
         return "not_due"
+    if not _is_actionable_accrual(quote):
+        raise AppException(
+            "This accrual plan requires reconciliation before scheduled posting.",
+            status_code=409,
+        )
     if quote.policy_id not in approved_policy_ids:
         return "outside_schedule"
     await _record_accrual(session, quote, digest, None)
@@ -1049,14 +1068,23 @@ async def process_leave_accrual_catch_up(
     if expected_digest is not None and expected_digest != digest:
         raise AppException("The catch-up preview changed. Review it again.", status_code=409)
 
+    has_actionable_period = any(_is_actionable_accrual(quote) for quote, _, _ in plans)
+    is_actor_retry = any(
+        quote.outcome == "already_posted" and posted_by == actor.id for quote, _, posted_by in plans
+    ) and all(
+        not _is_actionable_accrual(quote) for quote, _, _ in plans
+    )
+    if expected_digest is not None and not has_actionable_period and not is_actor_retry:
+        raise AppException("This catch-up plan has no actionable credit to post.", status_code=409)
+
     periods = []
     pending_days = Decimal("0")
     for quote, period_digest, posted_by in plans:
         if quote.ledger_entry_id is None:
             if expected_digest is None:
-                if quote.outcome not in {"not_due", "baseline_recognized"}:
+                if _is_actionable_accrual(quote):
                     pending_days += quote.days
-            elif quote.outcome not in {"not_due", "baseline_recognized"}:
+            elif _is_actionable_accrual(quote):
                 quote = await _record_accrual(session, quote, period_digest, actor)
         elif (
             expected_digest is not None

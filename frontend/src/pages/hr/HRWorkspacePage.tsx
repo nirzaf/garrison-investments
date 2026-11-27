@@ -198,15 +198,17 @@ export function HRWorkspacePage() {
   const [compliance, setCompliance] = useState<ExpiringComplianceResponse | null>(null);
   const [leaveTypes, setLeaveTypes] = useState<LeaveTypeRecord[]>([]);
   const [leaveStatus, setLeaveStatus] = useState('');
+  const [leaveNeedsAttention, setLeaveNeedsAttention] = useState(false);
   const [leaveOffset, setLeaveOffset] = useState(0);
   const [employeeDataQualityOffset, setEmployeeDataQualityOffset] = useState(0);
   const [restoreSupervisorRequest, setRestoreSupervisorRequest] =
     useState<LeaveRequestRecord | null>(null);
   const [restoreSupervisorReason, setRestoreSupervisorReason] = useState('');
   const leaveQueue = useQuery({
-    queryKey: [...LEAVE_REQUESTS_KEY, user?.id, leaveStatus, leaveOffset],
+    queryKey: [...LEAVE_REQUESTS_KEY, user?.id, leaveStatus, leaveNeedsAttention, leaveOffset],
     queryFn: ({ signal }) => listLeaveRequests({
-      limit: LEAVE_PAGE_SIZE, offset: leaveOffset, req_status: leaveStatus || undefined
+      limit: LEAVE_PAGE_SIZE, offset: leaveOffset, req_status: leaveStatus || undefined,
+      needs_attention: leaveNeedsAttention || undefined
     }, signal),
     enabled: tab === 'leave' && hasPerm('hr:leave:manage'),
     gcTime: 0
@@ -576,35 +578,44 @@ export function HRWorkspacePage() {
     }
   }
 
+  async function runLeaveChange(action: () => Promise<unknown>, fallback: string) {
+    return runChange(async () => {
+      try {
+        await action();
+      } finally {
+        // Refresh on conflicts as well as success. Never replay the write.
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: [...LEAVE_REQUESTS_KEY, user?.id] }),
+          queryClient.invalidateQueries({ queryKey: ['hr', 'me', user?.id] })
+        ]);
+      }
+    }, fallback, false);
+  }
+
   async function runLeaveDecision(
     requestId: string, payload: HrSchemas['LeaveRequestDecisionRequest'], fallback: string
   ) {
-    await runChange(async () => {
-      await decideLeaveRequest(requestId, payload);
-      await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
-    }, fallback, false);
+    if ((payload.decision === 'rejected' || payload.decision === 'cancelled') &&
+        !payload.notes?.trim()) {
+      setError('Enter a reason for rejection or reversal.');
+      return;
+    }
+    await runLeaveChange(() => decideLeaveRequest(requestId, payload), fallback);
   }
 
   async function runLeaveFallback(
-    requestId: string,
-    payload: HrSchemas['LeaveFallbackRequest'],
-    fallback: string
+    requestId: string, payload: HrSchemas['LeaveFallbackRequest'], fallback: string
   ) {
-    await runChange(async () => {
-      await routeLeaveRequestToHrFallback(requestId, payload);
-      await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
-    }, fallback, false);
+    await runLeaveChange(() => routeLeaveRequestToHrFallback(requestId, payload), fallback);
   }
 
   async function runLeaveRouteRefresh(
-    requestId: string,
-    payload: HrSchemas['LeaveRouteRefreshRequest']
+    requestId: string, payload: HrSchemas['LeaveRouteRefreshRequest']
   ) {
-    const succeeded = await runChange(async () => {
-      await refreshLeaveRequestRoute(requestId, payload);
-    }, 'Could not refresh the leave review assignment.', false);
-    await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
-    return succeeded;
+    return runLeaveChange(
+      () => refreshLeaveRequestRoute(requestId, payload),
+      'Could not refresh the leave review assignment.'
+    );
   }
 
   async function runServiceRequestChange(action: () => Promise<unknown>, fallback: string) {
@@ -1951,7 +1962,7 @@ export function HRWorkspacePage() {
               <select
                 className={hrInputClass}
                 value={leaveStatus}
-                disabled={pending}
+                disabled={pending || leaveNeedsAttention}
                 onChange={(event) => {
                   setLeaveOffset(0);
                   setLeaveStatus(event.target.value);
@@ -1965,6 +1976,20 @@ export function HRWorkspacePage() {
                 <option value="cancelled">Cancelled</option>
               </select>
             </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={leaveNeedsAttention} disabled={pending}
+                onChange={(event) => {
+                  setLeaveOffset(0);
+                  if (event.target.checked) setLeaveStatus('');
+                  setLeaveNeedsAttention(event.target.checked);
+                }} />
+              Needs rerouting or setup
+            </label>
+            {leaveNeedsAttention && (
+              <p className="text-xs text-theme-text-muted">
+                This view includes submitted requests only.
+              </p>
+            )}
             {leaveQueue.isPending && <p role="status">Loading leave requests…</p>}
             {leaveQueue.isError && (
               <p role="alert">
@@ -1975,25 +2000,31 @@ export function HRWorkspacePage() {
             {leaveQueue.data?.items.length === 0 && <p>No matching requests on this page.</p>}
             {leaveQueue.data?.items.map((lr) => (
               <div
-                className="flex items-center justify-between rounded border border-theme-border p-2.5 text-xs"
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-theme-border p-2.5 text-xs"
                 key={lr.id}
+                data-testid={`leave-request-${lr.id}`}
               >
-                <span>
+                <div className="min-w-0">
                   {lr.start_date} → {lr.end_date} ({lr.days_requested}d) · {lr.status}
-                  {lr.status === 'submitted' && lr.approval_route &&
+                  {lr.status === 'submitted' && lr.approval_route && lr.route_status !== 'refresh_required' &&
                     ` · Pending decision: ${lr.approval_route === 'supervisor' ? 'direct supervisor' : 'HR fallback'}`}
                   {['approved', 'rejected', 'cancelled'].includes(lr.status) &&
                     ` · Final decision by ${lr.decided_by_name ?? 'actor unavailable'} · ${lr.decided_at ? leaveDecisionTimestamp(lr.decided_at) : 'time unavailable'}`}
                   {lr.setup_error_code === 'LEAVE_APPROVER_NOT_CONFIGURED' &&
                     ' · HR fallback is not staffed; the request remains submitted.'}
-                  {lr.manager_recommendation && lr.approval_route !== 'supervisor' &&
-                    ` · Manager recommendation: ${lr.manager_recommendation}`}
-                  {!lr.manager_recommendation && lr.approval_route !== 'supervisor' &&
-                    lr.requires_manager_recommendation &&
-                    lr.status === 'submitted' &&
-                    ' · Pending manager recommendation'}
-                </span>
-                {lr.allowed_actions?.includes('approve') &&
+                  {lr.current_reviewer_name && ` · Current reviewer: ${lr.current_reviewer_name}`}
+                  {lr.route_status === 'refresh_required' && ' · Review assignment needs refreshing.'}
+                  {lr.fallback_reason_code && ` · Route reason: ${lr.fallback_reason_code}`}
+                  {lr.fallback_until && ` · Fallback through ${lr.fallback_until}`}
+                  {lr.reconciliation_status === 'required' && ' · Historical dates need reconciliation.'}
+                  {(lr.manager_recommendation || lr.requires_manager_recommendation) && (
+                    <details>
+                      <summary>Historical manager advisory</summary>
+                      {lr.manager_recommendation ?? 'No advisory was recorded.'}
+                    </details>
+                  )}
+                </div>
+                {(lr.allowed_actions?.includes('approve') || lr.allowed_actions?.includes('reject')) &&
                   lr.approval_route === 'hr_fallback' && (
                   <div className="flex flex-wrap gap-2">
                     <label>
@@ -2009,7 +2040,7 @@ export function HRWorkspacePage() {
                         }
                       />
                     </label>
-                    <button
+                    {lr.allowed_actions?.includes('approve') && <button
                       className="rounded bg-brand-600 px-2 py-1 text-white"
                       disabled={pending}
                       onClick={() =>
@@ -2022,10 +2053,10 @@ export function HRWorkspacePage() {
                       type="button"
                     >
                       Approve
-                    </button>
-                    <button
+                    </button>}
+                    {lr.allowed_actions?.includes('reject') && <button
                       className="rounded border border-theme-border px-2 py-1"
-                      disabled={pending}
+                      disabled={pending || !leaveDecisionNotes[lr.id]?.trim()}
                       onClick={() =>
                         void runLeaveDecision(
                           lr.id,
@@ -2040,7 +2071,7 @@ export function HRWorkspacePage() {
                       type="button"
                     >
                       Reject
-                    </button>
+                    </button>}
                   </div>
                 )}
                 {lr.allowed_actions?.includes('route_to_hr_fallback') &&
@@ -2120,8 +2151,7 @@ export function HRWorkspacePage() {
                     Refresh review assignment
                   </button>
                 )}
-                {hasPerm('hr:leave:approve') && lr.status === 'approved' &&
-                  lr.requested_by_id !== user?.id && (
+                {lr.allowed_actions?.includes('cancel') && lr.status === 'approved' && (
                   <details>
                     <summary className="cursor-pointer">Reverse approved leave</summary>
                     <form

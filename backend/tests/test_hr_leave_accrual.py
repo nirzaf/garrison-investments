@@ -1,5 +1,10 @@
 import asyncio
+import calendar
+from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import Literal, cast
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -7,7 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import engine
 from app.models.user import User
-from app.schemas.hr import LeaveAccrualResponse
+from app.schemas.hr import (
+    LeaveAccrualCatchUpRequest,
+    LeaveAccrualRequest,
+    LeaveAccrualResponse,
+)
 from app.services import hr_leave_accrual
 from app.services.hr_leave_accrual import _credit, _prorated_credit
 from app.utils.exceptions import AppException
@@ -19,6 +28,15 @@ from tests.test_hr import (
     _publish_leave_calendar,
     skip_if_database_unavailable,
 )
+
+AccrualOutcome = Literal[
+    "preview",
+    "posted",
+    "already_posted",
+    "not_due",
+    "reconciliation_required",
+    "baseline_recognized",
+]
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +53,256 @@ def test_monthly_rounding_reconciles_to_annual_entitlement() -> None:
     assert monthly[:2] == [Decimal("0.83"), Decimal("0.84")]
     assert _prorated_credit(Decimal("1.00"), 15, 29) == Decimal("0.52")
     assert _prorated_credit(Decimal("10.01"), 183, 366) == Decimal("5.01")
+
+
+@pytest.mark.asyncio
+async def test_catch_up_projects_only_actionable_days_and_posts_only_actionable_periods(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    employee_id = uuid4()
+    leave_type_id = uuid4()
+    policy_id = uuid4()
+    actor = cast(User, SimpleNamespace(id=uuid4()))
+    existing_ledger_id = uuid4()
+
+    def period(
+        month: int,
+        outcome: AccrualOutcome | None,
+        days: str,
+        *,
+        ledger_entry_id=None,
+        digest=None,
+    ) -> LeaveAccrualResponse:
+        return LeaveAccrualResponse(
+            employee_id=employee_id,
+            leave_type_id=leave_type_id,
+            policy_id=policy_id,
+            period_start=date(2026, month, 1),
+            period_end=date(2026, month, calendar.monthrange(2026, month)[1]),
+            days=Decimal(days),
+            ledger_entry_id=ledger_entry_id,
+            digest=digest,
+            outcome=outcome,
+        )
+
+    other_actor_id = uuid4()
+    quotes = {
+        1: (
+            period(1, "already_posted", "1.00", ledger_entry_id=existing_ledger_id),
+            other_actor_id,
+        ),
+        2: (period(2, "baseline_recognized", "0.00"), None),
+        3: (period(3, "reconciliation_required", "2.00"), None),
+        4: (period(4, "not_due", "0.00"), None),
+        5: (period(5, "preview", "0.50", digest="e" * 64), None),
+    }
+    period_digests = {month: f"{month:064x}" for month in quotes}
+    recorded_months: list[int] = []
+    commit = AsyncMock()
+    session = cast(AsyncSession, SimpleNamespace(commit=commit))
+
+    async def plan_accrual(_session, payload, _actor, *, lock):
+        assert isinstance(lock, bool)
+        assert payload.month is not None
+        quote, posted_by = quotes[payload.month]
+        return quote, period_digests[payload.month], posted_by
+
+    async def lock_payroll_periods(_session):
+        return None
+
+    async def record_accrual(_session, quote, _digest, _actor):
+        recorded_months.append(quote.period_start.month)
+        ledger_entry_id = uuid4()
+        saved = quote.model_copy(update={"ledger_entry_id": ledger_entry_id, "outcome": "posted"})
+        quotes[quote.period_start.month] = (
+            saved.model_copy(update={"outcome": "already_posted"}),
+            actor.id,
+        )
+        return saved
+
+    monkeypatch.setattr(hr_leave_accrual, "_plan_leave_accrual", plan_accrual)
+    monkeypatch.setattr(hr_leave_accrual, "_lock_leave_payroll_periods", lock_payroll_periods)
+    monkeypatch.setattr(hr_leave_accrual, "_record_accrual", record_accrual)
+    payload = LeaveAccrualCatchUpRequest(
+        employee_id=employee_id,
+        leave_type_id=leave_type_id,
+        year=2026,
+        start_month=1,
+        end_month=5,
+    )
+
+    preview = await hr_leave_accrual.process_leave_accrual_catch_up(session, payload, actor)
+    assert preview.pending_days == Decimal("0.50")
+    assert preview.digest
+    assert [item.outcome for item in preview.periods] == [
+        "already_posted",
+        "baseline_recognized",
+        "reconciliation_required",
+        "not_due",
+        "preview",
+    ]
+
+    applied = await hr_leave_accrual.process_leave_accrual_catch_up(
+        session, payload, actor, expected_digest=preview.digest
+    )
+    assert recorded_months == [5]
+    assert applied.pending_days == Decimal("0")
+    assert applied.periods[0].outcome == "already_posted"
+    assert applied.periods[0].ledger_entry_id == existing_ledger_id
+    assert applied.periods[2].outcome == "reconciliation_required"
+    assert applied.periods[2].ledger_entry_id is None
+
+    retried = await hr_leave_accrual.process_leave_accrual_catch_up(
+        session, payload, actor, expected_digest=preview.digest
+    )
+    assert retried == applied
+    assert recorded_months == [5]
+    assert commit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_single_reconciliation_outcome_cannot_be_applied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    employee_id = uuid4()
+    leave_type_id = uuid4()
+    quote = LeaveAccrualResponse(
+        employee_id=employee_id,
+        leave_type_id=leave_type_id,
+        policy_id=uuid4(),
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        days=Decimal("5.00"),
+        outcome="reconciliation_required",
+    )
+    actor = cast(User, SimpleNamespace(id=uuid4()))
+    session = cast(AsyncSession, SimpleNamespace())
+    record_accrual = AsyncMock()
+
+    async def plan_accrual(*_args, **_kwargs):
+        return quote, "a" * 64, None
+
+    async def lock_payroll_periods(_session):
+        return None
+
+    monkeypatch.setattr(hr_leave_accrual, "_plan_leave_accrual", plan_accrual)
+    monkeypatch.setattr(hr_leave_accrual, "_lock_leave_payroll_periods", lock_payroll_periods)
+    monkeypatch.setattr(hr_leave_accrual, "_record_accrual", record_accrual)
+
+    preview = await hr_leave_accrual.process_leave_accrual(
+        session,
+        LeaveAccrualRequest(
+            employee_id=employee_id,
+            leave_type_id=leave_type_id,
+            year=2026,
+        ),
+        actor,
+    )
+    assert preview.outcome == "reconciliation_required"
+    assert preview.digest is None
+
+    with pytest.raises(AppException) as failure:
+        await hr_leave_accrual.process_leave_accrual(
+            session,
+            LeaveAccrualRequest(
+                employee_id=employee_id,
+                leave_type_id=leave_type_id,
+                year=2026,
+            ),
+            actor,
+            expected_digest="a" * 64,
+        )
+    assert failure.value.status_code == 409
+    record_accrual.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_single_accrual_digest_is_rejected_without_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    employee_id = uuid4()
+    leave_type_id = uuid4()
+    quote = LeaveAccrualResponse(
+        employee_id=employee_id,
+        leave_type_id=leave_type_id,
+        policy_id=uuid4(),
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        days=Decimal("1.00"),
+        outcome="preview",
+    )
+    actor = cast(User, SimpleNamespace(id=uuid4()))
+    record_accrual = AsyncMock()
+
+    async def plan_accrual(*_args, **_kwargs):
+        return quote, "a" * 64, None
+
+    async def lock_payroll_periods(_session):
+        return None
+
+    monkeypatch.setattr(hr_leave_accrual, "_plan_leave_accrual", plan_accrual)
+    monkeypatch.setattr(hr_leave_accrual, "_lock_leave_payroll_periods", lock_payroll_periods)
+    monkeypatch.setattr(hr_leave_accrual, "_record_accrual", record_accrual)
+
+    with pytest.raises(AppException) as failure:
+        await hr_leave_accrual.process_leave_accrual(
+            cast(AsyncSession, SimpleNamespace()),
+            LeaveAccrualRequest(
+                employee_id=employee_id,
+                leave_type_id=leave_type_id,
+                year=2026,
+            ),
+            actor,
+            expected_digest="0" * 64,
+        )
+    assert failure.value.status_code == 409
+    record_accrual.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_single_receipt_retry_returns_existing_ledger_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    employee_id = uuid4()
+    leave_type_id = uuid4()
+    ledger_entry_id = uuid4()
+    digest = "a" * 64
+    quote = LeaveAccrualResponse(
+        employee_id=employee_id,
+        leave_type_id=leave_type_id,
+        policy_id=uuid4(),
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        days=Decimal("1.00"),
+        ledger_entry_id=ledger_entry_id,
+        outcome="already_posted",
+    )
+    actor = cast(User, SimpleNamespace(id=uuid4()))
+    record_accrual = AsyncMock()
+
+    async def plan_accrual(*_args, **_kwargs):
+        return quote, digest, actor.id
+
+    async def lock_payroll_periods(_session):
+        return None
+
+    monkeypatch.setattr(hr_leave_accrual, "_plan_leave_accrual", plan_accrual)
+    monkeypatch.setattr(hr_leave_accrual, "_lock_leave_payroll_periods", lock_payroll_periods)
+    monkeypatch.setattr(hr_leave_accrual, "_record_accrual", record_accrual)
+
+    result = await hr_leave_accrual.process_leave_accrual(
+        cast(AsyncSession, SimpleNamespace()),
+        LeaveAccrualRequest(
+            employee_id=employee_id,
+            leave_type_id=leave_type_id,
+            year=2026,
+        ),
+        cast(User, actor),
+        expected_digest=digest,
+    )
+    assert result.ledger_entry_id == ledger_entry_id
+    assert result.outcome == "already_posted"
+    record_accrual.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -120,6 +388,11 @@ async def test_paid_accrual_is_reviewed_idempotent_and_reconciled(
         assert plan["days"] == "0.84" and plan["policy_id"] == policy_id
         assert plan["ledger_entry_id"] is None
         posting = {**payload, "expected_digest": plan["digest"]}
+        stale = await client.post(apply, headers=hr, json={**payload, "expected_digest": "0" * 64})
+        assert stale.status_code == 409, stale.text
+        assert stale.json()["detail"] == "The accrual preview changed. Review it again."
+        fresh = await client.post(preview, headers=hr, json=payload)
+        assert fresh.status_code == 200 and fresh.json() == plan
         assert (await client.post(apply, headers=reviewer, json=posting)).status_code == 409
         responses = await asyncio.gather(
             *(client.post(apply, headers=hr, json=posting) for _ in range(2))

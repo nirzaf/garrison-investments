@@ -42,7 +42,7 @@ export function HRMeWorkflowPanel() {
         </p>
       )}
       {options.data?.can_recommend && <ManagerReviewQueue userId={userId} />}
-      {options.data?.can_decide_leave && <SupervisorLeaveQueue userId={userId} />}
+      {options.data?.can_decide_leave && <SupervisorLeaveQueue key={userId} userId={userId} />}
       {options.data?.self_time_submission_enabled && <SelfTimeRequests userId={userId} />}
     </>
   );
@@ -58,12 +58,14 @@ function SupervisorLeaveQueue({ userId }: { userId: string }) {
   const queueKey = ['hr', 'me', userId, 'leave-reviews'];
   const queue = useQuery({
     queryKey: [...queueKey, offset],
-    queryFn: ({ signal }) => listMyLeaveReviews(offset, PAGE_SIZE, signal)
+    queryFn: ({ signal }) => listMyLeaveReviews(offset, PAGE_SIZE, signal),
+    gcTime: 0
   });
 
   async function decide(item: SupervisorLeaveReviewRecord, decision: 'approved' | 'rejected') {
     if (pending) return;
     const note = (notes[item.id] ?? '').trim();
+    if (!item.allowed_actions?.includes(decision === 'approved' ? 'approve' : 'reject')) return;
     if (decision === 'rejected' && !note) {
       setError('Enter a reason before rejecting a leave request.');
       return;
@@ -78,7 +80,10 @@ function SupervisorLeaveQueue({ userId }: { userId: string }) {
     } catch (failure) {
       setError(formatApiError(failure, 'Could not decide the leave request.'));
     } finally {
-      await client.invalidateQueries({ queryKey: queueKey });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['hr', 'me', userId] }),
+        client.invalidateQueries({ queryKey: ['hr', 'leave-requests', userId] })
+      ]);
       setPending(false);
     }
   }
@@ -106,7 +111,7 @@ function SupervisorLeaveQueue({ userId }: { userId: string }) {
             <p>
               {item.employee_name} · {item.start_date}
               {item.end_date !== item.start_date ? ` to ${item.end_date}` : ''} ·{' '}
-              {item.chargeable_units} days
+              {item.chargeable_units} days · {item.status} · Revision {item.record_revision}
             </p>
             {item.allowed_actions?.length ? <>
             <label className="block text-sm">

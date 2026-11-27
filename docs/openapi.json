@@ -16316,6 +16316,21 @@
         "title": "LeavePolicyResponse",
         "type": "object"
       },
+      "LeaveRequestCancelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "LeaveRequestCancelRequest",
+        "type": "object"
+      },
       "LeaveRequestCreateRequest": {
         "properties": {
           "attachment_document_id": {
@@ -16476,6 +16491,44 @@
             "title": "Allowed Actions",
             "type": "array"
           },
+          "approval_route": {
+            "anyOf": [
+              {
+                "enum": [
+                  "supervisor",
+                  "hr_fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Route"
+          },
+          "current_reviewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Reviewer Name"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
           "decided_by_id": {
             "anyOf": [
               {
@@ -16487,6 +16540,40 @@
               }
             ],
             "title": "Decided By Id"
+          },
+          "decided_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Name"
+          },
+          "fallback_reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason Code"
+          },
+          "fallback_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Until"
           },
           "id": {
             "format": "uuid",
@@ -16503,6 +16590,21 @@
               }
             ],
             "title": "Manager Recommendation"
+          },
+          "reconciliation_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_required",
+                  "required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Status"
           },
           "record_revision": {
             "title": "Record Revision",
@@ -16526,6 +16628,18 @@
               }
             ],
             "title": "Route Status"
+          },
+          "setup_error_code": {
+            "anyOf": [
+              {
+                "const": "LEAVE_APPROVER_NOT_CONFIGURED",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Error Code"
           },
           "status": {
             "title": "Status",
@@ -16623,6 +16737,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "current_reviewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Reviewer Name"
           },
           "days_requested": {
             "title": "Days Requested",
@@ -16732,6 +16857,17 @@
             "title": "Leave Type Id",
             "type": "string"
           },
+          "leave_type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leave Type Name"
+          },
           "manager_recommendation": {
             "anyOf": [
               {
@@ -16769,6 +16905,21 @@
               }
             ],
             "title": "Reason"
+          },
+          "reconciliation_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_required",
+                  "required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Status"
           },
           "record_revision": {
             "title": "Record Revision",
@@ -29683,6 +29834,98 @@
           "reason"
         ],
         "title": "RosterCancellationRequest",
+        "type": "object"
+      },
+      "SelfServiceLeaveTypeListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SelfServiceLeaveTypeResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "SelfServiceLeaveTypeListResponse",
+        "type": "object"
+      },
+      "SelfServiceLeaveTypeResponse": {
+        "properties": {
+          "allow_half_day": {
+            "title": "Allow Half Day",
+            "type": "boolean"
+          },
+          "availability_state": {
+            "default": "requestable_for_current_business_date",
+            "enum": [
+              "requestable_for_selected_dates",
+              "requestable_for_current_business_date"
+            ],
+            "title": "Availability State",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_paid": {
+            "title": "Is Paid",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "requires_attachment": {
+            "title": "Requires Attachment",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "is_paid",
+          "requires_attachment",
+          "allow_half_day",
+          "is_active",
+          "description",
+          "created_at"
+        ],
+        "title": "SelfServiceLeaveTypeResponse",
         "type": "object"
       },
       "SelfTrainingItem": {
@@ -50927,6 +51170,16 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "needs_attention",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Needs Attention",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -52470,6 +52723,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LeaveRequestCancelRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -52715,12 +52985,48 @@
     "/api/v1/hr/me/leave-types": {
       "get": {
         "operationId": "list_my_leave_types_api_v1_hr_me_leave_types_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LeaveTypeListResponse"
+                  "$ref": "#/components/schemas/SelfServiceLeaveTypeListResponse"
                 }
               }
             },

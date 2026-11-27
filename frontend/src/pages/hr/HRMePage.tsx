@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   cancelMyLeaveRequest,
@@ -27,13 +27,14 @@ import {
   type HrServiceRequestType,
   type LeaveBalanceItem,
   type LeaveRequestRecord,
-  type LeaveTypeRecord
+  type SelfServiceLeaveTypeRecord
 } from '../../api/hr';
 import { formatApiError } from '../../api/errors';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { HRResponseLetter } from './HRResponseLetter';
 import { HRLetterRecords } from './HRLetterRecords';
 import { HRPayslips } from './HRPayslips';
+import { useAuth } from '../../context/useAuth';
 import { HRMeWorkflowPanel } from './HRMeWorkflowPanel';
 import { HRMyTraining } from './HRMyTraining';
 import { HRPerformanceReviews } from './HRPerformanceReviews';
@@ -57,10 +58,16 @@ const selfRecordLabels: Record<SelfRecordResource, string> = {
 };
 
 export function HRMePage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [profile, setProfile] = useState<EmployeeSelfRecord | null>(null);
   const [notLinked, setNotLinked] = useState(false);
   const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
-  const [leaveTypes, setLeaveTypes] = useState<LeaveTypeRecord[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<SelfServiceLeaveTypeRecord[]>([]);
+  const [leaveTypeAvailabilityRevision, setLeaveTypeAvailabilityRevision] = useState(0);
+  const [loadedLeaveTypeDates, setLoadedLeaveTypeDates] = useState<string | null>(null);
+  const [leaveTypeRefreshVersion, setLeaveTypeRefreshVersion] = useState(0);
+  const leaveTypeRequestSequence = useRef(0);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
   const [attendance, setAttendance] = useState<AttendanceEntryRecord[]>([]);
   const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
@@ -91,6 +98,8 @@ export function HRMePage() {
   const [leavePending, setLeavePending] = useState(false);
   const [editingLeave, setEditingLeave] = useState<LeaveRequestRecord | null>(null);
   const [visibleLeaveCount, setVisibleLeaveCount] = useState(5);
+  const selectedLeaveDateKey = `${leaveStart}|${leaveEnd}`;
+  const leaveTypesCurrentForDates = loadedLeaveTypeDates === selectedLeaveDateKey;
   const leaveDates = {
     leave_type_id: leaveTypeId,
     start_date: leaveStart,
@@ -99,9 +108,25 @@ export function HRMePage() {
     half_day_period: halfDayPeriod || null
   };
   const leaveUnits = useQuery({
-    queryKey: ['hr', 'self', profile?.employee.id, 'leave-units', leaveDates],
+    queryKey: [
+      'hr',
+      'self',
+      user?.id,
+      profile?.employee.id,
+      'leave-units',
+      leaveDates,
+      leaveTypeAvailabilityRevision
+    ],
     queryFn: () => getMyLeaveUnits(leaveDates),
-    enabled: Boolean(profile?.employee.id && leaveTypeId && leaveStart && leaveEnd),
+    enabled: Boolean(
+      profile?.employee.id &&
+        leaveTypeId &&
+        leaveStart &&
+        leaveEnd &&
+        leaveTypesCurrentForDates &&
+        !recordLoading.leaveTypes &&
+        !recordErrors.leaveTypes
+    ),
     retry: false
   });
 
@@ -141,21 +166,55 @@ export function HRMePage() {
     }
   }, []);
 
+  const acceptLeaveTypes = useCallback((result: { items: SelfServiceLeaveTypeRecord[] }) => {
+    const requestable = result.items.filter(
+      (item) =>
+        item.availability_state === 'requestable_for_selected_dates' ||
+        item.availability_state === 'requestable_for_current_business_date'
+    );
+    setLeaveTypes(requestable);
+    setLeaveTypeId((selected) => {
+      if (selected && requestable.some((item) => item.id === selected)) return selected;
+      if (editingLeave) return '';
+      return requestable[0]?.id ?? '';
+    });
+  }, [editingLeave]);
+
+  const loadLeaveTypes = useCallback(async (startDate?: string, endDate?: string) => {
+    const requestSequence = ++leaveTypeRequestSequence.current;
+    const availabilityKey = `${startDate ?? ''}|${endDate ?? ''}`;
+    setLoadedLeaveTypeDates(null);
+    setRecordLoading((current) => ({ ...current, leaveTypes: true }));
+    setRecordErrors((current) => ({ ...current, leaveTypes: undefined }));
+    setLeaveTypeAvailabilityRevision((revision) => revision + 1);
+    try {
+      const result = await listMyLeaveTypes(startDate, endDate);
+      if (requestSequence === leaveTypeRequestSequence.current) {
+        acceptLeaveTypes(result);
+        setLoadedLeaveTypeDates(availabilityKey);
+      }
+    } catch (err) {
+      if (requestSequence === leaveTypeRequestSequence.current) {
+        setLoadedLeaveTypeDates(null);
+        setRecordErrors((current) => ({
+          ...current,
+          leaveTypes: formatApiError(err, 'Unable to load leave types.')
+        }));
+      }
+    } finally {
+      if (requestSequence === leaveTypeRequestSequence.current) {
+        setRecordLoading((current) => ({ ...current, leaveTypes: false }));
+      }
+    }
+  }, [acceptLeaveTypes]);
+
   const retryRecord = useCallback(
     (resource: SelfRecordResource) => {
       switch (resource) {
         case 'balances':
           return loadRecord('balances', getMyLeaveBalances, (result) => setBalances(result.items));
         case 'leaveTypes':
-          return loadRecord('leaveTypes', listMyLeaveTypes, (result) => {
-            setLeaveTypes(result.items);
-            setLeaveTypeId((selected) => {
-              if (editingLeave?.leave_type_id === selected) return selected;
-              return result.items.some((item) => item.id === selected)
-                ? selected
-                : result.items[0]?.id || '';
-            });
-          });
+          return loadLeaveTypes(leaveStart || undefined, leaveEnd || undefined);
         case 'leaveRequests':
           return loadRecord('leaveRequests', listMyLeaveRequests, (result) =>
             setLeaveRequests(result.items)
@@ -174,7 +233,7 @@ export function HRMePage() {
           );
       }
     },
-    [editingLeave?.leave_type_id, loadRecord]
+    [leaveEnd, leaveStart, loadLeaveTypes, loadRecord]
   );
 
   const loadAll = useCallback(async () => {
@@ -183,6 +242,7 @@ export function HRMePage() {
     setNotLinked(false);
     try {
       acceptContactSnapshot(await getMyHrProfile());
+      setLeaveTypeRefreshVersion((version) => version + 1);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
         setNotLinked(true);
@@ -196,10 +256,6 @@ export function HRMePage() {
 
     await Promise.all([
       loadRecord('balances', getMyLeaveBalances, (result) => setBalances(result.items)),
-      loadRecord('leaveTypes', listMyLeaveTypes, (result) => {
-        setLeaveTypes(result.items);
-        setLeaveTypeId((selected) => selected || result.items[0]?.id || '');
-      }),
       loadRecord('leaveRequests', listMyLeaveRequests, (result) => setLeaveRequests(result.items)),
       loadRecord('attendance', listMyAttendance, (result) => setAttendance(result.items)),
       loadRecord('documents', listMyHrDocuments, (result) => setDocuments(result.items)),
@@ -212,6 +268,11 @@ export function HRMePage() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!profile?.employee.id) return;
+    void loadLeaveTypes(leaveStart || undefined, leaveEnd || undefined);
+  }, [leaveEnd, leaveStart, leaveTypeRefreshVersion, loadLeaveTypes, profile?.employee.id]);
 
   async function handleSaveContact(e: FormEvent) {
     e.preventDefault();
@@ -240,7 +301,16 @@ export function HRMePage() {
 
   async function handleSubmitLeave(e: FormEvent) {
     e.preventDefault();
-    if (leavePending || leaveUnits.isFetching || !leaveUnits.data || leaveUnits.isError) return;
+    if (
+      leavePending ||
+      !leaveTypesCurrentForDates ||
+      recordLoading.leaveTypes ||
+      recordErrors.leaveTypes ||
+      !leaveTypes.some((type) => type.id === leaveTypeId) ||
+      leaveUnits.isFetching ||
+      !leaveUnits.data ||
+      leaveUnits.isError
+    ) return;
     setLeavePending(true);
     setError(null);
     setNotice(null);
@@ -266,10 +336,18 @@ export function HRMePage() {
       setNotice(editingLeave ? 'Leave request resubmitted.' : 'Leave request submitted.');
     } catch (err) {
       setError(formatApiError(err, 'Unable to submit leave request.'));
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        await loadRecord('leaveRequests', listMyLeaveRequests, (result) => setLeaveRequests(result.items));
+      }
       if (axios.isAxiosError(err) && err.response?.data?.error_code === 'LEAVE_UNITS_MISMATCH') {
         void leaveUnits.refetch();
       }
     } finally {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['hr', 'me', user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['hr', 'leave-requests', user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['hr', 'self', user?.id] })
+      ]);
       setLeavePending(false);
     }
   }
@@ -286,9 +364,7 @@ export function HRMePage() {
 
   function editLeave(request: LeaveRequestRecord) {
     setEditingLeave(request);
-    setLeaveTypeId(
-      leaveTypes.some((type) => type.id === request.leave_type_id) ? request.leave_type_id : ''
-    );
+    setLeaveTypeId(request.leave_type_id);
     setLeaveStart(request.start_date);
     setLeaveEnd(request.end_date);
     setLeaveReason(request.reason ?? '');
@@ -302,19 +378,27 @@ export function HRMePage() {
     setNotice(null);
   }
 
-  async function cancelLeave(id: string) {
+  async function cancelLeave(request: LeaveRequestRecord) {
     if (leavePending) return;
     setLeavePending(true);
     setError(null);
     try {
-      const updated = await cancelMyLeaveRequest(id);
+      const updated = await cancelMyLeaveRequest(request.id, request.record_revision);
       setLeaveRequests((requests) =>
-        requests.map((request) => (request.id === id ? updated : request))
+        requests.map((item) => (item.id === request.id ? updated : item))
       );
       setNotice('Leave request cancelled.');
     } catch (failure) {
       setError(formatApiError(failure, 'Unable to cancel leave.'));
+      if (axios.isAxiosError(failure) && failure.response?.status === 409) {
+        await loadRecord('leaveRequests', listMyLeaveRequests, (result) => setLeaveRequests(result.items));
+      }
     } finally {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['hr', 'me', user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['hr', 'leave-requests', user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['hr', 'self', user?.id] })
+      ]);
       setLeavePending(false);
     }
   }
@@ -583,23 +667,30 @@ export function HRMePage() {
               className="w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setLeaveTypeId(e.target.value)}
               required
-              disabled={recordLoading.leaveTypes || leaveTypes.length === 0}
+              disabled={
+                !leaveTypesCurrentForDates ||
+                recordLoading.leaveTypes ||
+                Boolean(recordErrors.leaveTypes) ||
+                leaveTypes.length === 0
+              }
               aria-label="Leave type"
               value={leaveTypeId}
             >
               <option value="">
-                {recordLoading.leaveTypes
+                {recordLoading.leaveTypes || !leaveTypesCurrentForDates
                   ? 'Loading leave types…'
                   : recordErrors.leaveTypes
                     ? 'Leave types unavailable'
                     : leaveTypes.length === 0
-                      ? 'No leave types available'
+                      ? 'No leave types available for these dates'
                       : 'Select leave type'}
               </option>
               {editingLeave &&
+                leaveTypesCurrentForDates &&
                 !leaveTypes.some((item) => item.id === editingLeave.leave_type_id) && (
-                  <option value={editingLeave.leave_type_id}>
-                    Existing leave type (correction review only)
+                  <option value={editingLeave.leave_type_id} disabled>
+                    {editingLeave.leave_type_name ?? 'Historical leave type'} (unavailable for
+                    these dates; choose an available type to resubmit)
                   </option>
                 )}
               {leaveTypes.map((lt) => (
@@ -608,6 +699,25 @@ export function HRMePage() {
                 </option>
               ))}
             </select>
+            {leaveTypesCurrentForDates &&
+              !recordLoading.leaveTypes &&
+              !recordErrors.leaveTypes &&
+              leaveTypes.length === 0 && (
+                <p className="text-sm text-theme-text-muted" role="status">
+                  No leave types are available for these dates. Check HR setup or select another
+                  period.
+                </p>
+              )}
+            {editingLeave &&
+              leaveTypesCurrentForDates &&
+              !recordLoading.leaveTypes &&
+              !recordErrors.leaveTypes &&
+              !leaveTypes.some((item) => item.id === editingLeave.leave_type_id) && (
+                <p className="text-sm text-theme-text-muted" role="status">
+                  This leave type is unavailable for the selected dates. Its saved details remain
+                  available for review; choose an available type before resubmitting.
+                </p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <input
                 className="rounded-md border border-theme-border bg-theme-input px-2 py-1.5 text-sm"
@@ -681,7 +791,16 @@ export function HRMePage() {
             />
             <button
               className="rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-              disabled={!leaveUnits.isSuccess || leaveUnits.isFetching || leavePending}
+              disabled={
+                !leaveTypeId ||
+                !leaveTypesCurrentForDates ||
+                !leaveTypes.some((type) => type.id === leaveTypeId) ||
+                recordLoading.leaveTypes ||
+                Boolean(recordErrors.leaveTypes) ||
+                !leaveUnits.isSuccess ||
+                leaveUnits.isFetching ||
+                leavePending
+              }
               type="submit"
             >
               {editingLeave ? 'Resubmit leave request' : 'Submit leave request'}
@@ -705,10 +824,18 @@ export function HRMePage() {
                 key={r.id}
               >
                 <span>
-                  {r.start_date} to {r.end_date} ({r.days_requested}d)
-                  {r.status === 'submitted' && r.approval_route && (
+                  {r.leave_type_name ?? 'Leave'}: {r.start_date} to {r.end_date} ({r.days_requested}d)
+                  {r.status === 'submitted' && r.approval_route && r.route_status !== 'refresh_required' && (
                     <span className="block">
                       Awaiting {r.approval_route === 'supervisor' ? 'direct supervisor' : 'HR fallback'}
+                    </span>
+                  )}
+                  {r.route_status === 'refresh_required' && (
+                    <span className="block">The review assignment needs refreshing by HR.</span>
+                  )}
+                  {['approved', 'rejected', 'cancelled'].includes(r.status) && (
+                    <span className="block">
+                      Final result: {r.status}{r.decided_at && ` · ${new Date(r.decided_at).toLocaleString()}`}
                     </span>
                   )}
                   {r.setup_error_code === 'LEAVE_APPROVER_NOT_CONFIGURED' && (
@@ -735,13 +862,12 @@ export function HRMePage() {
                       Edit leave request
                     </button>
                   )}
-                {r.requested_by_id === profile.employee.user_id &&
-                  ['draft', 'submitted'].includes(r.status) && (
+                {r.allowed_actions?.includes('cancel') && (
                     <button
                       type="button"
                       className="font-semibold text-brand-600"
                       disabled={leavePending}
-                      onClick={() => void cancelLeave(r.id)}
+                      onClick={() => void cancelLeave(r)}
                     >
                       Cancel leave
                     </button>

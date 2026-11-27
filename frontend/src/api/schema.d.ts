@@ -12897,6 +12897,11 @@ export interface components {
              */
             status: "legacy" | "draft" | "approved" | "rejected";
         };
+        /** LeaveRequestCancelRequest */
+        LeaveRequestCancelRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+        };
         /** LeaveRequestCreateRequest */
         LeaveRequestCreateRequest: {
             /** Attachment Document Id */
@@ -12951,8 +12956,20 @@ export interface components {
         LeaveRequestDecisionState: {
             /** Allowed Actions */
             allowed_actions?: ("approve" | "reject" | "cancel" | "route_to_hr_fallback" | "refresh_route" | "restore_supervisor")[];
+            /** Approval Route */
+            approval_route?: ("supervisor" | "hr_fallback") | null;
+            /** Current Reviewer Name */
+            current_reviewer_name?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
             /** Decided By Id */
             decided_by_id: string | null;
+            /** Decided By Name */
+            decided_by_name?: string | null;
+            /** Fallback Reason Code */
+            fallback_reason_code?: string | null;
+            /** Fallback Until */
+            fallback_until?: string | null;
             /**
              * Id
              * Format: uuid
@@ -12960,10 +12977,14 @@ export interface components {
             id: string;
             /** Manager Recommendation */
             manager_recommendation: string | null;
+            /** Reconciliation Status */
+            reconciliation_status?: ("not_required" | "required") | null;
             /** Record Revision */
             record_revision: number;
             /** Route Status */
             route_status?: ("draft" | "pending_supervisor" | "pending_hr" | "approver_not_configured" | "refresh_required" | "final") | null;
+            /** Setup Error Code */
+            setup_error_code?: "LEAVE_APPROVER_NOT_CONFIGURED" | null;
             /** Status */
             status: string;
         };
@@ -12989,6 +13010,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Current Reviewer Name */
+            current_reviewer_name?: string | null;
             /** Days Requested */
             days_requested: string;
             /** Decided At */
@@ -13027,12 +13050,16 @@ export interface components {
              * Format: uuid
              */
             leave_type_id: string;
+            /** Leave Type Name */
+            leave_type_name?: string | null;
             /** Manager Recommendation */
             manager_recommendation: ("support" | "flag") | null;
             /** Manager Recommended At */
             manager_recommended_at: string | null;
             /** Reason */
             reason: string | null;
+            /** Reconciliation Status */
+            reconciliation_status?: ("not_required" | "required") | null;
             /** Record Revision */
             record_revision: number;
             /** Requested By Id */
@@ -17581,6 +17608,46 @@ export interface components {
         RosterCancellationRequest: {
             /** Reason */
             reason: string;
+        };
+        /** SelfServiceLeaveTypeListResponse */
+        SelfServiceLeaveTypeListResponse: {
+            /** Items */
+            items: components["schemas"]["SelfServiceLeaveTypeResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** SelfServiceLeaveTypeResponse */
+        SelfServiceLeaveTypeResponse: {
+            /** Allow Half Day */
+            allow_half_day: boolean;
+            /**
+             * Availability State
+             * @default requestable_for_current_business_date
+             * @enum {string}
+             */
+            availability_state: "requestable_for_selected_dates" | "requestable_for_current_business_date";
+            /** Code */
+            code: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Paid */
+            is_paid: boolean;
+            /** Name */
+            name: string;
+            /** Requires Attachment */
+            requires_attachment: boolean;
         };
         /** SelfTrainingItem */
         SelfTrainingItem: {
@@ -27006,6 +27073,7 @@ export interface operations {
                 req_status?: string | null;
                 limit?: number | null;
                 offset?: number;
+                needs_attention?: boolean;
             };
             header?: never;
             path?: never;
@@ -27884,7 +27952,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequestCancelRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -28010,7 +28082,10 @@ export interface operations {
     };
     list_my_leave_types_api_v1_hr_me_leave_types_get: {
         parameters: {
-            query?: never;
+            query?: {
+                start_date?: string | null;
+                end_date?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28023,7 +28098,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LeaveTypeListResponse"];
+                    "application/json": components["schemas"]["SelfServiceLeaveTypeListResponse"];
                 };
             };
             /** @description Invalid request */

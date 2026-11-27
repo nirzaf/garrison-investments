@@ -13,6 +13,80 @@ import {
 
 type Input = HrSchemas['LeaveAccrualRequest'] | HrSchemas['LeaveAccrualCatchUpRequest'];
 type Plan = HrSchemas['LeaveAccrualCatchUpResponse'];
+type Period = Plan['periods'][number];
+
+function isActionableLeaveAccrualPeriod(period: Period): boolean {
+  return (
+    !period.ledger_entry_id &&
+    Number(period.days) > 0 &&
+    (period.outcome === 'preview' || period.outcome == null)
+  );
+}
+
+function hasActionableLeaveAccrualDays(plan: Plan): boolean {
+  return Number(plan.pending_days) > 0 && plan.periods.some(isActionableLeaveAccrualPeriod);
+}
+
+function canConfirmLeaveAccrual(plan: Plan): boolean {
+  return Boolean(plan.digest && hasActionableLeaveAccrualDays(plan));
+}
+
+function outcomeLabel(period: Period, planDigest?: string | null): string {
+  if (period.ledger_entry_id) {
+    return `Posted. Ledger reference ${period.ledger_entry_id}`;
+  }
+  switch (period.outcome) {
+    case 'not_due':
+      return 'Not due';
+    case 'baseline_recognized':
+      return 'Recognized in reviewed baseline';
+    case 'posted':
+    case 'already_posted':
+      return 'Posted. Ledger reference unavailable';
+    case 'reconciliation_required':
+      return 'Reconciliation required';
+    case 'preview':
+      return isActionableLeaveAccrualPeriod(period) && (period.digest || planDigest)
+        ? 'Ready for confirmation'
+        : 'Not actionable';
+    default:
+      return 'Legacy preview';
+  }
+}
+
+export function LeaveAccrualPlan({
+  plan,
+  pending,
+  onConfirm
+}: {
+  plan: Plan;
+  pending: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="mt-2 space-y-2" aria-live="polite">
+      <ul>
+        {plan.periods.map((period) => (
+          <li key={period.period_start}>
+            {period.period_start} through {period.period_end} · {period.days} days
+            {period.due_date ? ` · Due ${period.due_date}` : ''}
+            {period.service_year_band ? ` · Service year ${period.service_year_band}` : ''}
+            {period.eligible_from && period.eligible_through
+              ? ` · Prorated for ${period.eligible_from} through ${period.eligible_through}`
+              : ''}
+            {` · ${outcomeLabel(period, plan.digest)}`}
+          </li>
+        ))}
+      </ul>
+      {hasActionableLeaveAccrualDays(plan) && <p>Days to credit: {plan.pending_days}</p>}
+      {canConfirmLeaveAccrual(plan) && (
+        <button type="button" disabled={pending} onClick={onConfirm}>
+          Confirm and post accrual
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function HRLeaveAccrual({
   employees,
@@ -43,12 +117,13 @@ export function HRLeaveAccrual({
           input,
           plan: {
             periods: [period],
-            pending_days: period.ledger_entry_id ? '0' : period.days,
+            pending_days: isActionableLeaveAccrualPeriod(period) ? period.days : '0.00',
             digest: period.digest
           }
         });
       }
     } catch (failure) {
+      if (digest) setPreview(null);
       setError(formatApiError(failure, 'Could not process leave accrual.'));
     } finally {
       setPending(false);
@@ -131,53 +206,11 @@ export function HRLeaveAccrual({
       {pending && <p role="status">Processing leave accrual…</p>}
       {error && <p role="alert">{error}</p>}
       {preview && (
-        <div className="mt-2 space-y-2" aria-live="polite">
-          <ul>
-            {preview.plan.periods.map((period) => (
-              <li key={period.period_start}>
-                {period.period_start} through {period.period_end} · {period.days} days
-                {period.due_date ? ` · Due ${period.due_date}` : ''}
-                {period.service_year_band ? ` · Service year ${period.service_year_band}` : ''}
-                {period.eligible_from && period.eligible_through
-                  ? ` · Prorated for ${period.eligible_from} through ${period.eligible_through}`
-                  : ''}
-                {period.ledger_entry_id
-                  ? ` · Posted. Ledger reference ${period.ledger_entry_id}`
-                  : period.outcome === 'not_due'
-                    ? ' · Not due'
-                    : period.outcome === 'baseline_recognized'
-                      ? ' · Recognized in reviewed baseline'
-                      : period.outcome === 'already_posted'
-                        ? ' · Already posted'
-                        : period.outcome === 'reconciliation_required'
-                          ? ' · Reconciliation required'
-                          : period.outcome === 'preview' && period.digest
-                            ? ' · Ready for confirmation'
-                            : period.outcome == null
-                              ? ' · Legacy preview'
-                              : ' · Not actionable'}
-              </li>
-            ))}
-          </ul>
-          {preview.plan.digest &&
-            Number(preview.plan.pending_days) > 0 &&
-            preview.plan.periods.some(
-              (period) =>
-                Number(period.days) > 0 &&
-                (period.outcome === 'preview' || period.outcome == null)
-            ) && (
-            <>
-              <p>Days to credit: {preview.plan.pending_days}</p>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => void run(preview.input, preview.plan.digest ?? undefined)}
-              >
-                Confirm and post accrual
-              </button>
-            </>
-          )}
-        </div>
+        <LeaveAccrualPlan
+          plan={preview.plan}
+          pending={pending}
+          onConfirm={() => void run(preview.input, preview.plan.digest ?? undefined)}
+        />
       )}
     </details>
   );

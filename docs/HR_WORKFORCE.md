@@ -301,10 +301,34 @@ roster and evidence.
   explicitly routed to HR for a recorded supervisor-unavailable reason. If no
   active HR approver is configured, the request remains pending and the portal
   reports that routing issue instead of approving it automatically.
+  Leave projections expose actor-specific `allowed_actions` and current route
+  status; HR decision, fallback and route-refresh receipts use the same projection.
+  HR sees final actor/time and the current eligible supervisor's display name.
+  Self-service shows only the employee's result/time; supervisor queues contain
+  scheduling fields, status and revision, without leave type, reason or attachments.
+  **Needs rerouting or setup** filters current route/setup issues before pagination.
+  `reconciliation_status` flags approved legacy cross-month requests missing their
+  historical work dates; it does not certify entitlement or balance reconciliation.
+  Rejection and approved-leave reversal need a reason. Final approve/reject
+  decisions and cancellation of already approved leave require the displayed
+  revision. Draft and submitted self-cancellation remain compatible without a
+  request body; if a revision is supplied it is still checked. A 409 reloads
+  current records without replaying the write.
+  Historical manager advisory fields remain available as history and never gate
+  a supervisor's final leave decision. HR responses retain `no-store`, and browser
+  query keys bind to the actor and are cleared when the account changes.
   My HR previews the leave days from the published work schedule. A shift's
   calendar takes precedence for its dates, followed by the employee calendar,
   site calendar and company default. Only workdays that are free of holidays
   count. A permitted half day counts as 0.50 on a single scheduled workday.
+  My HR offers active leave types applicable to the dates entered; managed
+  types need approved policy coverage for every selected date. Changing the
+  dates refreshes availability. Without selected dates, it checks availability
+  for the current business date. The server checks coverage again when quoting
+  and submitting. HR's leave catalog continues to show inactive types, and
+  historical requests retain their leave-type label. If the original type is
+  inactive or unavailable for the selected dates, choose a currently available
+  type before resubmitting; the original request details remain available for review.
   Requests need calendar coverage for every date and must stay within one
   calendar year. HR should publish missing calendar periods before rollout.
   The server recalculates on submit or resubmit and stores the resulting units.

@@ -152,6 +152,7 @@ from app.schemas.hr import (
     LeaveLedgerAdjustRequest,
     LeavePolicyCreateRequest,
     LeavePolicyDecisionRequest,
+    LeaveRequestAllowedAction,
     LeaveRequestCreateRequest,
     LeaveRequestDecisionRequest,
     LeaveRequestDecisionState,
@@ -467,6 +468,47 @@ async def _managed_leave_policies_for_employee_year(
             window_start = effective_date
         inspect_window(window_start, period_end, category, employment_unresolved)
     return list(applicable.values()), unresolved
+
+
+def leave_request_allowed_actions(
+    request: HrLeaveRequest,
+    actor: User,
+    employee_user_id: UUID | None,
+    *,
+    route_current: bool,
+    eligible_hr_ids: set[UUID],
+    supervisor_review: bool = False,
+) -> list[LeaveRequestAllowedAction]:
+    """Shared actor/route validator; writes still recheck accounting under their locks."""
+    if not actor.is_active or actor.deleted_at is not None or actor.role not in BUSINESS_ROLES:
+        return []
+    independent = actor.id not in {employee_user_id, request.requested_by_id}
+    hr_reviewer = has_permission(actor, PERMISSION_HR_LEAVE_APPROVE) and independent
+    actions: list[LeaveRequestAllowedAction] = []
+    if request.status in {"draft", "submitted"} and (
+        actor.id == employee_user_id == request.requested_by_id
+    ):
+        actions.append("cancel")
+    if request.status == "approved" and hr_reviewer:
+        actions.append("cancel")
+    if request.status != "submitted":
+        return actions
+    if hr_reviewer and not supervisor_review:
+        actions.append("refresh_route")
+        if (
+            route_current and request.approval_route == "hr_fallback"
+            and request.fallback_reason_code == "manager_temporarily_unavailable"
+        ):
+            actions.append("restore_supervisor")
+    if route_current and independent:
+        if request.approval_route == "supervisor":
+            if supervisor_review and request.assigned_supervisor_user_id == actor.id:
+                actions.extend(("approve", "reject"))
+            elif hr_reviewer and not supervisor_review:
+                actions.append("route_to_hr_fallback")
+        elif hr_reviewer and actor.id in eligible_hr_ids and not supervisor_review:
+            actions.extend(("approve", "reject"))
+    return actions
 
 
 class HrWorkforceService:
@@ -3787,7 +3829,10 @@ class HrWorkforceService:
         return rows, len(rows)
 
     async def list_requestable_leave_types(
-        self, employee: HrEmployee
+        self,
+        employee: HrEmployee,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> tuple[list[HrLeaveType], int]:
         rows = list(
             await self.session.scalars(
@@ -3796,13 +3841,30 @@ class HrWorkforceService:
                 .order_by(HrLeaveType.code)
             )
         )
+        selected_dates = start_date is not None or end_date is not None
+        today = business_today()
+        coverage_start = start_date or end_date or today
+        coverage_end = end_date or start_date or coverage_start
+        coverage_days = (coverage_end - coverage_start).days + 1
+        if selected_dates and (
+            coverage_days < 1
+            or coverage_start.year != coverage_end.year
+            or coverage_days > 366
+        ):
+            return [], 0
+
         required = [row for row in rows if row.policy_required]
         if not required:
             return rows, len(rows)
-        today = business_today()
+
         category_resolved = True
         try:
-            category = await _managed_category_at(self.session, employee, today)
+            if selected_dates:
+                category = await _eligible_category(
+                    self.session, employee, coverage_start, coverage_end
+                )
+            else:
+                category = await _managed_category_at(self.session, employee, coverage_start)
         except AppException:
             category = None
             category_resolved = False
@@ -3814,19 +3876,40 @@ class HrWorkforceService:
                         HrLeavePolicy.status == "approved",
                         HrLeavePolicy.is_active.is_(True),
                         HrLeavePolicy.approved_at.is_not(None),
-                        HrLeavePolicy.effective_from <= today,
-                        HrLeavePolicy.effective_to >= today,
+                        HrLeavePolicy.effective_from <= coverage_end,
+                        HrLeavePolicy.effective_to >= coverage_start,
                         or_(
                             HrLeavePolicy.employment_category.is_(None),
                             HrLeavePolicy.employment_category == category,
                         ),
-                    )
+                    ).order_by(HrLeavePolicy.employment_category.is_(None), HrLeavePolicy.id)
                 )
             )
             if category_resolved
             else []
         )
-        covered_ids = {policy.leave_type_id for policy in policies}
+
+        policies_by_type: dict[UUID, list[HrLeavePolicy]] = {}
+        for policy in policies:
+            policies_by_type.setdefault(policy.leave_type_id, []).append(policy)
+        covered_ids: set[UUID] = set()
+        for leave_type in required:
+            type_policies = policies_by_type.get(leave_type.id, [])
+            if not type_policies:
+                continue
+            covered_every_date = True
+            for offset in range(coverage_days):
+                covered_date = coverage_start + timedelta(days=offset)
+                if not any(
+                    policy.effective_from is not None
+                    and policy.effective_to is not None
+                    and policy.effective_from <= covered_date <= policy.effective_to
+                    for policy in type_policies
+                ):
+                    covered_every_date = False
+                    break
+            if covered_every_date:
+                covered_ids.add(leave_type.id)
         rows = [row for row in rows if not row.policy_required or row.id in covered_ids]
         return rows, len(rows)
 
@@ -5137,15 +5220,15 @@ class HrWorkforceService:
         excluded = set(excluded_ids or ())
         excluded.add(request.requested_by_id) if request.requested_by_id else None
         excluded.add(employee_user_id) if employee_user_id else None
-        query = select(User.id).where(
+        return sorted((await self._active_hr_leave_approver_ids()) - excluded)
+
+    async def _active_hr_leave_approver_ids(self) -> set[UUID]:
+        return set(await self.session.scalars(select(User.id).where(
             User.role.in_(roles_with_permission(PERMISSION_HR_LEAVE_APPROVE)),
             User.is_active.is_(True),
             User.deleted_at.is_(None),
             User.role.in_(BUSINESS_ROLES),
-        )
-        if excluded:
-            query = query.where(User.id.not_in(excluded))
-        return list(await self.session.scalars(query.order_by(User.id)))
+        )))
 
     async def _leave_route_is_current(
         self, request: HrLeaveRequest, employee: HrEmployee
@@ -5603,6 +5686,8 @@ class HrWorkforceService:
     ) -> HrLeaveRequest:
         # Keep every leave decision on the same side of the payroll lock as manager
         # changes, baseline reconciliation, accrual, rollover and correction writers.
+        if not own_request and not supervisor_decision:
+            ensure_permission(actor, PERMISSION_HR_LEAVE_APPROVE)
         await lock_payroll_periods(self.session)
         req = await self.session.scalar(
             select(HrLeaveRequest).where(HrLeaveRequest.id == leave_request_id).with_for_update()
@@ -5628,16 +5713,15 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="INVALID_STATE",
             )
-        if payload.decision in {"approved", "rejected"} or (
-            payload.decision == "cancelled" and prev_status == "approved"
-        ):
-            if payload.expected_revision is None:
-                raise AppException(
-                    "Reload the leave request and include its current revision.",
-                    status_code=409,
-                    error_code="REVISION_REQUIRED",
-                )
         reversal = payload.decision == "cancelled" and prev_status == "approved"
+        if (payload.decision in {"approved", "rejected"} or reversal) and (
+            payload.expected_revision is None
+        ):
+            raise AppException(
+                "Reload the leave request and include its current revision.",
+                status_code=409,
+                error_code="REVISION_REQUIRED",
+            )
         if payload.decision == "approved" or reversal:
             await ensure_leave_year_open(
                 self.session, req.employee_id, req.leave_type_id, req.start_date.year
@@ -5678,13 +5762,11 @@ class HrWorkforceService:
                 )
             if supervisor_decision:
                 manager = await self._employee_for_user(actor)
-                current_route = await self._resolve_leave_route(emp, req.requested_by_id)
                 if (
                     req.approval_route != "supervisor"
                     or req.assigned_supervisor_user_id != actor.id
                     or emp.manager_employee_id != manager.id
-                    or current_route[0] != "supervisor"
-                    or current_route[1] != actor.id
+                    or not await self._leave_route_is_current(req, emp)
                 ):
                     raise AppException(
                         "The supervisor assignment changed. Reload the request or ask HR "
@@ -5715,6 +5797,17 @@ class HrWorkforceService:
                     )
                 if actor.id not in eligible_approver_ids:
                     raise PermissionDeniedException(PERMISSION_HR_LEAVE_APPROVE)
+        if payload.decision in {"approved", "rejected"} or (
+            payload.decision == "cancelled" and (reversal or own_request)
+        ):
+            action = {"approved": "approve", "rejected": "reject", "cancelled": "cancel"}[
+                payload.decision
+            ]
+            if action not in leave_request_allowed_actions(
+                req, actor, emp.user_id, route_current=True,
+                eligible_hr_ids={actor.id}, supervisor_review=supervisor_decision,
+            ):
+                raise PermissionDeniedException(PERMISSION_HR_LEAVE_APPROVE)
         reversed_debit_id = None
         decision_notes = payload.notes
         if payload.decision == "approved":
@@ -5834,14 +5927,8 @@ class HrWorkforceService:
         )
         base = (
             select(
-                HrLeaveRequest.id,
+                HrLeaveRequest,
                 HrEmployee.full_name.label("employee_name"),
-                HrLeaveRequest.start_date,
-                HrLeaveRequest.end_date,
-                HrLeaveRequest.days_requested.label("chargeable_units"),
-                HrLeaveRequest.is_half_day,
-                HrLeaveRequest.status,
-                HrLeaveRequest.record_revision,
             )
             .join(HrEmployee, HrEmployee.id == HrLeaveRequest.employee_id)
             .where(
@@ -5853,6 +5940,7 @@ class HrWorkforceService:
                 HrLeaveRequest.status == "submitted",
                 HrLeaveRequest.approval_route == "supervisor",
                 HrLeaveRequest.assigned_supervisor_user_id == actor.id,
+                HrLeaveRequest.fallback_until.is_(None),
                 HrLeaveRequest.requested_by_id.is_distinct_from(actor.id),
                 ~manager_absent.exists(),
             )
@@ -5866,16 +5954,21 @@ class HrWorkforceService:
                 .offset(offset)
                 .limit(limit)
             )
-        ).mappings().all()
+        ).all()
         return SupervisorLeaveReviewListResponse(
             items=[
-                SupervisorLeaveReviewItem.model_validate(row).model_copy(
-                    update={
-                        "allowed_actions": ["approve", "reject"],
-                        "route_status": "pending_supervisor",
-                    }
+                SupervisorLeaveReviewItem(
+                    id=request.id, employee_name=employee_name,
+                    start_date=request.start_date, end_date=request.end_date,
+                    chargeable_units=request.days_requested, is_half_day=request.is_half_day,
+                    status="submitted", record_revision=request.record_revision,
+                    allowed_actions=leave_request_allowed_actions(
+                        request, actor, None, route_current=True,
+                        eligible_hr_ids=set(), supervisor_review=True,
+                    ),
+                    route_status="pending_supervisor",
                 )
-                for row in rows
+                for request, employee_name in rows
             ],
             total=total,
             offset=offset,
@@ -6184,6 +6277,7 @@ class HrWorkforceService:
         status: str | None = None,
         limit: int | None = None,
         offset: int = 0,
+        needs_attention: bool = False,
     ) -> tuple[list[HrLeaveRequest], int]:
         stmt = select(HrLeaveRequest)
         if employee_id:
@@ -6191,6 +6285,39 @@ class HrWorkforceService:
         if status:
             stmt = stmt.where(HrLeaveRequest.status == status)
         ordered = stmt.order_by(HrLeaveRequest.created_at.desc(), HrLeaveRequest.id.desc())
+        if needs_attention:
+            # Route currency depends on current employee, account and absence state.
+            # Reuse the batched validator before pagination so totals/pages are exact.
+            ordered = ordered.where(HrLeaveRequest.status == "submitted")
+            eligible_hr_ids = await self._active_hr_leave_approver_ids()
+            matches: list[HrLeaveRequest] = []
+            match_total = 0
+            scan_offset = 0
+            while True:
+                batch = list(await self.session.scalars(ordered.offset(scan_offset).limit(100)))
+                if not batch:
+                    break
+                current = await self._leave_routes_current(batch)
+                employee_users = dict((await self.session.execute(
+                    select(HrEmployee.id, HrEmployee.user_id).where(
+                        HrEmployee.id.in_({row.employee_id for row in batch}),
+                        HrEmployee.deleted_at.is_(None),
+                    )
+                )).all())
+                for row in batch:
+                    unstaffed = row.approval_route == "hr_fallback" and not (
+                        eligible_hr_ids - {row.requested_by_id, employee_users.get(row.employee_id)}
+                    )
+                    if not current.get(row.id, False) or unstaffed:
+                        if match_total >= offset and (
+                            limit is None or match_total < offset + limit
+                        ):
+                            matches.append(row)
+                        match_total += 1
+                scan_offset += len(batch)
+                if len(batch) < 100:
+                    break
+            return matches, match_total
         if limit is None and offset == 0:
             rows = list(await self.session.scalars(ordered))
             return rows, len(rows)
