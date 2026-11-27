@@ -66,6 +66,11 @@ async def _send_email_notification(notification_id: str) -> str:
         if outbox is not None and outbox.status == "processing" and outbox.lease_until is not None:
             if outbox.lease_until > utc_now():
                 return "notification email is already claimed"
+            if notification.email_status == "sent":
+                outbox.status = "completed"
+                outbox.lease_until = None
+                await session.commit()
+                return "notification email already sent"
             outbox.status = "manual_review"
             outbox.lease_until = None
             notification.email_status = "unknown"
@@ -89,8 +94,17 @@ async def _send_email_notification(notification_id: str) -> str:
             await session.commit()
             logger.info("email_not_actionable", notification_id=notification_id)
             return "notification email skipped"
+        is_leave_notification = notification.reference_type == "hr_leave_request"
         user = await users.get_by_id(notification.user_id)
         if user is None or not user.is_active or user.deleted_at is not None:
+            if is_leave_notification:
+                notification.email_status = "skipped"
+                if outbox is not None:
+                    outbox.status = "completed"
+                    outbox.lease_until = None
+                await session.commit()
+                logger.info("leave_email_no_longer_actionable", notification_id=notification_id)
+                return "notification email skipped"
             notification.email_status = "failed"
             if outbox is not None:
                 outbox.status = "failed"
@@ -98,7 +112,7 @@ async def _send_email_notification(notification_id: str) -> str:
             await session.commit()
             logger.error("email_recipient_not_eligible", notification_id=notification_id)
             return "notification recipient not found"
-        if notification.reference_type == "hr_leave_request":
+        if is_leave_notification:
             if not await _can_deliver_leave_notification(session, notification, user):
                 notification.email_status = "skipped"
                 if outbox is not None:
@@ -123,6 +137,9 @@ async def _send_email_notification(notification_id: str) -> str:
         if outbox is not None:
             outbox.status = "processing"
             outbox.lease_until = utc_now() + timedelta(minutes=5)
+        # Commit the claim before transport I/O to preserve request -> notification lock order.
+        # A provider can accept mail before a worker crashes; without transport idempotency, that
+        # outcome stays ambiguous and cannot be promised exactly once.
         await session.commit()
 
     if title is None or body is None or recipient is None:
@@ -235,7 +252,7 @@ async def _can_deliver_leave_notification(session, notification: Notification, u
         if (
             request.status != "submitted"
             or user.id in {employee.user_id, request.requested_by_id}
-            or not await workflow._leave_route_is_current(request, employee)
+            or not await workflow._leave_notification_route_is_current(request, employee)
         ):
             return False
         if request.approval_route == "supervisor":

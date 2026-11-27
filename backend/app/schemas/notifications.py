@@ -18,6 +18,7 @@ class NotificationResponse(BaseModel):
     read_at: datetime | None
     created_at: datetime
     superseded_at: datetime | None = None
+    is_actionable: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

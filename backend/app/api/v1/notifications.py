@@ -20,11 +20,18 @@ async def list_notifications(
     limit: int = Query(default=100, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> NotificationListResponse:
-    notifications, total = await NotificationService(session).list_for_user(
-        current_user, limit=limit, offset=offset
-    )
+    service = NotificationService(session)
+    notifications, total = await service.list_for_user(current_user, limit=limit, offset=offset)
+    actionability = await service.actionability_for_user(notifications, current_user)
     return NotificationListResponse(
-        items=[NotificationResponse.model_validate(item) for item in notifications],
+        items=[
+            NotificationResponse.model_validate(item).model_copy(
+                update={"is_actionable": actionability[item.id]}
+            )
+            if item.id in actionability
+            else NotificationResponse.model_validate(item)
+            for item in notifications
+        ],
         total=total,
     )
 

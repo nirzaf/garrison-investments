@@ -437,7 +437,7 @@ class DashboardService:
         return int(await self.session.scalar(query) or 0)
 
     async def _count_notifications(self, actor: User) -> int:
-        return await NotificationRepository(self.session).unread_count(actor.id)
+        return await NotificationRepository(self.session).unread_count(actor)
 
     async def _recent_activity(self, project_ids: list | None) -> list[str]:
         query = select(DailyReport.report_number, DailyReport.status).where(

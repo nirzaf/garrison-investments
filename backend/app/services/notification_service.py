@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import Notification
 from app.models.task_outbox import TaskOutbox, notification_email_outbox_dedupe_key
 from app.models.user import User
-from app.repositories.notification_repository import NotificationRepository
+from app.repositories.notification_repository import PENDING_LEAVE_EVENTS, NotificationRepository
 
 # Kept as a module attribute for existing test/operator patch points; dispatch is persisted below.
 from app.tasks.email import send_email_notification  # noqa: F401
@@ -60,8 +60,24 @@ class NotificationService:
     ) -> tuple[list[Notification], int]:
         return await self.notifications.list_for_user(user.id, limit=limit, offset=offset)
 
+    async def actionability_for_user(
+        self, notifications: list[Notification], user: User
+    ) -> dict[UUID, bool]:
+        pending = [
+            notification
+            for notification in notifications
+            if notification.reference_type == "hr_leave_request"
+            and notification.event_code in PENDING_LEAVE_EVENTS
+        ]
+        if not pending:
+            return {}
+        actionable_ids = await self.notifications.actionable_leave_notification_ids(
+            {notification.id for notification in pending}, user
+        )
+        return {notification.id: notification.id in actionable_ids for notification in pending}
+
     async def unread_count(self, user: User) -> int:
-        return await self.notifications.unread_count(user.id)
+        return await self.notifications.unread_count(user)
 
     async def mark_read(self, notification_id: UUID, user: User) -> Notification:
         notification = await self.notifications.get_for_user(notification_id, user.id)

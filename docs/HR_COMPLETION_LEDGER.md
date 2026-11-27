@@ -2168,7 +2168,7 @@ reasons to weaken the existing role or policy controls.
 | LM-05 | PARTIAL | Managed carry/credit guard in `hr_leave_rollover.py` and `hr_workforce_service.py`; leave tests | Complete category-window and concurrent credit/debit matrix; approved live inputs remain absent. |
 | LM-06 | PARTIAL | Direct/reviewed manager updates reroute pending leave in `hr_service.py`; HR tests | Full writer/concurrency matrix and authorized manager/account roster readback. |
 | LM-07 | COMPLETED | Open-ended shift and ambiguous schedule handling; `test_site_attendance.py` / `test_hr.py`; backend suite | No local dependency; real calendar coverage still requires approved data. |
-| LM-08 | PARTIAL | Existing date-evidence assessment retained; rollover guards unchanged and tested | Closure waiver stays disabled until an approved source policy and independent authority exist. |
+| LM-08 | PARTIAL | Existing `HrLeaveDateEvidence` review is retained. Focused disposable-PostgreSQL regressions verify the existing date-evidence flow and unmet-block denial; `test_annual_block_reassesses_after_reviewed_legacy_date_evidence` confirms an approved historical date repair changes `unverified` to `taken` while preserving the approved request and original debit, after which the existing zero-carry rollover preview is allowed. | No closure exception was added. Zero-carry expiry despite a genuinely unmet block remains disabled until an owner-approved source policy expressly permits it and names an independent decision authority; CFG-04 records that both are absent. |
 | LM-09 | BLOCKED_POLICY | Existing inactive, policy-required leave type behavior retained; HR tests pass | Approved sick, maternity and unpaid rules, source references and effective policies are missing. |
 | LM-10 | PARTIAL | Self-service requestable leave type filtering and empty/stale selection handling; HR UI/API changes and suite | Add direct inactive-ID and historical-label acceptance coverage. |
 | LM-11 | PARTIAL | Explicit accrual outcome labels in `HRLeaveAccrual.tsx`; frontend tests/build pass | Add all mixed catch-up/stale digest visual cases. |
@@ -2213,7 +2213,7 @@ reasons to weaken the existing role or policy controls.
 | HR-09 | PARTIAL | API-bound leave baseline/review/fallback/route-refresh CLI actions and regressions in `test_garrisonctl_hr_leave.py` | Complete live actor/readback and stale/replay API matrix. |
 | HR-10 | PARTIAL | CLI lifecycle inventory and accepted leave actions documented; CLI tests pass | Full accepted admin-operation coverage and policy-gated workflows remain. |
 | OPS-01 | UNVERIFIED | Public readiness endpoint returned HTTP 200 with database connected | Deployed SHA, release receipt, schema/image IDs and worker/beat readback were not independently available. |
-| OPS-02 | PARTIAL | Clean disposable PostgreSQL full backend: 1,466 passed/6 skipped; frontend 14 files/66 tests; Chrome shards 39 passed and 50 passed/1 skipped; Alembic fresh and populated upgrades to 115 passed | No hosted exact-candidate CI: worktree is uncommitted and no release was authorized. |
+| OPS-02 | PARTIAL | Current local source tree: full backend 1,522 passed/6 skipped; frontend 15 files/75 tests and production build passed; Chrome 91 passed/1 skipped; fresh disposable PostgreSQL upgrade to Alembic head 202605310116 passed. Full lint, typing, OpenAPI and generated-type checks passed. | No hosted exact-candidate CI: worktree has uncommitted changes and no release was authorized. |
 | OPS-03 | PARTIAL | Existing report executed read-only against synthetic DB; six categories ran, aggregate synthetic rows: 28 legacy material, 7 incomplete valuation, 3 stock activity, 1 legacy attendance, 2 attendance eligibility, 19 unclassified evidence | Production report execution and protected ledger require separate authorization. |
 | OPS-04 | BLOCKED_AUTHORIZATION | No live findings were accessed or altered | Assigning owners and applying live disposition requires approved production read access and task-specific authority. |
 | OPS-05 | PARTIAL | Isolated mocked notification/mail tests and both browser shards pass | Approved live recipient/provider and worker/beat readback are unavailable. |
@@ -2249,21 +2249,23 @@ reasons to weaken the existing role or policy controls.
 
 ## 26-finding audit addendum · local candidate based on `37dab2ad`
 
-This addendum records the separate 26-finding assignment against the actual
-local baseline `37dab2ad14d981b71ac048884df3cc47337aab9f` (`main`), matching
-`origin/main` at preflight. The candidate is local and unpushed; its current
-single Alembic head is `202605310116`. These IDs belong to the 26-finding audit
-and are not replacements for the similarly named IDs in the 60-finding
-register above. No production state was read or changed. `COMPLETED` means the
-local behavior and focused evidence passed; it does not mean policy activation,
-production release or UAT.
+This addendum records the separate 26-finding assignment whose audit reference
+and `origin/main` at preflight were `37dab2ad14d981b71ac048884df3cc47337aab9f`.
+The actual local checkout was already at `7175a69133fbed3d8eda1728b979ef2493d5c52d`
+(`feat: harden workflow audit remediation`), with the audit implementation
+committed locally and additional uncommitted changes preserved. The candidate
+remains local and unpushed; its single Alembic head is `202605310116`. These IDs
+belong to the 26-finding audit and are not replacements for similarly named IDs
+in the 60-finding register above. No production state was read or changed.
+`COMPLETED` means local behavior and focused evidence passed; it does not mean
+policy activation, production release or UAT.
 
 | Finding | Status | Local implementation and executed evidence | Remaining dependency |
 | --- | --- | --- | --- |
-| INV-01 | PARTIAL | `inventory_service.py` requires eligible project stock and stable stock locks; `test_daily_reports.py` covers project stock, central-stock rejection/rollback and insufficient repeated quantity; `test_report_payment_concurrency.py::test_double_approve_consumes_stock_once` covers one movement under concurrent approval. | Add focused foreign-project, deleted/inactive stock and reserved-stock cases. |
-| INV-02 | PARTIAL | `inventory_service.py` resolves exact normalized code/name and validates item eligibility, units and Decimal quantities before movement; report regressions pass. | Explicit ambiguity, inactive/non-consumable item and unit-mismatch acceptance cases remain. |
-| INV-03 | PARTIAL | `report_service.py` rejects a consumed-line count mismatch; all material lines validate before movements, and report approval rollback is tested for central/missing stock. | Add explicit empty-report, line-error correction/retry and candidate-stock lock race cases. |
-| HR-01 | PARTIAL | `hr_leave_accrual.py` shares the managed legacy-credit reconciliation guard with final approval; `test_hr_leave_accrual.py::test_managed_leave_approval_requires_reconciliation_for_legacy_credit` and the focused HR/accrual suite pass. | Add separate-session approval versus accrual/baseline serialization coverage. |
+| INV-01 | COMPLETED | `InventoryService.consume_daily_report_materials` scopes eligible nondeleted stock to the exact report project and locks active locations and stock in stable order. PostgreSQL regressions in `test_daily_reports.py` cover central/unassigned and foreign-project stock, inactive/deleted locations and deleted stock, reserved stock, and competing reports for one stock row. | None for local behavior; no historical stock repair was performed. |
+| INV-02 | COMPLETED | The inventory service resolves exact normalized code before exact normalized name, rejects ambiguous matches, inactive/deleted/nonconsumable items and mismatched units, and validates positive finite Decimal quantities before movement. `test_daily_reports.py::test_report_approval_uses_exact_code_before_a_matching_name`, `test_report_approval_rejects_ambiguous_name_and_unit_mismatch`, and `test_report_approval_rejects_ineligible_item` cover these paths. | None for local behavior. |
+| INV-03 | COMPLETED | `ReportService._consume_report_materials` requires exact consumed-line count, including zero. The service validates all lines before posting; PostgreSQL regressions cover all-lines rollback, repeated-line aggregation, single-location/no-reserved sufficiency, empty reports, authorized stock-receipt retry, concurrent reports, and failed-approval state/audit/notification rollback. `ApprovalInboxPage` displays allowlisted line-specific messages via `formatApiError`; its browser path is covered in `daily-report.e2e.ts`. | None for local behavior; browser verification is limited to rendering the actual error contract with a deterministic mocked 409, paired with real API regression coverage. |
+| HR-01 | COMPLETED | `decide_leave_request` uses the shared managed legacy-credit reconciliation guard before balance/debit writes under the payroll and employee locks. `test_hr_leave_accrual.py::test_managed_leave_approval_requires_reconciliation_for_legacy_credit` verifies unreconciled-credit denial, reviewed negative adjustment, stale receipt rejection, concurrent accrual/approval, duplicate decision serialization, and exactly one taken ledger debit; existing generic-policy tests preserve unmanaged behavior. | No production entitlement or employee balance was read or changed. |
 | SEC-01 | COMPLETED | `dashboard_service.py` intersects project scope with document service visibility and classification before SQL counting; `test_dashboard_pending_document_count_uses_document_scope_and_classification` passed for scoped supervisor and financial director projections. | Production visibility remains unverified. |
 | NOT-01 | COMPLETED | `notification_service.py`, `task_outbox.py`, `tasks/outbox.py`, and `tasks/email.py` persist dispatch state with notifications, lease and retry delivery, and retain ambiguous outcomes for review. Transaction rollback, broker retry, provider result, duplicate delivery and expired-claim tests in `test_notifications.py` passed. | Live provider receipt and worker/beat health remain unverified; no exactly-once external-mail claim. |
 | NOT-02 | COMPLETED | `api/v1/notifications.py`, `notification_repository.py`, `NotificationsPage.tsx`, and `notifications.ts` implement bounded stable pagination and previous/next navigation; `test_notification_pagination_unread_parity_and_bulk_read_are_complete` and frontend notification tests passed. | None for local behavior. |
@@ -2291,7 +2293,7 @@ The policy-blocked items above do not block independent local fixes. The
 local candidate has no hosted CI, deployment or independent production
 readback; those states are recorded separately from local verification below.
 
-### 26-finding verification record
+### 26-finding verification record · prior local checkpoint
 
 - Final pre-commit checkout was `main` at `37dab2ad14d981b71ac048884df3cc47337aab9f`;
   a read-only fetch confirmed `origin/main` still matched. The candidate remains
@@ -2322,3 +2324,14 @@ readback; those states are recorded separately from local verification below.
 - `git diff --check` and `graphify update .` passed. No hosted CI, push, merge,
   deploy, production readback, live notification delivery, policy activation,
   production data disposition or business UAT is claimed.
+
+### Current local verification · 2026-11-27
+
+- Actual checkout: branch `main`, committed `HEAD` `7175a69133fbed3d8eda1728b979ef2493d5c52d`, parent/audit reference `37dab2ad14d981b71ac048884df3cc47337aab9f`; a read-only fetch confirmed `origin/main` remained at `37dab2ad14d981b71ac048884df3cc47337aab9f`. The worktree has 23 modified tracked files; none were staged, discarded, or published.
+- Fresh disposable PostgreSQL database `garrison_backend_full_resume_20261127` was upgraded to `202605310116`; full `pytest -q -rs` passed: **1,522 passed, 6 skipped, 18 warnings** in 521.76 seconds. Skips: five Docker-opt-in forward-stack tests and one explicit Docker-ingress test. An earlier full run on a reused database had eight failures; its first reported failure was caused by persisted overlapping calendar state. That run is not counted as passing; the clean-database run passed, including the calendar case.
+- Focused report approval regressions passed on PostgreSQL, including all-line rollback, retry after authorized stock receipt, empty reports, ineligible/deleted stock and locations, and competing reports. The managed-leave reconciliation/concurrency regression passed separately. The full backend run also includes these tests.
+- Frontend checks passed: ESLint, generated API types check, Vitest (**15 files / 75 tests**) and production build. Playwright collected 92 tests and completed **91 passed, 1 skipped**; the skipped support-custody case requires `SUPPORT_CUSTODY_MODE=single_owner`. The daily-report UI line-error/retry flow and HR route-restoration/data-quality browser paths ran. The report test uses a deterministic mocked 409 to exercise safe UI messaging; real stock denial/rollback/retry are covered by PostgreSQL API tests.
+- Backend Ruff passed; Mypy passed with no issues in 466 source files; `scripts/export_openapi.py --check`, `git diff --check` and Alembic single-head check passed. Current head remains `202605310116`. No schema change was made in this follow-up; the existing populated `202605310115`→`202605310116` rehearsal is recorded above.
+- The earlier full run against a reused test database reported eight failures, including a persisted overlapping-calendar fixture. That run is retained as history and not counted as a passing check; the full fresh-database run above is the controlling result.
+- The tested non-ledger working-tree diff SHA-256 was `fdde47239970417674ee3f34705b8276b47aaf6515c8450f19e36f7f80b321c2` across 22 modified tracked files, calculated as `git diff --binary HEAD -- . ':!docs/HR_COMPLETION_LEDGER.md' | shasum -a 256`. The ledger is excluded to avoid a self-referential digest; the overall tree was `HEAD` plus these tracked changes and this ledger edit.
+- No production database or employee data, live mail recipient, hosted CI, deployment, or independent production readback was used. No push, merge, policy activation, role grant, destructive operation, or history rewrite was performed. Production status, approved policy inputs, live dispositions and UAT remain separately blocked or unverified as listed in the 26 findings.

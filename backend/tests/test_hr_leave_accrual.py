@@ -955,10 +955,40 @@ async def test_managed_leave_approval_requires_reconciliation_for_legacy_credit(
                 == 0
             )
 
+        balances = await client.get(
+            f"/api/v1/hr/leave/balances/{employee_id}?leave_year={fixed_today.year}",
+            headers=maker,
+        )
+        assert balances.status_code == 200, balances.text
+        balance_item = next(
+            item
+            for item in balances.json()["items"]
+            if item["leave_type_id"] == str(leave_type_id)
+        )
+        assert balance_item["balance_days"] == "5.00"
+        assert balance_item["entitlement_status"] == "reconciliation_required"
+
+        historical_preview = await client.post(
+            "/api/v1/hr/leave/entitlement-baseline/preview",
+            headers=maker,
+            json={
+                "employee_id": str(employee_id),
+                "leave_type_id": str(leave_type_id),
+                "year": fixed_today.year,
+                "as_of_date": (fixed_today - timedelta(days=1)).isoformat(),
+                "verified_balance": "5.00",
+                "recognized_due_dates": [],
+                "supporting_reference": "Synthetic reviewed baseline receipt",
+            },
+        )
+        assert historical_preview.status_code == 409, historical_preview.text
+        assert historical_preview.json()["error_code"] == "LEAVE_BASELINE_DATE_INVALID"
+
+        invalid_baseline_id = uuid4()
         async with AsyncSessionLocal() as session:
             session.add(
                 HrLeaveEntitlementBaseline(
-                    id=uuid4(),
+                    id=invalid_baseline_id,
                     employee_id=employee_id,
                     leave_type_id=leave_type_id,
                     leave_year=2099,
@@ -975,14 +1005,134 @@ async def test_managed_leave_approval_requires_reconciliation_for_legacy_credit(
             )
             await session.commit()
 
-        approved = await client.post(
+        invalid_receipt = await client.post(
             decision_url,
             headers=reviewer,
             json={"decision": "approved", "expected_revision": 1},
         )
-        assert approved.status_code == 200, approved.text
+        assert invalid_receipt.status_code == 409, invalid_receipt.text
+        assert invalid_receipt.json()["error_code"] == "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"
+        async with AsyncSessionLocal() as session:
+            saved_request = await session.get(HrLeaveRequest, request_id)
+            assert saved_request is not None
+            assert saved_request.status == "submitted"
+            assert saved_request.record_revision == 1
+            assert (
+                await session.scalar(
+                    select(func.count(HrLeaveLedger.id)).where(
+                        HrLeaveLedger.reference_request_id == request_id
+                    )
+                )
+                == 0
+            )
+
+        async with AsyncSessionLocal() as session:
+            invalid_baseline = await session.get(
+                HrLeaveEntitlementBaseline, invalid_baseline_id
+            )
+            assert invalid_baseline is not None
+            await session.delete(invalid_baseline)
+            await session.commit()
+
+        baseline_payload = {
+            "employee_id": str(employee_id),
+            "leave_type_id": str(leave_type_id),
+            "year": fixed_today.year,
+            "as_of_date": fixed_today.isoformat(),
+            "verified_balance": "4.00",
+            "recognized_due_dates": [],
+            "supporting_reference": "Synthetic reviewed baseline receipt",
+        }
+        baseline_url = "/api/v1/hr/leave/entitlement-baseline"
+        positive_adjustment = await client.post(
+            f"{baseline_url}/preview",
+            headers=maker,
+            json={**baseline_payload, "verified_balance": "6.00"},
+        )
+        assert positive_adjustment.status_code == 409, positive_adjustment.text
+        assert positive_adjustment.json()["error_code"] == "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"
+        baseline_preview = await client.post(
+            f"{baseline_url}/preview", headers=maker, json=baseline_payload
+        )
+        assert baseline_preview.status_code == 200, baseline_preview.text
+        assert baseline_preview.json()["adjustment_days"] == "-1.00"
+        baseline_applied = await client.post(
+            f"{baseline_url}/apply",
+            headers=maker,
+            json={
+                **baseline_payload,
+                "expected_digest": baseline_preview.json()["digest"],
+            },
+        )
+        assert baseline_applied.status_code == 200, baseline_applied.text
+        async with AsyncSessionLocal() as session:
+            valid_receipt = await session.get(
+                HrLeaveEntitlementBaseline, UUID(baseline_applied.json()["receipt_id"])
+            )
+            assert valid_receipt is not None
+            assert valid_receipt.ledger_digest != valid_receipt.plan_digest
+            late_credit = HrLeaveLedger(
+                employee_id=employee_id,
+                leave_type_id=leave_type_id,
+                entry_type="opening_balance",
+                days_delta=Decimal("2.00"),
+                leave_year=fixed_today.year,
+                reason="Synthetic post-review unrecognized credit",
+                actor_user_id=UUID(maker_id),
+            )
+            session.add(late_credit)
+            await session.commit()
+
+        late_credit_decision = await client.post(
+            decision_url,
+            headers=reviewer,
+            json={"decision": "approved", "expected_revision": 1},
+        )
+        assert late_credit_decision.status_code == 409, late_credit_decision.text
+        assert late_credit_decision.json()["error_code"] == "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"
+        async with AsyncSessionLocal() as session:
+            await session.delete(late_credit)
+            await session.commit()
+
+        accrual_payload = {
+            "employee_id": str(employee_id),
+            "leave_type_id": str(leave_type_id),
+            "year": fixed_today.year,
+        }
+        accrual_preview = await client.post(
+            "/api/v1/hr/leave/accrual/preview",
+            headers=maker,
+            json=accrual_payload,
+        )
+        assert accrual_preview.status_code == 200, accrual_preview.text
+        accrual_digest = accrual_preview.json().get("digest")
+        assert isinstance(accrual_digest, str) and accrual_digest
+        accrual_attempt, *decisions = await asyncio.gather(
+            client.post(
+                "/api/v1/hr/leave/accrual/apply",
+                headers=maker,
+                json={**accrual_payload, "expected_digest": accrual_digest},
+            ),
+            *(
+                client.post(
+                    decision_url,
+                    headers=reviewer,
+                    json={"decision": "approved", "expected_revision": 1},
+                )
+                for _ in range(2)
+            ),
+        )
+        assert accrual_attempt.status_code in {200, 409}, accrual_attempt.text
+        if accrual_attempt.status_code == 409:
+            assert accrual_attempt.json()["detail"] in {
+                "The accrual preview changed. Review it again.",
+                "This period overlaps a posted accrual.",
+            }
+        assert sorted(response.status_code for response in decisions) == [200, 409]
+        approved = next(response for response in decisions if response.status_code == 200)
         assert approved.json()["status"] == "approved"
         assert approved.json()["record_revision"] == 2
+
         async with AsyncSessionLocal() as session:
             debit = await session.scalar(
                 select(HrLeaveLedger).where(HrLeaveLedger.reference_request_id == request_id)
@@ -991,3 +1141,687 @@ async def test_managed_leave_approval_requires_reconciliation_for_legacy_credit(
             assert debit.entry_type == "taken"
             assert debit.days_delta == Decimal("-1.00")
             assert debit.actor_user_id == UUID(reviewer_id)
+            assert (
+                await session.scalar(
+                    select(func.count(HrLeaveLedger.id)).where(
+                        HrLeaveLedger.reference_request_id == request_id,
+                        HrLeaveLedger.entry_type == "taken",
+                    )
+                )
+                == 1
+            )
+            accrual_entries = list(
+                await session.scalars(
+                    select(HrLeaveLedger).where(
+                        HrLeaveLedger.employee_id == employee_id,
+                        HrLeaveLedger.leave_type_id == leave_type_id,
+                        HrLeaveLedger.leave_year == fixed_today.year,
+                        HrLeaveLedger.entry_type == "accrual",
+                    )
+                )
+            )
+            assert len(accrual_entries) <= 1
+            if accrual_entries:
+                assert accrual_entries[0].days_delta == Decimal("14.00")
+            balance = sum(
+                list(
+                    await session.scalars(
+                        select(HrLeaveLedger.days_delta).where(
+                            HrLeaveLedger.employee_id == employee_id,
+                            HrLeaveLedger.leave_type_id == leave_type_id,
+                            HrLeaveLedger.leave_year == fixed_today.year,
+                        )
+                    )
+                ),
+                Decimal("0.00"),
+            )
+            expected_balance = Decimal("17.00") if accrual_entries else Decimal("3.00")
+            assert balance == expected_balance
+
+        first_worker_id, first_worker_email, _ = await _create_portal_user(
+            "quantity_surveyor", password
+        )
+        first_worker = _auth(await _login(client, first_worker_email, password))
+        first_year_employee_response = await client.post(
+            "/api/v1/hr/employees",
+            headers=maker,
+            json={
+                "employee_code": f"FIRSTYEAR-{uuid4().hex[:8]}",
+                "first_name": "Synthetic",
+                "last_name": "First Year",
+                "employment_status": "active",
+                "employment_category": "permanent",
+                "join_date": "2099-01-01",
+                "work_calendar_id": calendar["id"],
+            },
+        )
+        assert first_year_employee_response.status_code == 201, first_year_employee_response.text
+        first_year_employee_id = UUID(first_year_employee_response.json()["id"])
+        async with AsyncSessionLocal() as session:
+            first_year_employee = await session.get(HrEmployee, first_year_employee_id)
+            assert first_year_employee is not None
+            first_year_employee.user_id = UUID(first_worker_id)
+            first_year_employee.work_email = first_worker_email
+            await session.commit()
+        first_year_request = await client.post(
+            "/api/v1/hr/me/leave-requests",
+            headers=first_worker,
+            json={
+                "leave_type_id": str(leave_type_id),
+                "start_date": calendar_day.isoformat(),
+                "end_date": calendar_day.isoformat(),
+                "days_requested": "1.00",
+                "reason": "Synthetic first-year annual leave",
+            },
+        )
+        assert first_year_request.status_code == 201, first_year_request.text
+        insufficient = await client.post(
+            f"/api/v1/hr/leave/requests/{first_year_request.json()['id']}/decision",
+            headers=reviewer,
+            json={
+                "decision": "approved",
+                "expected_revision": first_year_request.json()["record_revision"],
+            },
+        )
+        assert insufficient.status_code == 409, insufficient.text
+        assert insufficient.json()["error_code"] == "INSUFFICIENT_LEAVE_BALANCE"
+        async with AsyncSessionLocal() as session:
+            assert (
+                await session.scalar(
+                    select(HrLeaveLedger.id).where(
+                        HrLeaveLedger.reference_request_id == UUID(first_year_request.json()["id"]),
+                        HrLeaveLedger.entry_type == "taken",
+                    )
+                )
+                is None
+            )
+
+
+@pytest.mark.asyncio
+async def test_manual_leave_ledger_uses_effective_managed_category_windows() -> None:
+    from datetime import date
+    from uuid import UUID
+
+    from app.database import AsyncSessionLocal
+    from app.models.hr import HrEmployee, HrEmploymentHistory
+    from tests.test_hr import _create_legacy_leave_type
+
+    await skip_if_database_unavailable()
+    maker_id, maker_email, password = await _create_portal_user("hr_manager")
+    reviewer_id, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    base = "/api/v1/hr"
+    async with _client() as client:
+        maker = _auth(await _login(client, maker_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+
+        async def create_employee() -> str:
+            response = await client.post(
+                f"{base}/employees",
+                headers=maker,
+                json={
+                    "employee_code": f"LM05-{uuid4().hex[:8]}",
+                    "first_name": "Synthetic",
+                    "last_name": "LM05 Worker",
+                    "employment_status": "active",
+                    "employment_category": "permanent",
+                    "join_date": "2025-01-01",
+                },
+            )
+            assert response.status_code == 201, response.text
+            return response.json()["id"]
+
+        async def create_leave_type(name: str) -> str:
+            response = await client.post(
+                f"{base}/leave/types",
+                headers=maker,
+                json={"code": f"LM05-{uuid4().hex[:8]}", "name": name},
+            )
+            assert response.status_code == 201, response.text
+            return response.json()["id"]
+
+        async def add_policy(
+            leave_type_id: str,
+            *,
+            category: str | None,
+            effective_from: str,
+            effective_to: str,
+            managed: bool,
+        ) -> None:
+            payload: dict[str, object] = {
+                "code": f"LM05-P-{uuid4().hex[:8]}",
+                "name": "Synthetic LM-05 policy fixture",
+                "leave_type_id": leave_type_id,
+                "annual_entitlement_days": "7.00",
+                "accrual_frequency": "monthly",
+                "max_carry_forward_days": "0.00" if managed else "2.00",
+                "expire_excess_on_rollover": managed,
+                "allow_negative_balance": False,
+                "effective_from": effective_from,
+                "effective_to": effective_to,
+            }
+            if category is not None:
+                payload["employment_category"] = category
+            if managed:
+                payload["entitlement_rules"] = {
+                    "profile": "garrisons_casual_v1",
+                    "source_reference": "Synthetic reviewed policy test fixture",
+                    "calendar_year_basis": "calendar_join_year",
+                    "service_start_rule": "current_continuous_employment_only",
+                    "rehire_rule": "current_period_only",
+                    "completed_month_rule": "clamp_from_original_start",
+                }
+            proposed = await client.post(f"{base}/leave/policies", headers=maker, json=payload)
+            assert proposed.status_code == 201, proposed.text
+            approved = await client.post(
+                f"{base}/leave/policies/{proposed.json()['id']}/decision",
+                headers=reviewer,
+                json={"decision": "approved"},
+            )
+            assert approved.status_code == 200, approved.text
+
+        partial_employee = await create_employee()
+        transfer_employee = await create_employee()
+        leave_type_id = await create_leave_type("Synthetic LM-05 window leave")
+        await add_policy(
+            leave_type_id,
+            category="permanent",
+            effective_from="2026-07-01",
+            effective_to="2026-12-31",
+            managed=True,
+        )
+        await add_policy(
+            leave_type_id,
+            category="contract",
+            effective_from="2026-01-01",
+            effective_to="2026-12-31",
+            managed=False,
+        )
+
+        ledger_url = f"{base}/leave/ledger"
+        for entry_type, expected_error in (
+            ("carry_forward", "LEAVE_CARRY_FORWARD_FORBIDDEN"),
+            ("opening_balance", "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"),
+            ("accrual", "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"),
+            ("adjustment", "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"),
+            ("encashment", "LEAVE_ENTITLEMENT_BASELINE_REQUIRED"),
+        ):
+            blocked = await client.post(
+                ledger_url,
+                headers=maker,
+                json={
+                    "employee_id": partial_employee,
+                    "leave_type_id": leave_type_id,
+                    "entry_type": entry_type,
+                    "days_delta": "1.00",
+                    "leave_year": 2026,
+                    "reason": "Synthetic partial-year managed policy guard",
+                },
+            )
+            assert blocked.status_code == 409, blocked.text
+            assert blocked.json()["error_code"] == expected_error
+
+        async with AsyncSessionLocal() as session:
+            employee = await session.get(HrEmployee, UUID(transfer_employee))
+            assert employee is not None
+            session.add(
+                HrEmploymentHistory(
+                    employee_id=employee.id,
+                    change_type="category_transfer",
+                    effective_date=date(2026, 7, 1),
+                    new_snapshot={
+                        "employment_status": "active",
+                        "employment_category": "contract",
+                    },
+                    reason="Synthetic effective category transfer",
+                    actor_user_id=UUID(maker_id),
+                )
+            )
+            await session.commit()
+
+        transfer_carry = await client.post(
+            ledger_url,
+            headers=maker,
+            json={
+                "employee_id": transfer_employee,
+                "leave_type_id": leave_type_id,
+                "entry_type": "carry_forward",
+                "days_delta": "1.00",
+                "leave_year": 2026,
+                "reason": "Synthetic generic policy after category transfer",
+            },
+        )
+        assert transfer_carry.status_code == 201, transfer_carry.text
+
+        await add_policy(
+            leave_type_id,
+            category="permanent",
+            effective_from="2027-01-01",
+            effective_to="2027-12-31",
+            managed=True,
+        )
+        target_year_carry = await client.post(
+            ledger_url,
+            headers=maker,
+            json={
+                "employee_id": partial_employee,
+                "leave_type_id": leave_type_id,
+                "entry_type": "carry_forward",
+                "days_delta": "1.00",
+                "leave_year": 2027,
+                "reason": "Synthetic managed target-year carry guard",
+            },
+        )
+        assert target_year_carry.status_code == 409, target_year_carry.text
+        assert target_year_carry.json()["error_code"] == "LEAVE_CARRY_FORWARD_FORBIDDEN"
+
+        ambiguous_type_id = await create_leave_type("Synthetic LM-05 ambiguous category leave")
+        await add_policy(
+            ambiguous_type_id,
+            category="contract",
+            effective_from="2026-07-01",
+            effective_to="2026-12-31",
+            managed=True,
+        )
+        async with AsyncSessionLocal() as session:
+            employee = await session.get(HrEmployee, UUID(transfer_employee))
+            assert employee is not None
+            session.add(
+                HrEmploymentHistory(
+                    employee_id=employee.id,
+                    change_type="category_transfer",
+                    effective_date=date(2026, 7, 1),
+                    new_snapshot={
+                        "employment_status": "active",
+                        "employment_category": "probation",
+                    },
+                    reason="Synthetic same-day conflicting category evidence",
+                    actor_user_id=UUID(maker_id),
+                )
+            )
+            await session.commit()
+
+        unresolved = await client.post(
+            ledger_url,
+            headers=maker,
+            json={
+                "employee_id": transfer_employee,
+                "leave_type_id": ambiguous_type_id,
+                "entry_type": "carry_forward",
+                "days_delta": "1.00",
+                "leave_year": 2026,
+                "reason": "Synthetic unresolved managed category coverage",
+            },
+        )
+        assert unresolved.status_code == 409, unresolved.text
+        assert unresolved.json()["error_code"] == "LEAVE_POLICY_CONFIGURATION_INCOMPLETE"
+
+        no_policy_type_id = await _create_legacy_leave_type("Synthetic LM-05 no-policy leave")
+        no_policy_carry = await client.post(
+            ledger_url,
+            headers=maker,
+            json={
+                "employee_id": partial_employee,
+                "leave_type_id": no_policy_type_id,
+                "entry_type": "carry_forward",
+                "days_delta": "1.00",
+                "leave_year": 2026,
+                "reason": "Synthetic generic no-policy carry",
+            },
+        )
+        assert no_policy_carry.status_code == 201, no_policy_carry.text
+
+
+@pytest.mark.asyncio
+async def test_manual_leave_credit_serializes_with_final_leave_approval() -> None:
+    from datetime import date, timedelta
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from app.database import AsyncSessionLocal
+    from app.models.hr import HrLeaveLedger, HrWorkCalendar
+    from tests.test_hr import _create_legacy_leave_type
+
+    await skip_if_database_unavailable()
+    _, maker_email, password = await _create_portal_user("hr_manager")
+    _, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    async with AsyncSessionLocal() as session:
+        published_defaults = list(
+            await session.scalars(
+                select(HrWorkCalendar).where(
+                    HrWorkCalendar.is_default.is_(True),
+                    HrWorkCalendar.status == "published",
+                    HrWorkCalendar.deleted_at.is_(None),
+                )
+            )
+        )
+    candidate = date(2099, 12, 1)
+    calendar_day = next(
+        day
+        for offset in range(31)
+        if (day := candidate + timedelta(days=offset)).weekday() < 5
+        and not any(
+            row.effective_from is not None
+            and row.effective_to is not None
+            and row.effective_from <= day <= row.effective_to
+            for row in published_defaults
+        )
+    )
+    day_text = calendar_day.isoformat()
+
+    async with _client() as client:
+        maker = _auth(await _login(client, maker_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+        calendar = await _publish_leave_calendar(client, maker, reviewer, day_text, day_text)
+        employee_response = await client.post(
+            "/api/v1/hr/employees",
+            headers=maker,
+            json={
+                "employee_code": f"LM05-RACE-{uuid4().hex[:8]}",
+                "first_name": "Synthetic",
+                "last_name": "Concurrent Worker",
+                "employment_status": "active",
+                "employment_category": "permanent",
+                "join_date": "2025-01-01",
+                "work_calendar_id": calendar["id"],
+            },
+        )
+        assert employee_response.status_code == 201, employee_response.text
+        employee_id = UUID(employee_response.json()["id"])
+        leave_type_id = await _create_legacy_leave_type("Synthetic LM-05 concurrent paid leave")
+        request = await client.post(
+            "/api/v1/hr/leave/requests",
+            headers=maker,
+            json={
+                "employee_id": str(employee_id),
+                "leave_type_id": leave_type_id,
+                "start_date": day_text,
+                "end_date": day_text,
+                "days_requested": "1.00",
+                "submit_immediately": True,
+                "reason": "Synthetic concurrent credit and approval",
+            },
+        )
+        assert request.status_code == 201, request.text
+        ledger_url = "/api/v1/hr/leave/ledger"
+        decision_url = f"/api/v1/hr/leave/requests/{request.json()['id']}/decision"
+        credit, approval = await asyncio.gather(
+            client.post(
+                ledger_url,
+                headers=maker,
+                json={
+                    "employee_id": str(employee_id),
+                    "leave_type_id": leave_type_id,
+                    "entry_type": "opening_balance",
+                    "days_delta": "1.00",
+                    "leave_year": calendar_day.year,
+                    "reason": "Synthetic concurrent opening credit",
+                },
+            ),
+            client.post(
+                decision_url,
+                headers=reviewer,
+                json={
+                    "decision": "approved",
+                    "expected_revision": request.json()["record_revision"],
+                },
+            ),
+        )
+        assert credit.status_code == 201, credit.text
+        assert approval.status_code in {200, 409}, approval.text
+        if approval.status_code == 409:
+            assert approval.json()["error_code"] == "INSUFFICIENT_LEAVE_BALANCE"
+        async with AsyncSessionLocal() as session:
+            entries = list(
+                await session.scalars(
+                    select(HrLeaveLedger)
+                    .where(
+                        HrLeaveLedger.employee_id == employee_id,
+                        HrLeaveLedger.leave_type_id == UUID(leave_type_id),
+                        HrLeaveLedger.leave_year == calendar_day.year,
+                    )
+                    .order_by(HrLeaveLedger.created_at, HrLeaveLedger.id)
+                )
+            )
+        entry_totals = {row.entry_type: row.days_delta for row in entries}
+        if approval.status_code == 200:
+            assert entry_totals == {
+                "opening_balance": Decimal("1.00"),
+                "taken": Decimal("-1.00"),
+            }
+        else:
+            assert entry_totals == {"opening_balance": Decimal("1.00")}
+
+
+@pytest.mark.asyncio
+async def test_annual_block_reassesses_after_reviewed_legacy_date_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+
+    from datetime import date
+    from uuid import UUID
+
+    from cryptography.fernet import Fernet
+    from sqlalchemy import select
+
+    from app.config import get_settings
+    from app.database import AsyncSessionLocal
+    from app.models.hr import (
+        HrEmployee,
+        HrEmploymentHistory,
+        HrLeaveLedger,
+        HrLeavePolicy,
+        HrLeaveRequest,
+        HrLeaveType,
+    )
+    from app.schemas.hr import (
+        LeaveDateEvidenceCreate,
+        LeaveDateEvidenceDecision,
+        LeaveRolloverRequest,
+    )
+    from app.services.hr_leave_date_evidence import (
+        decide_leave_date_evidence,
+        propose_leave_date_evidence,
+    )
+    from app.services.hr_leave_rollover import process_leave_rollover
+    from app.services.hr_workforce_service import HrWorkforceService
+    from app.utils.security import utc_now
+
+    monkeypatch.setenv("HR_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    get_settings.cache_clear()
+
+    requestor_id, _, password = await _create_portal_user("hr_manager")
+    maker_id, _, _ = await _create_portal_user("hr_manager", password)
+    reviewer_id, _, _ = await _create_portal_user("hr_manager", password)
+    employee_id, leave_type_id, request_id = uuid4(), uuid4(), uuid4()
+    dates = [
+        date(2025, 11, 24),
+        date(2025, 11, 25),
+        date(2025, 11, 26),
+        date(2025, 11, 27),
+        date(2025, 11, 28),
+        date(2025, 12, 1),
+        date(2025, 12, 2),
+    ]
+
+    async with AsyncSessionLocal() as session:
+        requestor = await session.get(User, UUID(requestor_id))
+        maker = await session.get(User, UUID(maker_id))
+        reviewer = await session.get(User, UUID(reviewer_id))
+        assert requestor is not None and maker is not None and reviewer is not None
+        employee = HrEmployee(
+            id=employee_id,
+            employee_code=f"LM08-{uuid4().hex[:10]}",
+            first_name="Synthetic",
+            last_name="Evidence",
+            full_name="Synthetic Evidence Review",
+            employment_status="active",
+            employment_category="permanent",
+            join_date=date(2022, 1, 1),
+        )
+        leave_type = HrLeaveType(
+            id=leave_type_id,
+            code=f"LM08-{uuid4().hex[:10]}",
+            name="Synthetic annual leave",
+            is_paid=True,
+            is_active=True,
+        )
+        now = utc_now()
+        policy = HrLeavePolicy(
+            id=uuid4(),
+            code=f"LM08-{uuid4().hex[:10]}",
+            name="Synthetic annual policy for regression",
+            leave_type_id=leave_type_id,
+            annual_entitlement_days=Decimal("14.00"),
+            accrual_frequency="annual",
+            max_carry_forward_days=Decimal("0.00"),
+            expire_excess_on_rollover=True,
+            allow_negative_balance=False,
+            is_active=True,
+            status="approved",
+            effective_from=date(2025, 1, 1),
+            effective_to=date(2025, 12, 31),
+            approved_by_id=reviewer.id,
+            approved_at=now,
+            entitlement_rules={
+                "profile": "garrisons_annual_v1",
+                "seven_day_block_basis": "chargeable_workdays",
+            },
+        )
+        request = HrLeaveRequest(
+            id=request_id,
+            employee_id=employee_id,
+            leave_type_id=leave_type_id,
+            start_date=dates[0],
+            end_date=dates[-1],
+            days_requested=Decimal("7.00"),
+            scheduled_work_dates=None,
+            status="approved",
+            requested_by_id=requestor.id,
+            decided_by_id=reviewer.id,
+            decided_at=now,
+            decision_notes="Synthetic pre-existing approval",
+        )
+        session.add_all([employee, leave_type])
+        await session.flush()
+        session.add(
+            HrEmploymentHistory(
+                employee_id=employee_id,
+                change_type="created",
+                effective_date=date(2022, 1, 1),
+                new_snapshot={
+                    "employment_status": "active",
+                    "employment_category": "permanent",
+                },
+                reason="Synthetic verified employment history",
+                actor_user_id=reviewer.id,
+            )
+        )
+        session.add_all([policy, request])
+        await session.flush()
+        debit = HrLeaveLedger(
+            employee_id=employee_id,
+            leave_type_id=leave_type_id,
+            entry_type="taken",
+            days_delta=Decimal("-7.00"),
+            leave_year=2025,
+            reference_request_id=request_id,
+            reason="Synthetic original approved leave debit",
+            actor_user_id=reviewer.id,
+        )
+        session.add_all(
+            [
+                HrLeaveLedger(
+                    employee_id=employee_id,
+                    leave_type_id=leave_type_id,
+                    entry_type="opening_balance",
+                    days_delta=Decimal("14.00"),
+                    leave_year=2025,
+                    reason="Synthetic reconciled annual balance",
+                    actor_user_id=reviewer.id,
+                ),
+                debit,
+            ]
+        )
+        await session.flush()
+        debit_id = debit.id
+        await session.commit()
+
+        assert (
+            await HrWorkforceService(session)._annual_block_status(
+                employee, leave_type_id, 2025, Decimal("7.00")
+            )
+            == "unverified"
+        )
+        rollover = LeaveRolloverRequest(
+            employee_id=employee_id,
+            leave_type_id=leave_type_id,
+            source_year=2025,
+        )
+        with pytest.raises(AppException) as blocked:
+            await process_leave_rollover(session, rollover, maker)
+        assert blocked.value.error_code == "LEAVE_ANNUAL_BLOCK_UNVERIFIED"
+
+    async with AsyncSessionLocal() as session:
+        proposal_request = await session.get(HrLeaveRequest, request_id)
+        maker = await session.get(User, UUID(maker_id))
+        reviewer = await session.get(User, UUID(reviewer_id))
+        assert proposal_request is not None and maker is not None and reviewer is not None
+        proposal = await propose_leave_date_evidence(
+            session,
+            request_id,
+            LeaveDateEvidenceCreate(
+                proposal_id=uuid4(),
+                expected_revision=proposal_request.record_revision,
+                work_dates=dates,
+                evidence_reference="SYNTHETIC-LEGACY-CALENDAR",
+            ),
+            maker,
+        )
+        accepted = await decide_leave_date_evidence(
+            session,
+            request_id,
+            proposal.id,
+            LeaveDateEvidenceDecision(
+                decision="approved",
+                expected_digest=proposal.digest,
+            ),
+            reviewer,
+        )
+        assert accepted.status == "approved"
+
+        current_request = await session.get(HrLeaveRequest, request_id)
+        assert current_request is not None
+        assert current_request.status == "approved"
+        assert current_request.scheduled_work_dates == dates
+        assert current_request.days_requested == Decimal("7.00")
+        assert current_request.decision_notes == "Synthetic pre-existing approval"
+        current_employee = await session.get(HrEmployee, employee_id)
+        assert current_employee is not None
+        assert await HrWorkforceService(session)._annual_block_status(
+            current_employee,
+            leave_type_id,
+            2025,
+            Decimal("7.00"),
+        ) == "taken"
+
+        debits = list(
+            await session.scalars(
+                select(HrLeaveLedger).where(
+                    HrLeaveLedger.reference_request_id == request_id
+                )
+            )
+        )
+        assert len(debits) == 1
+        assert debits[0].id == debit_id
+        assert debits[0].entry_type == "taken"
+        assert debits[0].days_delta == Decimal("-7.00")
+
+        quote = await process_leave_rollover(
+            session, rollover, maker
+        )
+        assert quote.carried_days == Decimal("0.00")
+        assert quote.expired_days == Decimal("7.00")
+
+    get_settings.cache_clear()

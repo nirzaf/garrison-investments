@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { workflowLink } from './workflowLinks';
+import {
+  isNotificationActionable,
+  notificationWorkflowLink,
+  workflowLink
+} from './workflowLinks';
 
 const origin = 'https://garrison.example';
 
@@ -23,5 +27,22 @@ describe('workflow notification links', () => {
     `${origin}/reports/supervisor-update/archive`
   ])('rejects non-allowlisted link %s', (url) => {
     expect(workflowLink(notificationBody(url), origin)).toBeNull();
+  });
+
+  it('hides a pending leave link when the live route is no longer actionable', () => {
+    const notification = {
+      body: notificationBody(`${origin}/hr`),
+      is_actionable: false,
+      superseded_at: null
+    };
+
+    expect(isNotificationActionable(notification)).toBe(false);
+    expect(notificationWorkflowLink(notification, origin)).toBeNull();
+  });
+
+  it('keeps legacy and current notifications actionable until superseded', () => {
+    expect(isNotificationActionable({})).toBe(true);
+    expect(isNotificationActionable({ is_actionable: true, superseded_at: null })).toBe(true);
+    expect(isNotificationActionable({ superseded_at: '2026-11-27T00:00:00Z' })).toBe(false);
   });
 });

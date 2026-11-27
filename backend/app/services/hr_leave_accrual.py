@@ -3,14 +3,16 @@
 import hashlib
 import json
 from calendar import monthrange
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models.hr import (
     HrEmployee,
     HrEmploymentHistory,
@@ -24,6 +26,8 @@ from app.models.hr import (
 )
 from app.models.user import User
 from app.schemas.hr import (
+    GarrisonsAnnualLeaveRules,
+    GarrisonsCasualLeaveRules,
     LeaveAccrualCatchUpRequest,
     LeaveAccrualCatchUpResponse,
     LeaveAccrualRequest,
@@ -184,6 +188,8 @@ async def require_managed_leave_credit_reconciliation(
     leave_type_id: UUID,
     leave_year: int,
     policy_id: UUID,
+    employee: HrEmployee,
+    policy: HrLeavePolicy,
 ) -> HrLeaveEntitlementBaseline | None:
     """Reject unreviewed positive credits before a managed entitlement is used.
 
@@ -197,41 +203,340 @@ async def require_managed_leave_credit_reconciliation(
             HrLeaveEntitlementBaseline.leave_year == leave_year,
         )
     )
+    if policy.id != policy_id:
+        raise _baseline_required()
+    _validate_managed_policy(policy)
     if baseline is not None:
-        return baseline
+        await _validate_managed_baseline_receipt(
+            session, baseline, employee=employee, policy=policy
+        )
 
-    manual_credit = await session.scalar(
-        select(HrLeaveLedger.id)
-        .outerjoin(HrLeaveAccrual, HrLeaveAccrual.ledger_id == HrLeaveLedger.id)
-        .where(
-            HrLeaveLedger.employee_id == employee_id,
-            HrLeaveLedger.leave_type_id == leave_type_id,
-            HrLeaveLedger.leave_year == leave_year,
-            HrLeaveLedger.days_delta > 0,
-            HrLeaveLedger.entry_type.in_(
-                (
-                    "opening_balance",
-                    "accrual",
-                    "adjustment",
-                    "carry_forward",
-                    "carry_forward_in",
+    service_start = await _managed_service_start(session, employee)
+    positive_rows = list(
+        await session.execute(
+            select(HrLeaveLedger, HrLeaveAccrual)
+            .outerjoin(HrLeaveAccrual, HrLeaveAccrual.ledger_id == HrLeaveLedger.id)
+            .where(
+                HrLeaveLedger.employee_id == employee_id,
+                HrLeaveLedger.leave_type_id == leave_type_id,
+                HrLeaveLedger.leave_year == leave_year,
+                HrLeaveLedger.days_delta > 0,
+            )
+            .order_by(HrLeaveLedger.created_at, HrLeaveLedger.id)
+        )
+    )
+    for ledger, accrual in positive_rows:
+        if baseline is not None and (
+            ledger.id == baseline.adjustment_ledger_id
+            or ledger.created_at <= baseline.created_at
+        ):
+            continue
+        if ledger.entry_type == "reversal" and ledger.reference_request_id is not None:
+            matching_debit = await session.scalar(
+                select(HrLeaveLedger.id).where(
+                    HrLeaveLedger.employee_id == employee_id,
+                    HrLeaveLedger.leave_type_id == leave_type_id,
+                    HrLeaveLedger.leave_year == leave_year,
+                    HrLeaveLedger.reference_request_id == ledger.reference_request_id,
+                    HrLeaveLedger.entry_type == "taken",
+                    HrLeaveLedger.days_delta == -ledger.days_delta,
                 )
-            ),
+            )
+            if matching_debit is not None:
+                continue
+        if not _is_approved_managed_accrual(
+            ledger, accrual, policy=policy, service_start=service_start, year=leave_year
+        ):
+            raise _baseline_required()
+    return baseline
+
+
+def _baseline_required() -> AppException:
+    return AppException(
+        "Reconcile the existing managed leave balance before using this entitlement.",
+        status_code=409,
+        error_code="LEAVE_ENTITLEMENT_BASELINE_REQUIRED",
+    )
+
+
+def _validate_managed_policy(policy: HrLeavePolicy) -> None:
+    rules = policy.entitlement_rules
+    if not isinstance(rules, dict):
+        raise AppException(
+            "The approved managed leave profile is incomplete.",
+            status_code=409,
+            error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+        )
+    profile = rules.get("profile")
+    try:
+        if profile == "garrisons_annual_v1":
+            GarrisonsAnnualLeaveRules.model_validate(rules)
+            expected = (Decimal("14.00"), "annual")
+        elif profile == "garrisons_casual_v1":
+            GarrisonsCasualLeaveRules.model_validate(rules)
+            expected = (Decimal("7.00"), "monthly")
+        else:
+            raise ValueError("Unsupported managed leave profile")
+    except ValueError as exc:
+        raise AppException(
+            "The approved managed leave profile is incomplete.",
+            status_code=409,
+            error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+        ) from exc
+    if (
+        policy.annual_entitlement_days != expected[0]
+        or policy.accrual_frequency != expected[1]
+        or policy.prorate_by_calendar_day
+        or policy.max_carry_forward_days != 0
+        or not policy.expire_excess_on_rollover
+        or policy.allow_negative_balance
+    ):
+        raise AppException(
+            "The approved managed leave policy configuration is incomplete.",
+            status_code=409,
+            error_code="LEAVE_POLICY_CONFIGURATION_INCOMPLETE",
+        )
+
+
+def _ledger_digest(rows: list[HrLeaveLedger]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            [
+                {
+                    "id": str(row.id),
+                    "entry_type": row.entry_type,
+                    "days_delta": str(row.days_delta),
+                    "year": row.leave_year,
+                    "reference_request_id": (
+                        str(row.reference_request_id) if row.reference_request_id else None
+                    ),
+                    "actor_user_id": str(row.actor_user_id) if row.actor_user_id else None,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ],
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+
+
+def _possible_managed_due_dates(policy: HrLeavePolicy, service_start: date, year: int) -> set[date]:
+    profile = policy.entitlement_rules.get("profile") if policy.entitlement_rules else None
+    service_year = year - service_start.year + 1
+    if profile == "garrisons_annual_v1":
+        return {date(year, 1, 1)} if service_year >= 2 else set()
+    if profile == "garrisons_casual_v1":
+        if service_year >= 2:
+            return {date(year, 1, 1)}
+        return {
+            due
+            for offset in range(1, 12)
+            if (due := _add_service_month(service_start, offset)).year == year
+        }
+    raise _baseline_required()
+
+
+async def _validate_managed_baseline_receipt(
+    session: AsyncSession,
+    baseline: HrLeaveEntitlementBaseline,
+    *,
+    employee: HrEmployee,
+    policy: HrLeavePolicy,
+) -> None:
+    if (
+        baseline.employee_id != employee.id
+        or baseline.policy_id != policy.id
+        or baseline.leave_year != baseline.as_of_date.year
+        or baseline.as_of_date > business_today()
+        or baseline.verified_balance < 0
+        or not baseline.supporting_reference.strip()
+        or baseline.reviewed_by_id is None
+        or baseline.reviewed_at is None
+    ):
+        raise _baseline_required()
+
+    service_start = await _managed_service_start(session, employee)
+    possible_due_dates = _possible_managed_due_dates(
+        policy, service_start, baseline.leave_year
+    )
+    recognized = baseline.recognized_due_dates
+    if not isinstance(recognized, list):
+        raise _baseline_required()
+    try:
+        recognized_dates = [date.fromisoformat(item) for item in recognized]
+    except (TypeError, ValueError):
+        raise _baseline_required() from None
+    if len(recognized_dates) != len(set(recognized_dates)) or any(
+        day not in possible_due_dates or day > baseline.as_of_date for day in recognized_dates
+    ):
+        raise _baseline_required()
+
+    ambiguous_snapshot_query = select(HrLeaveLedger.id).where(
+        HrLeaveLedger.employee_id == employee.id,
+        HrLeaveLedger.leave_type_id == baseline.leave_type_id,
+        HrLeaveLedger.leave_year == baseline.leave_year,
+        HrLeaveLedger.created_at == baseline.created_at,
+    )
+    if baseline.adjustment_ledger_id is not None:
+        ambiguous_snapshot_query = ambiguous_snapshot_query.where(
+            HrLeaveLedger.id != baseline.adjustment_ledger_id
+        )
+    ambiguous_snapshot_row = await session.scalar(ambiguous_snapshot_query.limit(1))
+    if ambiguous_snapshot_row is not None:
+        raise _baseline_required()
+    snapshot_rows = list(
+        await session.scalars(
+            select(HrLeaveLedger)
+            .where(
+                HrLeaveLedger.employee_id == employee.id,
+                HrLeaveLedger.leave_type_id == baseline.leave_type_id,
+                HrLeaveLedger.leave_year == baseline.leave_year,
+                HrLeaveLedger.created_at < baseline.created_at,
+            )
+            .order_by(HrLeaveLedger.created_at, HrLeaveLedger.id)
+        )
+    )
+    future_credit = await session.scalar(
+        select(HrLeaveLedger.id)
+        .join(HrLeaveAccrual, HrLeaveAccrual.ledger_id == HrLeaveLedger.id)
+        .where(
+            HrLeaveLedger.employee_id == employee.id,
+            HrLeaveLedger.leave_type_id == baseline.leave_type_id,
+            HrLeaveLedger.leave_year == baseline.leave_year,
+            HrLeaveLedger.created_at < baseline.created_at,
+            HrLeaveLedger.days_delta > 0,
             or_(
-                HrLeaveAccrual.id.is_(None),
                 HrLeaveAccrual.due_date.is_(None),
-                HrLeaveAccrual.policy_id != policy_id,
+                HrLeaveAccrual.due_date > baseline.as_of_date,
             ),
         )
         .limit(1)
     )
-    if manual_credit is not None:
-        raise AppException(
-            "Reconcile the existing managed leave balance before using this entitlement.",
-            status_code=409,
-            error_code="LEAVE_ENTITLEMENT_BASELINE_REQUIRED",
+    if future_credit is not None:
+        raise _baseline_required()
+    as_of_cutoff = datetime.combine(
+        baseline.as_of_date,
+        time.max,
+        tzinfo=ZoneInfo(get_settings().business_timezone),
+    ).astimezone(UTC)
+    if any(row.created_at.astimezone(UTC) > as_of_cutoff for row in snapshot_rows):
+        raise _baseline_required()
+    raw_ledger_digest = _ledger_digest(snapshot_rows)
+    snapshot_balance = sum((row.days_delta for row in snapshot_rows), Decimal("0.00"))
+    adjustment_days = (baseline.verified_balance - snapshot_balance).quantize(Decimal("0.01"))
+    adjustment = (
+        await session.get(HrLeaveLedger, baseline.adjustment_ledger_id)
+        if baseline.adjustment_ledger_id
+        else None
+    )
+    if adjustment_days == 0:
+        if adjustment is not None:
+            raise _baseline_required()
+    elif (
+        adjustment is None
+        or adjustment.employee_id != employee.id
+        or adjustment.leave_type_id != baseline.leave_type_id
+        or adjustment.leave_year != baseline.leave_year
+        or adjustment.entry_type != "adjustment"
+        or adjustment.days_delta != adjustment_days
+        or adjustment.actor_user_id != baseline.reviewed_by_id
+    ):
+        raise _baseline_required()
+
+    plan = {
+        "employee_id": str(employee.id),
+        "leave_type_id": str(baseline.leave_type_id),
+        "year": baseline.leave_year,
+        "policy_id": str(baseline.policy_id),
+        "as_of_date": baseline.as_of_date.isoformat(),
+        "current_balance": str(snapshot_balance),
+        "verified_balance": str(baseline.verified_balance),
+        "adjustment_days": str(adjustment_days),
+        "recognized_due_dates": recognized,
+        "supporting_reference": baseline.supporting_reference,
+    }
+    expected_plan_digest = hashlib.sha256(
+        json.dumps(
+            {
+                "plan": plan,
+                "actor_id": str(baseline.reviewed_by_id),
+                "employee_revision": employee.record_revision,
+                "policy_id": str(policy.id),
+                "policy_rules": policy.entitlement_rules,
+                "policy_approved_at": policy.approved_at.isoformat()
+                if policy.approved_at
+                else None,
+                "ledger_digest": raw_ledger_digest,
+                "possible_due_dates": sorted(day.isoformat() for day in possible_due_dates),
+            },
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    # Older approved receipts stored the plan digest in both columns. Their
+    # underlying snapshot is still verifiable from the ledger rows before receipt creation.
+    if baseline.ledger_digest not in {raw_ledger_digest, baseline.plan_digest}:
+        raise _baseline_required()
+    if expected_plan_digest != baseline.plan_digest:
+        raise _baseline_required()
+
+
+def _is_approved_managed_accrual(
+    ledger: HrLeaveLedger,
+    accrual: HrLeaveAccrual | None,
+    *,
+    policy: HrLeavePolicy,
+    service_start: date,
+    year: int,
+) -> bool:
+    if (
+        ledger.entry_type != "accrual"
+        or accrual is None
+        or accrual.policy_id != policy.id
+        or accrual.due_date is None
+        or accrual.due_date > business_today()
+        or accrual.due_date not in _possible_managed_due_dates(policy, service_start, year)
+    ):
+        return False
+    service_year = year - service_start.year + 1
+    rules = policy.entitlement_rules or {}
+    if rules.get("profile") == "garrisons_annual_v1":
+        expected = (
+            _bracket_days(rules, service_start)
+            if service_year == 2
+            else Decimal("14.00")
+            if service_year >= 3
+            else Decimal("0.00")
         )
-    return None
+        return (
+            accrual.period_start == date(year, 1, 1)
+            and accrual.period_end == date(year, 12, 31)
+            and accrual.due_date == date(year, 1, 1)
+            and ledger.days_delta == expected
+            and expected > 0
+        )
+    if rules.get("profile") == "garrisons_casual_v1":
+        if service_year >= 2:
+            return (
+                accrual.period_start == date(year, 1, 1)
+                and accrual.period_end == date(year, 12, 31)
+                and accrual.due_date == date(year, 1, 1)
+                and ledger.days_delta == Decimal("7.00")
+            )
+        month_start = accrual.period_start
+        return (
+            month_start.year == year
+            and month_start.day == 1
+            and accrual.period_end == date(
+                month_start.year,
+                month_start.month,
+                monthrange(month_start.year, month_start.month)[1],
+            )
+            and accrual.due_date
+            == _add_service_month(service_start, (month_start.year - service_start.year) * 12
+                                  + month_start.month - service_start.month)
+            and ledger.days_delta == Decimal("0.50")
+        )
+    return False
 
 
 def _add_service_month(start: date, month_offset: int) -> date:
@@ -513,6 +818,8 @@ async def _plan_leave_accrual(
             leave_type_id=payload.leave_type_id,
             leave_year=start.year,
             policy_id=policy.id,
+            employee=employee,
+            policy=policy,
         )
         quote, digest = await _plan_managed_leave_accrual(
             session, payload, employee, policy, actor, start, end

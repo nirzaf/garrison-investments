@@ -12,7 +12,7 @@ import {
 } from '../../api/notifications';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
-import { workflowLink } from './workflowLinks';
+import { isNotificationActionable, notificationWorkflowLink } from './workflowLinks';
 
 const PAGE_SIZE = 100;
 
@@ -118,7 +118,8 @@ export function NotificationsPage() {
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => {
-            const link = notification.superseded_at ? null : workflowLink(notification.body);
+            const isActionable = isNotificationActionable(notification);
+            const link = notificationWorkflowLink(notification);
             return (
               <article
                 className="w-full rounded-lg border border-theme-border bg-theme-card p-4 text-left shadow-xs hover:bg-theme-card-elevated"
@@ -132,7 +133,7 @@ export function NotificationsPage() {
                     <p className="mt-1 whitespace-pre-line break-words text-sm text-theme-text-secondary">
                       {link?.message ?? notification.body}
                     </p>
-                    {notification.superseded_at && (
+                    {!isActionable && (
                       <p className="mt-2 text-xs text-theme-text-muted">No longer actionable</p>
                     )}
                     {link && (
@@ -150,10 +151,14 @@ export function NotificationsPage() {
                   <div className="flex shrink-0 items-center gap-2">
                     <StatusBadge
                       tone={
-                        notification.muted ? 'warning' : notification.is_read ? 'neutral' : 'info'
+                        !isActionable || notification.is_read
+                          ? 'neutral'
+                          : notification.muted
+                            ? 'warning'
+                            : 'info'
                       }
                     >
-                      {notification.superseded_at
+                      {!isActionable
                         ? 'superseded'
                         : notification.muted
                           ? 'muted'

@@ -3843,6 +3843,79 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
 
 
 @pytest.mark.asyncio
+async def test_leave_unit_quote_requires_effective_policy_for_every_request_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from app.schemas.hr import LeaveUnitsQuery
+
+    leave_type = SimpleNamespace(id=uuid4(), policy_required=True)
+    policies = [
+        SimpleNamespace(
+            id=uuid4(),
+            leave_type_id=leave_type.id,
+            employment_category="permanent",
+            status="approved",
+            is_active=True,
+            approved_at=datetime(2026, 6, 1, tzinfo=UTC),
+            effective_from=date(2026, 7, 1),
+            effective_to=date(2026, 7, 2),
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            leave_type_id=leave_type.id,
+            employment_category="permanent",
+            status="approved",
+            is_active=True,
+            approved_at=datetime(2026, 6, 1, tzinfo=UTC),
+            effective_from=date(2026, 7, 3),
+            effective_to=date(2026, 7, 4),
+        ),
+    ]
+    from typing import Any, cast
+
+    employee = cast(HrEmployee, SimpleNamespace(id=uuid4()))
+    service = HrWorkforceService(Mock(spec=AsyncSession))
+    schedule_calls = 0
+
+    async def scalars(_statement):
+        return iter(policies)
+
+    async def eligible_category(*_args, **_kwargs):
+        return "permanent"
+
+    async def active_leave_type(_leave_type_id):
+        return leave_type
+
+    async def calculate_schedule(_employee, _payload, _leave_type):
+        nonlocal schedule_calls
+        schedule_calls += 1
+        return Decimal("2.00"), [date(2026, 7, 2), date(2026, 7, 3)]
+
+    fake_service = cast(Any, service)
+    fake_service.session.scalars = scalars
+    fake_service._active_leave_type = active_leave_type
+    fake_service._calculate_leave_schedule = calculate_schedule
+    monkeypatch.setattr(
+        "app.services.hr_workforce_service._eligible_category", eligible_category
+    )
+
+    covered = LeaveUnitsQuery(
+        leave_type_id=leave_type.id,
+        start_date=date(2026, 7, 2),
+        end_date=date(2026, 7, 3),
+    )
+    assert await service.get_leave_units(employee, covered) == Decimal("2.00")
+
+    uncovered = covered.model_copy(update={"end_date": date(2026, 7, 5)})
+    with pytest.raises(AppException) as failure:
+        await service.get_leave_units(employee, uncovered)
+    assert failure.value.error_code == "LEAVE_ACCRUAL_POLICY_PERIOD"
+    assert schedule_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
     await skip_if_database_unavailable()
     hrm_uid, hrm_email, pw = await _create_portal_user("hr_manager")
@@ -11184,6 +11257,127 @@ async def test_leave_schedule_uses_open_ended_shift_and_rejects_overlaps() -> No
         await session.flush()
         with pytest.raises(AppException) as ambiguous:
             await service._leave_work_dates(employee, day, 1)
+        assert ambiguous.value.error_code == "LEAVE_SCHEDULE_AMBIGUOUS"
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_leave_schedule_keeps_shift_end_inclusive_and_replaces_by_date() -> None:
+    await skip_if_database_unavailable()
+    from app.services.hr_workforce_service import WORKDAYS
+
+    first_day = date(2026, 11, 26)
+    replacement_day = first_day + timedelta(days=1)
+    employee_id = uuid4()
+    default_calendar_id, first_calendar_id, replacement_calendar_id = uuid4(), uuid4(), uuid4()
+    first_shift_id, replacement_shift_id = uuid4(), uuid4()
+    async with AsyncSessionLocal() as session:
+        calendar_window = (date(2026, 1, 1), date(2026, 12, 31))
+        default_calendar = HrWorkCalendar(
+            id=default_calendar_id,
+            code=f"LV-DEFAULT-{uuid4().hex[:8]}",
+            name="Synthetic default leave calendar",
+            work_days_json=[],
+            is_default=True,
+            effective_from=calendar_window[0],
+            effective_to=calendar_window[1],
+            timezone="UTC",
+            status="published",
+            published_at=datetime.now(UTC),
+        )
+        first_calendar = HrWorkCalendar(
+            id=first_calendar_id,
+            code=f"LV-FIRST-{uuid4().hex[:8]}",
+            name="Synthetic first shift calendar",
+            work_days_json=[WORKDAYS[first_day.weekday()]],
+            effective_from=calendar_window[0],
+            effective_to=calendar_window[1],
+            timezone="UTC",
+            status="published",
+            published_at=datetime.now(UTC),
+        )
+        replacement_calendar = HrWorkCalendar(
+            id=replacement_calendar_id,
+            code=f"LV-REPLACEMENT-{uuid4().hex[:8]}",
+            name="Synthetic replacement shift calendar",
+            work_days_json=[WORKDAYS[replacement_day.weekday()]],
+            effective_from=calendar_window[0],
+            effective_to=calendar_window[1],
+            timezone="UTC",
+            status="published",
+            published_at=datetime.now(UTC),
+        )
+        employee = HrEmployee(
+            id=employee_id,
+            employee_code=f"LV-REPLACE-{uuid4().hex[:8]}",
+            first_name="Synthetic",
+            last_name="Replacement",
+            full_name="Synthetic Shift Replacement",
+            employment_status="active",
+            join_date=date(2020, 1, 1),
+            work_calendar_id=default_calendar_id,
+        )
+        session.add_all([default_calendar, first_calendar, replacement_calendar])
+        await session.flush()
+        session.add(employee)
+        await session.flush()
+        session.add_all(
+            [
+                HrShiftAssignment(
+                    id=first_shift_id,
+                    employee_id=employee_id,
+                    calendar_id=first_calendar_id,
+                    shift_name="Inclusive end-date shift",
+                    effective_from=calendar_window[0],
+                    effective_to=first_day,
+                    start_time=time(8),
+                    end_time=time(17),
+                ),
+                HrShiftAssignment(
+                    id=replacement_shift_id,
+                    employee_id=employee_id,
+                    calendar_id=replacement_calendar_id,
+                    shift_name="Open-ended replacement shift",
+                    effective_from=replacement_day,
+                    effective_to=None,
+                    start_time=time(9),
+                    end_time=time(18),
+                ),
+            ]
+        )
+        await session.flush()
+
+        service = HrWorkforceService(session)
+        assert await service._leave_work_dates(employee, first_day, 2) == [
+            first_day,
+            replacement_day,
+        ]
+        first_schedule = await service._resolve_work_schedule(employee, first_day)
+        replacement_schedule = await service._resolve_work_schedule(employee, replacement_day)
+        assert first_schedule.calendar is not None
+        assert first_schedule.calendar.id == first_calendar_id
+        assert first_schedule.shift is not None and first_schedule.shift.id == first_shift_id
+        assert replacement_schedule.calendar is not None
+        assert replacement_schedule.calendar.id == replacement_calendar_id
+        assert replacement_schedule.shift is not None
+        assert replacement_schedule.shift.id == replacement_shift_id
+
+        session.add(
+            HrShiftAssignment(
+                id=uuid4(),
+                employee_id=employee_id,
+                calendar_id=first_calendar_id,
+                shift_name="Overlapping replacement shift",
+                effective_from=replacement_day,
+                effective_to=None,
+                start_time=time(10),
+                end_time=time(19),
+            )
+        )
+        await session.flush()
+        with pytest.raises(AppException) as ambiguous:
+            await service._resolve_work_schedule(employee, replacement_day)
+        assert ambiguous.value.status_code == 409
         assert ambiguous.value.error_code == "LEAVE_SCHEDULE_AMBIGUOUS"
         await session.rollback()
 

@@ -549,6 +549,8 @@ export function HRMePage() {
                         ? `Year entitlement to date: ${b.due_entitlement_days} days`
                         : b.entitlement_status === 'unverified'
                           ? 'Entitlement needs HR verification.'
+                          : b.entitlement_status === 'reconciliation_required'
+                            ? 'Balance reconciliation is required before entitlement can be used.'
                           : 'Entitlement policy setup is not confirmed.'}
                     </span>
                     {b.annual_block_status !== 'not_applicable' && (

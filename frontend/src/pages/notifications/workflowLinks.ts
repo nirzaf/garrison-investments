@@ -29,3 +29,21 @@ export function workflowLink(body: string, origin = window.location.origin) {
     return null;
   }
 }
+
+export function isNotificationActionable(notification: {
+  is_actionable?: boolean | null;
+  superseded_at?: string | null;
+}): boolean {
+  return notification.superseded_at == null && notification.is_actionable !== false;
+}
+
+export function notificationWorkflowLink(
+  notification: {
+    body: string;
+    is_actionable?: boolean | null;
+    superseded_at?: string | null;
+  },
+  origin = window.location.origin
+) {
+  return isNotificationActionable(notification) ? workflowLink(notification.body, origin) : null;
+}

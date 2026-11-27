@@ -15088,7 +15088,8 @@
             "enum": [
               "configured",
               "setup_required",
-              "unverified"
+              "unverified",
+              "reconciliation_required"
             ],
             "title": "Entitlement Status",
             "type": "string"
@@ -19592,6 +19593,17 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "is_actionable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Actionable"
           },
           "is_read": {
             "title": "Is Read",

@@ -12425,7 +12425,7 @@ export interface components {
              * @default setup_required
              * @enum {string}
              */
-            entitlement_status: "configured" | "setup_required" | "unverified";
+            entitlement_status: "configured" | "setup_required" | "unverified" | "reconciliation_required";
             /** Leave Type Code */
             leave_type_code: string;
             /**
@@ -14079,6 +14079,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Actionable */
+            is_actionable?: boolean | null;
             /** Is Read */
             is_read: boolean;
             /** Muted */

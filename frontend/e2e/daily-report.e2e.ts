@@ -295,6 +295,29 @@ test('offline report photos and verified supervisor evidence survive rejection a
     verified_report_id: original.id
   });
   await reviewer.goto(inbox);
+  const approvePath = new RegExp(`/api/v1/reports/${original.id}/approve$`);
+  await reviewer.route(approvePath, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        detail: 'Daily report material consumption could not be fulfilled.',
+        error_code: 'DAILY_REPORT_MATERIAL_CONSUMPTION_FAILED',
+        errors: [{ field: 'material_consumption[0]', message: 'insufficient_project_stock' }]
+      })
+    });
+  });
+  await submittedCard.getByRole('checkbox', { name: /Target covered confirmation/ }).check();
+  await submittedCard.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(reviewer.getByRole('alert')).toContainText(
+    'Material line 1: available project stock is insufficient.'
+  );
+  expect((await getReports()).items[0].status).toBe('submitted');
+  await reviewer.unroute(approvePath);
   await submittedCard.getByRole('checkbox', { name: /Target covered confirmation/ }).check();
   await submittedCard.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(reviewer.getByText(`Approved ${number}.`, { exact: true })).toBeVisible();

@@ -33,4 +33,24 @@ describe('formatApiError', () => {
     };
     expect(formatApiError(error, fallback)).toBe('quantity: Must be positive');
   });
+
+  it('shows safe report material line errors after stock approval is blocked', () => {
+    const error = {
+      isAxiosError: true,
+      response: {
+        status: 409,
+        data: {
+          detail: 'Daily report material consumption could not be fulfilled.',
+          error_code: 'DAILY_REPORT_MATERIAL_CONSUMPTION_FAILED',
+          errors: [
+            { field: 'material_consumption[0]', message: 'insufficient_project_stock' },
+            { field: 'material_consumption[2]', message: 'unit_mismatch' },
+          ],
+        },
+      },
+    };
+    expect(formatApiError(error, fallback)).toBe(
+      'Material line 1: available project stock is insufficient. Material line 3: unit does not match the inventory item.'
+    );
+  });
 });

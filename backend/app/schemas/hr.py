@@ -1928,7 +1928,9 @@ class LeaveBalanceItem(BaseModel):
     leave_type_name: str
     leave_year: int
     balance_days: Decimal
-    entitlement_status: Literal["configured", "setup_required", "unverified"] = "setup_required"
+    entitlement_status: Literal[
+        "configured", "setup_required", "unverified", "reconciliation_required"
+    ] = "setup_required"
     due_entitlement_days: Decimal | None = None
     annual_block_status: Literal[
         "not_applicable", "outstanding", "scheduled", "taken", "unverified"
